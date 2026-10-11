@@ -147,6 +147,15 @@ impl PartialEq<usize> for Node {
     }
 }
 
+/// `python3`, or `python` where only that name exists (often on Windows).
+fn python() -> Command {
+    let works = Command::new("python3")
+        .arg("--version")
+        .output()
+        .is_ok_and(|out| out.status.success());
+    Command::new(if works { "python3" } else { "python" })
+}
+
 fn bin() -> Command {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_log-bill"));
     cmd.current_dir(env!("CARGO_MANIFEST_DIR"));
@@ -172,7 +181,7 @@ fn run_exit(args: &[&str]) -> (i32, String, String) {
 }
 
 fn json(body: &str) -> Node {
-    let mut child = Command::new("python3")
+    let mut child = python()
         // Python on Windows reads stdin as the ANSI code page unless told otherwise.
         .env("PYTHONIOENCODING", "utf-8")
         .args(["-c", BOOM])
@@ -303,7 +312,7 @@ fn has_text(value: &Node, needle: &str) -> bool {
 }
 
 fn valid_via_json_tool(body: &str) {
-    let mut child = Command::new("python3")
+    let mut child = python()
         // Python on Windows reads stdin as the ANSI code page unless told otherwise.
         .env("PYTHONIOENCODING", "utf-8")
         .args(["-m", "json.tool"])
@@ -504,7 +513,10 @@ fn costs_only_with_prices_and_window() {
     assert!(day30["costs"].get("savings").is_none());
     assert!(day30["patterns"][0].get("masks").is_none());
     assert_eq!(day30["patterns"][0]["text"], "<VAR>");
-    assert!(!has_text(&day30, "q"));
+    // The sample is a run of 'q'. Only a longer run is a leak: the checkout
+    // path in `inputs.paths` may contain a single 'q'.
+    assert!(!has_text(&day30["patterns"], "q"));
+    assert!(!has_text(&day30, "qqqq"));
 
     let (code, day31, err) = run_exit(&[
         "scan",

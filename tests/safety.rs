@@ -18,6 +18,15 @@ const AUTH_JSONL: &str = "tests/fixtures/canary-authorization.jsonl";
 const BARE: &str = "CANARYGEHEIMZONDERCIJFER";
 const B64: &str = "dXNlcjpwYXNz";
 
+/// `python3`, or `python` where only that name exists (often on Windows).
+fn python() -> Command {
+    let works = Command::new("python3")
+        .arg("--version")
+        .output()
+        .is_ok_and(|out| out.status.success());
+    Command::new(if works { "python3" } else { "python" })
+}
+
 fn manifest(rel: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(rel)
 }
@@ -80,7 +89,7 @@ fn error(label: &str, args: &[&str], stderr: &str) {
 }
 
 fn json_tool(label: &str, body: &str) -> String {
-    let mut child = Command::new("python3")
+    let mut child = python()
         // Python on Windows reads stdin as the ANSI code page unless told otherwise.
         .env("PYTHONIOENCODING", "utf-8")
         .args(["-m", "json.tool"])

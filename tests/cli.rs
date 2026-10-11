@@ -318,3 +318,13 @@ fn fifo_exit_2_within_two_seconds() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn usage_names_the_binary_log_bill() {
+    // Also on Windows, where the file is `log-bill.exe`.
+    let output = bin().args(["scan"]).output().expect("start binary");
+    assert_eq!(output.status.code(), Some(3));
+    let err = String::from_utf8_lossy(&output.stderr);
+    assert!(err.contains("Usage: log-bill scan "), "{err}");
+    assert!(!err.contains("log-bill.exe"), "{err}");
+}
