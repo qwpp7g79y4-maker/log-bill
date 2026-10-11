@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::fmt::Write;
 
 use serde_json::Value;
@@ -293,12 +294,10 @@ pub fn diff_costs(
 ) -> Result<String, money::CalcError> {
     let delta = i128::from(new_bytes) - i128::from(old_bytes);
     let sample = u64::try_from(delta.unsigned_abs()).expect("bytes");
-    let sign = if delta > 0 {
-        "+"
-    } else if delta < 0 {
-        "-"
-    } else {
-        ""
+    let sign = match delta.cmp(&0) {
+        Ordering::Greater => "+",
+        Ordering::Less => "-",
+        Ordering::Equal => "",
     };
     let mut out = String::new();
     writeln!(
@@ -344,24 +343,20 @@ fn signed(delta: i128) -> String {
 fn signed_lines(delta: i128) -> String {
     let n = u64::try_from(delta.unsigned_abs()).expect("lines");
     let word = line_word(n);
-    if delta > 0 {
-        format!("+{n} {word}")
-    } else if delta < 0 {
-        format!("-{n} {word}")
-    } else {
-        format!("0 {word}")
+    match delta.cmp(&0) {
+        Ordering::Greater => format!("+{n} {word}"),
+        Ordering::Less => format!("-{n} {word}"),
+        Ordering::Equal => format!("0 {word}"),
     }
 }
 
 fn signed_share(delta: i128) -> String {
     let tenths = delta.unsigned_abs();
     let text_body = format!("{}.{}", tenths / 10, tenths % 10);
-    if delta > 0 {
-        format!("+{text_body}")
-    } else if delta < 0 {
-        format!("-{text_body}")
-    } else {
-        text_body
+    match delta.cmp(&0) {
+        Ordering::Greater => format!("+{text_body}"),
+        Ordering::Less => format!("-{text_body}"),
+        Ordering::Equal => text_body,
     }
 }
 
@@ -862,12 +857,10 @@ fn diff_costs_json(
 }
 
 fn signed_money(delta: i128, amount: &str) -> String {
-    if delta > 0 {
-        format!("+{amount}")
-    } else if delta < 0 {
-        format!("-{amount}")
-    } else {
-        amount.to_owned()
+    match delta.cmp(&0) {
+        Ordering::Greater => format!("+{amount}"),
+        Ordering::Less => format!("-{amount}"),
+        Ordering::Equal => amount.to_owned(),
     }
 }
 
