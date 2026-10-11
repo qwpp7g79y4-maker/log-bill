@@ -1,0 +1,139 @@
+# log-bill referentie
+
+[English](reference.md) · Nederlands
+
+Deze pagina bevat alle details. Voor een overzicht, zie de [README](../README.nl.md).
+
+## Opties
+
+Draai `log-bill --help` of `log-bill scan --help` voor de ingebouwde hulp. Combinaties die niet van toepassing zijn worden geweigerd met exit 3 in plaats van stil genegeerd; zie [Exitcodes en gebruiksfouten](#exitcodes-en-gebruiksfouten).
+
+| Optie | Werkt bij | Wat het doet |
+| --- | --- | --- |
+| `--format` | scan en diff | Invoerformaat, `text` of `jsonl`. Standaard `text`. |
+| `--message-field` | scan en diff, alleen met `--format jsonl` | Neem het patroon uit dit JSON-veld. |
+| `--window` | scan; bij diff alleen met `--prices` of `--json` | Tijdvenster van de steekproef, bijvoorbeeld `15m`. Rekent om naar een dag en een maand. |
+| `--days-per-month` | scan en diff, alleen met `--window` | Dagen in een maand. Standaard 30. |
+| `--prices` | scan en diff, alleen met `--window` | Je eigen prijsbestand (JSON). |
+| `--rules` | scan en diff | Simuleer `drop`- en `sample`-regels. |
+| `--top` | scan | Toon de N grootste patronen; de rest als één regel `other`. |
+| `--explain` | scan, ook met `--json` | Toon per patroon de maskers en de volledige rekensom. |
+| `--json` | scan en diff | JSON-uitvoer met `schema_version` 1. |
+| `--budget-month` | scan, met `--window` en `--prices` | Exit 1 als de maandkosten na de regels boven dit bedrag liggen. |
+| `--max-new-share` | diff | Exit 1 als nieuwe patronen meer dan PCT procent van de nieuwe bytes zijn. |
+| `--help` | overal | Toont de hulp en stopt met exit 0. |
+| `--version` | hoogste niveau | Toont het versienummer (`log-bill 0.1.0`) en stopt met exit 0. |
+
+## Prijsbestand
+
+Prijzen komen alleen uit een JSON-bestand dat je meegeeft met `--prices` (samen met `--window`). Dit is de synthetische fixture `tests/fixtures/prices.json`:
+
+```json
+{
+  "currency": "EUR",
+  "source": "manual",
+  "date": "2026-10-08",
+  "ingest_per_gb": 0.10,
+  "index_per_gb": 0.05,
+  "gb_bytes": 500000000
+}
+```
+
+`index_per_gb` en `gb_bytes` zijn optioneel. Zonder `gb_bytes` is een GB 1000000000 bytes. `gb_bytes` moet een geheel getal groter dan 0 zijn.
+
+## Hoe het rekent
+
+- **Bytes van een regel:** de ruwe bytes van de regel plus 1 voor het regeleinde. Een `\r` vóór de `\n` telt mee als byte. Een laatste regel zonder regeleinde telt ook +1. Lege regels tellen niet.
+- **JSON lines:** de bytes zijn die van de hele JSON-regel. Het patroon komt uit `--message-field`, of standaard uit het eerste veld dat bestaat van `message`, `msg` of `log`. Zonder berichtveld is het patroon `<NO-MESSAGE>`.
+- **Patroon:** het gemaskeerde bericht (zie [Maskering](#maskering)). Het patroon-id is `P` plus de eerste 8 hextekens van de 64-bit FNV-1a-hash van de patroontekst, dus stabiel tussen runs.
+- **Aandeel:** bytes van het patroon gedeeld door de totale bytes, als procent met 1 decimaal, half van nul af afgerond.
+- **Venster:** `--window` neemt een getal en `s`, `m`, `h` of `d`. De factor per dag is 86400 gedeeld door het venster in seconden. Een maand is `--days-per-month` dagen, standaard 30.
+- **Kosten:** per dag = bytes in de steekproef × factor / bytes per GB × prijs per GB, apart voor ingest en (als opgegeven) index. Per maand = per dag × dagen per maand. Er wordt gerekend met gehele getallen en breuken; afronden gebeurt pas bij het tonen: bedragen op 2 decimalen, GB op 3 decimalen, half van nul af.
+- **Regels (`--rules BESTAND`):** één per regel, `drop <regex>` of `sample <fractie> <regex>`. De fractie is het deel dat blijft, van 0 tot (niet tot en met) 1, geschreven met een punt (`0.1`, niet `0,1`). De regex wordt op de ruwe regel getoetst en de eerste regel die past wint. Regels waar niets op past blijven heel. Van gesamplede regels houdt het patroon de verwachte waarde: de som van `1 × fractie` voor de regels en de som van `bytes × fractie` voor de bytes, elk één keer en onafhankelijk naar beneden afgerond. Bij één fractie voor het hele patroon is dat `floor(aantal × fractie)` regels en `floor(bytes × fractie)` bytes. Passen twee fracties op hetzelfde patroon, dan worden de verwachte waarden eerst opgeteld en daarna één keer afgerond. Daardoor kan een patroon op 0 regels en toch nog wat bytes uitkomen. De regex en de ruwe regel worden nooit getoond, alleen het regelnummer in het regelsbestand.
+- **Budget:** `--budget-month` toetst op de bytes na `--rules`. De regel `total` en de kosten daarvan tonen de bytes vóór de regels; de besparing staat apart.
+- **Diff:** per patroon-id de oude en nieuwe bytes en het aandeel, plus nieuwe en verdwenen patronen. Het aandeel van nieuwe patronen is hun bytes gedeeld door de totale nieuwe bytes.
+
+## Maskering
+
+De maskers worden in deze volgorde op het bericht toegepast:
+
+1. Tijdstempel → `<TS>` (ISO 8601 / RFC 3339 met een komma-fractie zoals `2026-10-08T13:55:36,123Z`, `10/Oct/2026:13:55:36 +0200`, `2026-10-08 11:07:44`).
+2. UUID → `<UUID>`.
+3. IPv4 en IPv6 → `<IP>`.
+4. E-mailadres → `<EMAIL>`.
+5. Geheim na een sleutel → `<SECRET>`.
+6. Een woord van 8 of meer hextekens → `<HEX>`, maar alleen als er minstens één letter a-f (of A-F) en minstens één cijfer in staat. Een woord van alleen cijfers, zoals `1699482000`, wordt `<NUM>`.
+7. Elk ander getal → `<NUM>`; elk ander woord met een cijfer erin, en elk woord van 32 of meer tekens → `<VAR>`.
+
+Meerdere spaties worden één spatie.
+
+**IP-adressen.** Een IPv4-adres is vier decimale octetten zonder voorloopnul. IPv6 wordt per woord herkend: gewoon `2001:db8::1`, `::1`, `::` en volledige adressen met acht groepen worden `<IP>`. `std::fs::read` (twee keer `::`) niet, en ook geen gecomprimeerde vorm met tekst aan beide kanten van `::`, hooguit twee groepen, zonder cijfer en zonder IPv4-staart, zoals `a::b`. Een tijd als `13:55:36` is geen IP. Een IPv4-mapped adres (`::ffff:192.0.2.10`) is één `<IP>`, net als een adres met een zone-index (`fe80::1%eth0`). `[adres]:poort` (`[::1]:8080`, `[2001:db8::1]:443`) en `[adres]` zonder poort zijn één `<IP>`, inclusief de haakjes en de poort.
+
+**Geheimen.** Een sleutel is het woord direct vóór `=`, `:` of een spatie, ook in JSON-achtige notatie (`"key": "value"`) en in headers. Bevat dat woord `password`, `passwd`, `secret`, `token`, `api_key`, `apikey`, `authorization` of `bearer`, in elke hoofdlettervorm en ook met `_` of `-` ervoor of erna, dan wordt de waarde altijd `<SECRET>`, ongeacht lengte of cijfers. Een `-` telt als `_`, zodat `x-api-key` het woord `api_key` bevat. `monkey=` en `keyboard=` blijven staan, omdat `key` alleen geen sleutelwoord is. `tokenizer=`, `passwordless=` en `secretary=` worden wel gemaskeerd, omdat anders `sessiontoken=` zou lekken.
+
+Bij een sleutel die `authorization` bevat (`Authorization`, `Proxy-Authorization`, `"authorization":` enzovoort) wordt de hele waarde, inclusief het schemawoord (`Basic`, `Bearer`, `Digest`, `NTLM`, `Negotiate` of een onbekend schema), één `<SECRET>`, en loopt een ongequote waarde tot het einde van het bericht.
+
+Waar een geheime waarde eindigt: een waarde zonder aanhalingstekens eindigt op de eerste spatie. Een gequote waarde (dubbele of enkele aanhalingstekens) eindigt op het sluitende aanhalingsteken, maar alleen als daar een scheiding op volgt: het einde van het bericht, een komma, `}` of `]` (ook na spaties), of spaties gevolgd door een volgend veld zoals `name=` of `name:`. Een aanhalingsteken zonder zo'n scheiding hoort bij de waarde, en een backslash-escape houdt het volgende teken bij de waarde. Volgt er nergens zo'n afsluiting, dan loopt de waarde tot het einde van het bericht: bij twijfel liever maskeren dan lekken.
+
+Met `--explain` krijgt een telling van `<SECRET>` de tekst `possible secret` ("mogelijk geheim"). In `--json` krijgt zo'n patroon de extra sleutel `note` met die tekst, en de sleutel `secret` in `masks` bevat het aantal.
+
+## Exitcodes en gebruiksfouten
+
+| Code | Betekenis |
+| --- | --- |
+| 0 | In orde |
+| 1 | Budget (`--budget-month`) of drempel (`--max-new-share`) overschreden |
+| 2 | Invoerfout: logbestand, JSON, prijsbestand of regelsbestand |
+| 3 | Gebruiksfout |
+
+Een logbestand, prijsbestand of regelsbestand moet een gewoon bestand zijn. Een FIFO, een map of iets anders wordt geweigerd met exit 2, zonder te wachten tot een schrijver opent. Een `gb_bytes` die een breuk is zoals `0.5`, 0 of negatief is exit 2; een prijs die tekst is in plaats van een getal geeft `price file has a price that is not a number`. `sample 0,1` is geen geldige fractie: exit 2 met `invalid rule on line 1 of the rules file`, zonder de regel te tonen. De meldingen over gewone bestanden noemen het pad niet, en geen foutmelding bevat een ruwe logregel.
+
+Elke rij hieronder is op de binary gedraaid, en een test houdt dat zo. Een rij met exit 3 heeft een lege stdout. De melding is de hele stderr; de binary zet er een regeleinde achter. `\n` in de laatste kolom is een regeleinde in die melding. `--json` verandert een melding niet. Bij `diff` wordt `--explain` eerder getoetst dan `--top`, `--window` en `--days-per-month`, en die melding wint dan. Een ongeldig bedrag, een ongeldig percentage en `--prices` zonder venster worden eerder getoetst dan `--explain`.
+
+| Optie | Werkt bij | Geval | Verkeerd | Exit | Melding |
+| --- | --- | --- | --- | --- | --- |
+| `--format` | scan en diff | Ongeldige waarde. | `scan --format nope file.log` | 3 | `error: invalid value 'nope' for '--format <FORMAT>'\n  [possible values: text, jsonl]\n\nFor more information, try '--help'.\n` |
+| `--message-field` | scan | Zonder jsonl. | `scan --message-field message file.log` | 3 | `--message-field only works with --format jsonl` |
+| `--message-field` | diff | Zonder jsonl. | `diff --message-field message OLD NEW` | 3 | `--message-field only works with --format jsonl` |
+| `--message-field` | scan | `--json` is geen invoerformaat jsonl. | `scan --json --message-field message file.log` | 3 | `--message-field only works with --format jsonl` |
+| `--window` | diff | Zonder `--prices` en zonder `--json`. | `diff --window 1m OLD NEW` | 3 | `--window with diff only works together with --prices or --json` |
+| `--window` | diff | `--explain` wordt eerder getoetst. | `diff --explain --window 1m OLD NEW` | 3 | `--explain only works with scan` |
+| `--window` | scan | 0m is ongeldig. | `scan --window 0m file.log` | 3 | `invalid window` |
+| `--window` | scan | 5x is ongeldig. | `scan --window 5x file.log` | 3 | `invalid window` |
+| `--window` | diff | 0m is ongeldig, vóór de diff-toets. | `diff --window 0m OLD NEW` | 3 | `invalid window` |
+| `--days-per-month` | scan | Zonder venster. | `scan --days-per-month 31 file.log` | 3 | `--days-per-month only works together with --window` |
+| `--days-per-month` | diff | Zonder venster. | `diff --days-per-month 31 OLD NEW` | 3 | `--days-per-month only works together with --window` |
+| `--days-per-month` | diff | `--json` verandert de melding niet. | `diff --json --days-per-month 31 OLD NEW` | 3 | `--days-per-month only works together with --window` |
+| `--days-per-month` | diff | `--explain` wint van deze latere toets. | `diff --explain --days-per-month 31 OLD NEW` | 3 | `--explain only works with scan` |
+| `--prices` | scan | Zonder venster. | `scan --prices no-prices.json file.log` | 3 | `--prices only works together with --window` |
+| `--prices` | diff | Zonder venster. | `diff --prices no-prices.json OLD NEW` | 3 | `--prices only works together with --window` |
+| `--prices` | scan | `--json` en `--explain` veranderen de melding niet. | `scan --json --explain --prices no-prices.json file.log` | 3 | `--prices only works together with --window` |
+| `--prices` | diff | `--explain` wint hier niet: prijzen worden eerder getoetst. | `diff --explain --prices no-prices.json OLD NEW` | 3 | `--prices only works together with --window` |
+| `--top` | diff | Hoort niet bij diff. | `diff --top 1 OLD NEW` | 3 | `--top only works with scan` |
+| `--top` | diff | `--json` verandert de melding niet. | `diff --json --top 1 OLD NEW` | 3 | `--top only works with scan` |
+| `--explain` | diff | Hoort niet bij diff. | `diff --explain OLD NEW` | 3 | `--explain only works with scan` |
+| `--explain` | diff | `--json` verandert de melding niet. | `diff --json --explain OLD NEW` | 3 | `--explain only works with scan` |
+| `--budget-month` | diff | Hoort niet bij diff. | `diff --budget-month 1 OLD NEW` | 3 | `the monthly budget only applies to scan` |
+| `--budget-month` | diff | `--json` en `--explain` veranderen de melding niet. | `diff --json --explain --budget-month 1 OLD NEW` | 3 | `the monthly budget only applies to scan` |
+| `--budget-month` | scan | Zonder venster. | `scan --budget-month 1 file.log` | 3 | `budget requires a window` |
+| `--budget-month` | scan | Venster wel, prijzen niet. | `scan --budget-month 1 --window 1m file.log` | 3 | `budget requires a price file` |
+| `--budget-month` | scan | Prijzen wel, venster niet. Het venster gaat vóór `--prices`. | `scan --budget-month 1 --prices no-prices.json file.log` | 3 | `budget requires a window` |
+| `--budget-month` | scan | 1,5 is geen bedrag. | `scan --budget-month 1,5 file.log` | 3 | `invalid budget` |
+| `--budget-month` | diff | abc is ongeldig, vóór de commando-toets. | `diff --budget-month abc OLD NEW` | 3 | `invalid budget` |
+| `--max-new-share` | scan | Hoort niet bij scan. | `scan --max-new-share 10 file.log` | 3 | `--max-new-share only works with diff` |
+| `--max-new-share` | scan | `--json` en `--explain` veranderen de melding niet. | `scan --json --explain --max-new-share 10 file.log` | 3 | `--max-new-share only works with diff` |
+| `--max-new-share` | scan | abc bij scan geeft dezelfde melding, niet ongeldig percentage. | `scan --max-new-share abc file.log` | 3 | `--max-new-share only works with diff` |
+| `--max-new-share` | diff | abc is geen percentage. | `diff --max-new-share abc OLD NEW` | 3 | `invalid percentage` |
+| `--max-new-share` | diff | `--explain` wint hier niet: het percentage wordt eerder getoetst. | `diff --explain --max-new-share abc OLD NEW` | 3 | `invalid percentage` |
+| `--max-new-share` | diff | `--json` verandert de melding niet. | `diff --json --max-new-share abc OLD NEW` | 3 | `invalid percentage` |
+| logbestand | scan en diff | Geen gewoon bestand (FIFO, map). Geweigerd zonder te wachten. |  | 2 | `file is not a regular file` |
+| `--prices` | scan en diff | Prijsbestand is geen gewoon bestand. |  | 2 | `price file is not a regular file` |
+| `--rules` | scan en diff | Regelsbestand is geen gewoon bestand. |  | 2 | `rules file is not a regular file` |
+| `--prices` | scan en diff | `gb_bytes` is geen geheel getal groter dan 0 (een breuk, 0 of negatief). |  | 2 | `gb_bytes must be a whole number greater than 0` |
+
+## Privacy en veiligheid
+
+- Volledig offline: geen netwerk, geen API-key, geen telemetrie. De dependencies zijn beperkt tot clap, regex en serde_json.
+- Geen uitvoer of foutmelding bevat een volledige ruwe logregel; alleen gemaskeerde patronen, aantallen en regelnummers.
+- Tests stoppen een nepgeheim (een canary) in platte tekst, in JSON-velden, achter `password=` en `Authorization: Bearer`, in een kapotte regel en in een regelsbestand, en controleren dat geen enkele uitvoer (tekst, JSON, `--explain`, diff, stderr) het bevat.
+- Alle fixtures zijn synthetisch; zie [tests/fixtures/README.md](../tests/fixtures/README.md).

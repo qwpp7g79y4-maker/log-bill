@@ -1,0 +1,2 @@
+drop ^$
+keep CANARY-SECRET-0099

@@ -1,0 +1,10 @@
+db_password=hunterSecretWord
+SECRET_KEY=abcdef
+x_token=abcSuperSecretValue
+my_secret_value=geheim
+x-api-key: thisIsNotHexValueAtAll
+X-Api-Key: geheim
+Db-Password: geheim
+API_KEY=letters
+"db_password": "hunterSecretWord"
+voor 2026-10-08T13:55:36,123Z na

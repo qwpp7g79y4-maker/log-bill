@@ -1,0 +1,5 @@
+{"message":"Authorization: Basic dXNlcjpwYXNz"}
+{"message":"Proxy-Authorization: Digest username=\"Mufasa\", realm=\"realmWordValue\", nonce=\"nonceWordValue\", response=\"responseWordValue\""}
+{"msg":"Authorization: Foo fooLetterToken"}
+{"log":"\"authorization\": \"Basic hunterSecretWord\""}
+{"message":"x-authorization: Bearer abcSuperSecretValue"}

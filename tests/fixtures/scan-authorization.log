@@ -1,0 +1,30 @@
+Authorization: Basic hunterSecretWord
+Authorization: Basic dXNlcjpwYXNz
+Authorization: Bearer abcSuperSecretValue
+Authorization: Bearer YWJjZGVm
+Authorization: Digest username="Mufasa", realm="realmWordValue", nonce="nonceWordValue", response="responseWordValue"
+Authorization: Digest username="YWJjZGVm", realm="x", nonce="dXNlcjpwYXNz", response="YWJjZGVm"
+Authorization: NTLM ntlmLetterToken
+Authorization: NTLM dXNlcjpwYXNz
+Authorization: Negotiate negotiateLetter
+Authorization: Negotiate dXNlcjpwYXNz
+Authorization: Foo fooLetterToken
+Authorization: Foo dXNlcjpwYXNz
+Proxy-Authorization: Basic hunterSecretWord
+Proxy-Authorization: Basic dXNlcjpwYXNz
+Proxy-Authorization: Bearer abcSuperSecretValue
+Proxy-Authorization: Bearer YWJjZGVm
+Proxy-Authorization: Digest username="Mufasa", realm="realmWordValue", nonce="nonceWordValue", response="responseWordValue"
+Proxy-Authorization: Digest username="YWJjZGVm", realm="x", nonce="dXNlcjpwYXNz", response="YWJjZGVm"
+Proxy-Authorization: NTLM ntlmLetterToken
+Proxy-Authorization: NTLM dXNlcjpwYXNz
+Proxy-Authorization: Negotiate negotiateLetter
+Proxy-Authorization: Negotiate dXNlcjpwYXNz
+Proxy-Authorization: Foo fooLetterToken
+Proxy-Authorization: Foo dXNlcjpwYXNz
+x-authorization: Foo fooLetterToken
+my_proxy-authorization: NTLM ntlmLetterToken
+"authorization": "Basic dXNlcjpwYXNz"
+"authorization": "Basic hunterSecretWord"
+"proxy-authorization": "Negotiate negotiateLetter"
+{"authorization": "Basic dXNlcjpwYXNz", "user": "ada"}

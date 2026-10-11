@@ -1,0 +1,38 @@
+{
+  "estimate": null,
+  "inputs": {
+    "command": "scan",
+    "days_per_month": 30,
+    "format": "text",
+    "message_field": null,
+    "paths": [
+      "tests/fixtures/scan-text.log"
+    ],
+    "top": null
+  },
+  "patterns": [
+    {
+      "bytes": 108,
+      "id": "Pe19dc70d",
+      "lines": 2,
+      "rest": false,
+      "share": "91.5",
+      "text": "user <NUM> failed at <TS> from <IP>"
+    },
+    {
+      "bytes": 10,
+      "id": "P46ab1618",
+      "lines": 1,
+      "rest": false,
+      "share": "8.5",
+      "text": "disk full"
+    }
+  ],
+  "schema_version": 1,
+  "tool": "log-bill",
+  "totals": {
+    "bytes": 118,
+    "lines": 3
+  },
+  "window": null
+}

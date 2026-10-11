@@ -1,0 +1,5 @@
+{"message":"Authorization: Basic CANARYGEHEIMZONDERCIJFER"}
+{"message":"Proxy-Authorization: Digest username=\"CANARYGEHEIMZONDERCIJFER\", realm=\"x\", nonce=\"dXNlcjpwYXNz\", response=\"YWJjZGVm\""}
+{"msg":"Authorization: Foo dXNlcjpwYXNz"}
+{"log":"\"authorization\": \"Basic CANARYGEHEIMZONDERCIJFER\""}
+{"message":"x-authorization: Negotiate dXNlcjpwYXNz"}

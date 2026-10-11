@@ -1,0 +1,24 @@
+Authorization: Basic CANARYGEHEIMZONDERCIJFER
+Authorization: Basic dXNlcjpwYXNz
+Authorization: Bearer CANARYGEHEIMZONDERCIJFER
+Authorization: Bearer dXNlcjpwYXNz
+Authorization: Digest username="CANARYGEHEIMZONDERCIJFER", realm="x", nonce="dXNlcjpwYXNz", response="YWJjZGVm"
+Authorization: NTLM CANARYGEHEIMZONDERCIJFER
+Authorization: NTLM dXNlcjpwYXNz
+Authorization: Negotiate CANARYGEHEIMZONDERCIJFER
+Authorization: Negotiate dXNlcjpwYXNz
+Authorization: Foo CANARYGEHEIMZONDERCIJFER
+Authorization: Foo dXNlcjpwYXNz
+Proxy-Authorization: Basic CANARYGEHEIMZONDERCIJFER
+Proxy-Authorization: Basic dXNlcjpwYXNz
+Proxy-Authorization: Bearer CANARYGEHEIMZONDERCIJFER
+Proxy-Authorization: Digest username="CANARYGEHEIMZONDERCIJFER", realm="x", nonce="dXNlcjpwYXNz", response="YWJjZGVm"
+Proxy-Authorization: NTLM CANARYGEHEIMZONDERCIJFER
+Proxy-Authorization: Negotiate dXNlcjpwYXNz
+Proxy-Authorization: Foo CANARYGEHEIMZONDERCIJFER
+Proxy-Authorization: Foo dXNlcjpwYXNz
+x-authorization: Basic CANARYGEHEIMZONDERCIJFER
+my_proxy-authorization: NTLM dXNlcjpwYXNz
+"authorization": "Basic CANARYGEHEIMZONDERCIJFER"
+"authorization": "Basic dXNlcjpwYXNz"
+"proxy-authorization": "Bearer dXNlcjpwYXNz"

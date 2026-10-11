@@ -1,0 +1,155 @@
+{
+  "added": [
+    {
+      "bytes": {
+        "delta": 6,
+        "new": 6,
+        "old": 0
+      },
+      "id": "P229176bd",
+      "lines": {
+        "delta": 1,
+        "new": 1,
+        "old": 0
+      },
+      "share": {
+        "delta": "+50.0",
+        "new": "50.0",
+        "old": "0.0"
+      },
+      "text": "gamma"
+    }
+  ],
+  "changed": [
+    {
+      "bytes": {
+        "delta": -6,
+        "new": 6,
+        "old": 12
+      },
+      "id": "P8ac625bb",
+      "lines": {
+        "delta": -1,
+        "new": 1,
+        "old": 2
+      },
+      "share": {
+        "delta": "-20.6",
+        "new": "50.0",
+        "old": "70.6"
+      },
+      "text": "alpha"
+    }
+  ],
+  "estimate": null,
+  "inputs": {
+    "command": "diff",
+    "days_per_month": 30,
+    "format": "text",
+    "message_field": null,
+    "paths": [
+      "tests/fixtures/diff-old.log",
+      "tests/fixtures/diff-new.log"
+    ],
+    "top": null
+  },
+  "patterns": [
+    {
+      "bytes": {
+        "delta": 6,
+        "new": 6,
+        "old": 0
+      },
+      "id": "P229176bd",
+      "lines": {
+        "delta": 1,
+        "new": 1,
+        "old": 0
+      },
+      "share": {
+        "delta": "+50.0",
+        "new": "50.0",
+        "old": "0.0"
+      },
+      "text": "gamma"
+    },
+    {
+      "bytes": {
+        "delta": -5,
+        "new": 0,
+        "old": 5
+      },
+      "id": "P7627619b",
+      "lines": {
+        "delta": -1,
+        "new": 0,
+        "old": 1
+      },
+      "share": {
+        "delta": "-29.4",
+        "new": "0.0",
+        "old": "29.4"
+      },
+      "text": "beta"
+    },
+    {
+      "bytes": {
+        "delta": -6,
+        "new": 6,
+        "old": 12
+      },
+      "id": "P8ac625bb",
+      "lines": {
+        "delta": -1,
+        "new": 1,
+        "old": 2
+      },
+      "share": {
+        "delta": "-20.6",
+        "new": "50.0",
+        "old": "70.6"
+      },
+      "text": "alpha"
+    }
+  ],
+  "removed": [
+    {
+      "bytes": {
+        "delta": -5,
+        "new": 0,
+        "old": 5
+      },
+      "id": "P7627619b",
+      "lines": {
+        "delta": -1,
+        "new": 0,
+        "old": 1
+      },
+      "share": {
+        "delta": "-29.4",
+        "new": "0.0",
+        "old": "29.4"
+      },
+      "text": "beta"
+    }
+  ],
+  "schema_version": 1,
+  "tool": "log-bill",
+  "totals": {
+    "added_bytes": 6,
+    "added_share": "50.0",
+    "new": {
+      "bytes": 12,
+      "lines": 2
+    },
+    "old": {
+      "bytes": 17,
+      "lines": 3
+    }
+  },
+  "totals_delta": {
+    "bytes": -5,
+    "lines": -1
+  },
+  "window": null
+}

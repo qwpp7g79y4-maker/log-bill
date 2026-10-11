@@ -1,0 +1,4 @@
+{"message":"user 7 failed at 2026-10-08T11:07:44Z from 192.0.2.10","trace":"RAW-TRACE-0001"}
+{"msg":"disk full"}
+{"log":"user 8 failed at 2026-10-08T12:08:45Z from 192.0.2.11"}
+{"level":"info"}

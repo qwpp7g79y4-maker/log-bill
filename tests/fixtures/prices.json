@@ -1,0 +1,8 @@
+{
+  "currency": "EUR",
+  "source": "manual",
+  "date": "2026-10-08",
+  "ingest_per_gb": 0.10,
+  "index_per_gb": 0.05,
+  "gb_bytes": 500000000
+}

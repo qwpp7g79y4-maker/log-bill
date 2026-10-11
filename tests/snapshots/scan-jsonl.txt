@@ -1,0 +1,4 @@
+total: 4 lines, 194 bytes
+Pe19dc70d  2 lines  157 bytes  80.9%  user <NUM> failed at <TS> from <IP>
+P46ab1618  1 line  20 bytes  10.3%  disk full
+P6423ef86  1 line  17 bytes  8.8%  <NO-MESSAGE>
