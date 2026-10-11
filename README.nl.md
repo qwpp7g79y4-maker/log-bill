@@ -16,7 +16,9 @@ Teams betalen per GB voor logs en zien vaak pas op de factuur welk patroon het v
 
 ## Installatie
 
-Je hebt Rust 1.85 of nieuwer nodig.
+Kant-en-klare binaries voor Linux (x86_64), Windows (x86_64) en macOS (Intel en Apple Silicon), elk met een SHA-256-checksum, staan op de [Releases-pagina](https://github.com/qwpp7g79y4-maker/log-bill/releases).
+
+Om zelf te bouwen heb je Rust 1.85 of nieuwer nodig.
 
 ```sh
 cargo install --locked --git https://github.com/qwpp7g79y4-maker/log-bill

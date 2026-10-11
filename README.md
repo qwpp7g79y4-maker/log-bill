@@ -14,7 +14,9 @@ Teams pay per GB for logs and often only see on the invoice which pattern produc
 
 ## Installation
 
-Requires Rust 1.85 or newer.
+Ready-made binaries for Linux (x86_64), Windows (x86_64) and macOS (Intel and Apple Silicon), each with a SHA-256 checksum, are on the [Releases page](https://github.com/qwpp7g79y4-maker/log-bill/releases).
+
+To build from source you need Rust 1.85 or newer.
 
 ```sh
 cargo install --locked --git https://github.com/qwpp7g79y4-maker/log-bill
