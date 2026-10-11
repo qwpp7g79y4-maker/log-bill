@@ -14,14 +14,14 @@ Teams pay per GB for logs and often only see on the invoice which pattern produc
 
 ## Installation
 
-Requires a Rust toolchain (Rust 2021 edition).
+Requires Rust 1.85 or newer.
 
 ```sh
-cargo install --path .
+cargo install --locked --git https://github.com/qwpp7g79y4-maker/log-bill
 log-bill --help
 ```
 
-Or build it with `cargo build --release`; the binary is `target/release/log-bill`.
+From a local clone: `cargo install --locked --path .`, or `cargo build --release`; the binary is `target/release/log-bill`.
 
 ## Quick start
 

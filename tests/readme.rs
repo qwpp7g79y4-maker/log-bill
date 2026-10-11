@@ -179,6 +179,13 @@ fn readme_has_the_sections_and_names() {
     assert!(section(&readme, "## Support").contains("(https://ko-fi.com/pepai)"));
     assert!(section(&read(README_NL), "## Steunen").contains("(https://ko-fi.com/pepai)"));
     assert_eq!(read(".github/FUNDING.yml"), "ko_fi: pepai\n");
+    let install = section(&readme, "## Installation");
+    assert!(install
+        .contains("cargo install --locked --git https://github.com/qwpp7g79y4-maker/log-bill"));
+    assert!(install.contains("Rust 1.85 or newer"));
+    let manifest = read("Cargo.toml");
+    assert!(manifest.contains("rust-version = \"1.85\""));
+    assert!(section(&read(README_NL), "## Installatie").contains("Rust 1.85 of nieuwer"));
     assert!(section(&readme, "## License").contains("PEPAI"));
     assert!(section(&readme, "## Contact").contains("pep_ai@icloud.com"));
 }

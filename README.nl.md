@@ -16,14 +16,14 @@ Teams betalen per GB voor logs en zien vaak pas op de factuur welk patroon het v
 
 ## Installatie
 
-Je hebt een Rust-toolchain nodig (Rust 2021 edition).
+Je hebt Rust 1.85 of nieuwer nodig.
 
 ```sh
-cargo install --path .
+cargo install --locked --git https://github.com/qwpp7g79y4-maker/log-bill
 log-bill --help
 ```
 
-Of bouw met `cargo build --release`; de binary staat dan in `target/release/log-bill`.
+Vanuit een lokale clone: `cargo install --locked --path .`, of `cargo build --release`; de binary staat dan in `target/release/log-bill`.
 
 ## Snel aan de slag
 

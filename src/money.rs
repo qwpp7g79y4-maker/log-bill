@@ -113,7 +113,8 @@ fn gb_milli(numer: u128, seconds: u128, gb_bytes: u128) -> Result<u128, CalcErro
 /// Factor as an integer when division is exact, else the fraction `86400/seconds`.
 pub fn format_factor(window: Window) -> String {
     let seconds = u128::from(window.seconds());
-    if SECONDS_PER_DAY.is_multiple_of(seconds) {
+    // Same as `is_multiple_of`, written out so older Rust toolchains build it.
+    if seconds != 0 && SECONDS_PER_DAY % seconds == 0 {
         (SECONDS_PER_DAY / seconds).to_string()
     } else {
         format!("{SECONDS_PER_DAY}/{seconds}")
