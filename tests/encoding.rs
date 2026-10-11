@@ -292,7 +292,9 @@ fn utf8_bom_in_price_file_is_skipped() {
     assert_eq!(out, priced(&fixture).1);
 }
 
-#[cfg(unix)]
+// macOS file systems (APFS, HFS+) refuse file names that are not valid UTF-8
+// (EILSEQ), so such a name cannot exist there.
+#[cfg(all(unix, not(target_vendor = "apple")))]
 #[test]
 fn non_utf8_file_name_is_read() {
     use std::os::unix::ffi::OsStrExt;
