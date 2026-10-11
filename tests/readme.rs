@@ -526,6 +526,8 @@ fn reference_describes_masks_and_input_errors() {
         "`price file is not a regular file`",
         "`rules file is not a regular file`",
         "without waiting for a writer to open it",
+        "`file is UTF-16LE, not UTF-8; convert it first, for example with iconv -f UTF-16LE -t UTF-8, or in PowerShell with Out-File -Encoding utf8`",
+        "One UTF-8 byte order mark at the start of the file is skipped for parsing",
     ] {
         assert!(reference.contains(part), "reference is missing {part}");
     }

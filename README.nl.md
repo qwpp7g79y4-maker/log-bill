@@ -25,7 +25,16 @@ cargo install --locked log-bill
 log-bill --help
 ```
 
-Kant-en-klare binaries voor Linux (x86_64), Windows (x86_64) en macOS (Intel en Apple Silicon), elk met een SHA-256-checksum, staan op de [Releases-pagina](https://github.com/qwpp7g79y4-maker/log-bill/releases).
+Kant-en-klare binaries voor Linux (x86_64; vanaf v0.1.1 ook een statische `musl`-build die geen bepaalde glibc nodig heeft en op Alpine draait), Windows (x86_64) en macOS (Intel en Apple Silicon), elk met een SHA-256-checksum, staan op de [Releases-pagina](https://github.com/qwpp7g79y4-maker/log-bill/releases).
+
+Ondersteunde systemen voor de kant-en-klare binaries:
+
+- **Linux x86_64 (`x86_64-unknown-linux-gnu`):** gebouwd op Ubuntu 22.04, heeft glibc 2.34 of nieuwer nodig (bijvoorbeeld Ubuntu 22.04, Debian 12, RHEL 9 en later).
+- **Linux x86_64 (`x86_64-unknown-linux-musl`, vanaf v0.1.1):** statisch gelinkt, geen glibc nodig; voor Alpine en oudere distributies.
+- **Windows x86_64 (`x86_64-pc-windows-msvc`).**
+- **macOS Intel (`x86_64-apple-darwin`) en Apple Silicon (`aarch64-apple-darwin`).**
+
+De tests draaien in CI op Linux, Windows, macOS op Apple Silicon en macOS op Intel, en op Rust 1.85. Andere systemen kunnen werken met `cargo install`, maar zijn niet getest.
 
 Voor de nieuwste `main`: `cargo install --locked --git https://github.com/qwpp7g79y4-maker/log-bill`.
 
@@ -126,6 +135,8 @@ Een eerlijke vergelijking met vijf producten. De pagina's zijn nagelezen op 8 ok
 - Geen gzip-invoer in deze versie.
 - Na een sleutelwoord (`secret`, `token`, `password`, `bearer` enzovoort) gevolgd door een spatie wordt het volgende woord altijd gemaskeerd, ook in gewone zinnen: `This is a secret mission report` → `This is a secret <SECRET> report`. Dat is bewust: liever maskeren dan lekken.
 - Alleen gewone bestanden worden gelezen. Een FIFO, een map of een apparaat wordt geweigerd met exit 2.
+- Invoer moet UTF-8 zijn. UTF-16 en UTF-32 (bijvoorbeeld van `Out-File` of `>` in Windows PowerShell 5.1), met of zonder byte order mark, worden geweigerd met exit 2 en een melding die zegt hoe je ze omzet: `iconv -f UTF-16LE -t UTF-8 in.log > out.log`, of in PowerShell `Get-Content in.log | Out-File -Encoding utf8 out.log`. Hun NUL-bytes zouden anders een sleutel als `password` zo opknippen dat de maskering hem mist. Zonder byte order mark wordt de codering herkend aan de NUL-bytes in de eerste 4096 bytes; UTF-16-tekst zonder enige ASCII wordt mogelijk niet herkend. NUL-bytes in UTF-8-tekst worden vóór het maskeren weggehaald, zodat ook die geen sleutel kunnen verbergen; de bytes tellen wel mee.
+- In `--json` toont `inputs.paths` elk pad als tekst. Een bestandsnaam die geen geldige UTF-8 is (kan op Linux) wordt wel gelezen, maar getoond met U+FFFD voor de ongeldige bytes.
 
 ## Privacy
 

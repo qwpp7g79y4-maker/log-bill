@@ -22,7 +22,7 @@ Draai `log-bill --help` of `log-bill scan --help` voor de ingebouwde hulp. Combi
 | `--budget-month` | scan, met `--window` en `--prices` | Exit 1 als de maandkosten na de regels boven dit bedrag liggen. |
 | `--max-new-share` | diff | Exit 1 als nieuwe patronen meer dan PCT procent van de nieuwe bytes zijn. |
 | `--help` | overal | Toont de hulp en stopt met exit 0. |
-| `--version` | hoogste niveau | Toont het versienummer (`log-bill 0.1.0`) en stopt met exit 0. |
+| `--version` | hoogste niveau | Toont het versienummer (`log-bill 0.1.1`) en stopt met exit 0. |
 
 ## Prijsbestand
 
@@ -44,7 +44,8 @@ Prijzen komen alleen uit een JSON-bestand dat je meegeeft met `--prices` (samen 
 ## Hoe het rekent
 
 - **Bytes van een regel:** de ruwe bytes van de regel plus 1 voor het regeleinde. Een `\r` vóór de `\n` telt mee als byte. Een laatste regel zonder regeleinde telt ook +1. Lege regels tellen niet.
-- **JSON lines:** de bytes zijn die van de hele JSON-regel. Het patroon komt uit `--message-field`, of standaard uit het eerste veld dat bestaat van `message`, `msg` of `log`. Zonder berichtveld is het patroon `<NO-MESSAGE>`.
+- **Codering:** invoer is UTF-8. Ongeldige UTF-8-bytes tellen mee en worden getoond als U+FFFD. UTF-16 en UTF-32 worden geweigerd met exit 2, zie [Exitcodes en gebruiksfouten](#exitcodes-en-gebruiksfouten). NUL-bytes worden vóór het maskeren uit het bericht gehaald; als bytes tellen ze wel mee.
+- **JSON lines:** de bytes zijn die van de hele JSON-regel. Eén UTF-8-byte order mark aan het begin van het bestand wordt overgeslagen bij het parsen en telt mee in de bytes van de eerste regel; in een prijsbestand wordt dezelfde BOM overgeslagen. Het patroon komt uit `--message-field`, of standaard uit het eerste veld dat bestaat van `message`, `msg` of `log`. Zonder berichtveld is het patroon `<NO-MESSAGE>`.
 - **Patroon:** het gemaskeerde bericht (zie [Maskering](#maskering)). Het patroon-id is `P` plus de eerste 8 hextekens van de 64-bit FNV-1a-hash van de patroontekst, dus stabiel tussen runs.
 - **Aandeel:** bytes van het patroon gedeeld door de totale bytes, als procent met 1 decimaal, half van nul af afgerond.
 - **Venster:** `--window` neemt een getal en `s`, `m`, `h` of `d`. De factor per dag is 86400 gedeeld door het venster in seconden. Een maand is `--days-per-month` dagen, standaard 30.
@@ -127,6 +128,7 @@ Elke rij hieronder is op de binary gedraaid, en een test houdt dat zo. Een rij m
 | `--max-new-share` | diff | `--explain` wint hier niet: het percentage wordt eerder getoetst. | `diff --explain --max-new-share abc OLD NEW` | 3 | `invalid percentage` |
 | `--max-new-share` | diff | `--json` verandert de melding niet. | `diff --json --max-new-share abc OLD NEW` | 3 | `invalid percentage` |
 | logbestand | scan en diff | Geen gewoon bestand (FIFO, map). Geweigerd zonder te wachten. |  | 2 | `file is not a regular file` |
+| logbestand | scan en diff | UTF-16 of UTF-32, met of zonder byte order mark. De naam is `UTF-16LE`, `UTF-16BE`, `UTF-32LE` of `UTF-32BE`. |  | 2 | `file is UTF-16LE, not UTF-8; convert it first, for example with iconv -f UTF-16LE -t UTF-8, or in PowerShell with Out-File -Encoding utf8` |
 | `--prices` | scan en diff | Prijsbestand is geen gewoon bestand. |  | 2 | `price file is not a regular file` |
 | `--rules` | scan en diff | Regelsbestand is geen gewoon bestand. |  | 2 | `rules file is not a regular file` |
 | `--prices` | scan en diff | `gb_bytes` is geen geheel getal groter dan 0 (een breuk, 0 of negatief). |  | 2 | `gb_bytes must be a whole number greater than 0` |
@@ -136,4 +138,6 @@ Elke rij hieronder is op de binary gedraaid, en een test houdt dat zo. Een rij m
 - Volledig offline: geen netwerk, geen API-key, geen telemetrie. De dependencies zijn beperkt tot clap, regex en serde_json.
 - Geen uitvoer of foutmelding bevat een volledige ruwe logregel; alleen gemaskeerde patronen, aantallen en regelnummers.
 - Tests stoppen een nepgeheim (een canary) in platte tekst, in JSON-velden, achter `password=` en `Authorization: Bearer`, in een kapotte regel en in een regelsbestand, en controleren dat geen enkele uitvoer (tekst, JSON, `--explain`, diff, stderr) het bevat.
+- Een privacytest codeert canaries achter `password=`, `token=` en `Authorization: Bearer` als UTF-16LE, UTF-16BE, UTF-32LE en UTF-32BE, elk met en zonder byte order mark, en controleert dat geen uitvoer ze bevat, ook niet na het weghalen van NUL-bytes.
+- Het veld `inputs.paths` van `--json` toont een bestandsnaam die geen geldige UTF-8 is met U+FFFD voor de ongeldige bytes.
 - Alle fixtures zijn synthetisch; zie [tests/fixtures/README.md](../tests/fixtures/README.md).

@@ -23,7 +23,16 @@ cargo install --locked log-bill
 log-bill --help
 ```
 
-Ready-made binaries for Linux (x86_64), Windows (x86_64) and macOS (Intel and Apple Silicon), each with a SHA-256 checksum, are on the [Releases page](https://github.com/qwpp7g79y4-maker/log-bill/releases).
+Ready-made binaries for Linux (x86_64; from v0.1.1 also a static `musl` build that needs no particular glibc and runs on Alpine), Windows (x86_64) and macOS (Intel and Apple Silicon), each with a SHA-256 checksum, are on the [Releases page](https://github.com/qwpp7g79y4-maker/log-bill/releases).
+
+Supported systems for the ready-made binaries:
+
+- **Linux x86_64 (`x86_64-unknown-linux-gnu`):** built on Ubuntu 22.04, needs glibc 2.34 or newer (for example Ubuntu 22.04, Debian 12, RHEL 9 and later).
+- **Linux x86_64 (`x86_64-unknown-linux-musl`, from v0.1.1):** statically linked, no glibc needed; for Alpine and older distributions.
+- **Windows x86_64 (`x86_64-pc-windows-msvc`).**
+- **macOS Intel (`x86_64-apple-darwin`) and Apple Silicon (`aarch64-apple-darwin`).**
+
+The tests run in CI on Linux, Windows, macOS on Apple Silicon and macOS on Intel, and on Rust 1.85. Other systems may work with `cargo install`, but are not tested.
 
 For the latest `main`: `cargo install --locked --git https://github.com/qwpp7g79y4-maker/log-bill`.
 
@@ -124,6 +133,8 @@ An honest comparison with five products. The pages were checked on 8 October 202
 - No gzip input in this version.
 - After a keyword (`secret`, `token`, `password`, `bearer` and so on) followed by a space, the next word is always masked, even in ordinary sentences: `This is a secret mission report` → `This is a secret <SECRET> report`. This is deliberate: better to mask than to leak.
 - Only regular files are read. A FIFO, a directory or a device is refused with exit 2.
+- Input must be UTF-8. UTF-16 and UTF-32 (for example from Windows PowerShell 5.1 `Out-File` or `>`), with or without a byte order mark, are refused with exit 2 and a message that says how to convert them: `iconv -f UTF-16LE -t UTF-8 in.log > out.log`, or in PowerShell `Get-Content in.log | Out-File -Encoding utf8 out.log`. Their NUL bytes would otherwise split a key such as `password` so that masking misses it. Without a byte order mark the encoding is recognised by the NUL bytes in the first 4096 bytes; UTF-16 text without any ASCII may not be recognised. NUL bytes inside UTF-8 text are removed before masking, so they cannot hide a key either; the bytes still count.
+- In `--json`, `inputs.paths` shows each path as text. A file name that is not valid UTF-8 (possible on Linux) is still read, but shown with U+FFFD for the invalid bytes.
 
 ## Privacy
 

@@ -22,7 +22,7 @@ Run `log-bill --help` or `log-bill scan --help` for the built-in help. Combinati
 | `--budget-month` | scan, with `--window` and `--prices` | Exit 1 if the monthly cost after rules is above this amount. |
 | `--max-new-share` | diff | Exit 1 if new patterns are more than PCT percent of the new bytes. |
 | `--help` | everywhere | Show help and exit 0. |
-| `--version` | top level | Show the version (`log-bill 0.1.0`) and exit 0. |
+| `--version` | top level | Show the version (`log-bill 0.1.1`) and exit 0. |
 
 ## Price file
 
@@ -44,7 +44,8 @@ Prices come only from a JSON file you pass with `--prices` (together with `--win
 ## How it counts
 
 - **Bytes of a line:** the raw bytes of the line plus 1 for the newline. A `\r` before the `\n` counts as a byte. A last line without a newline also counts +1. Empty lines do not count.
-- **JSON lines:** the bytes are those of the whole JSON line. The pattern comes from `--message-field`, or by default from the first of `message`, `msg` or `log` that exists. Without a message field the pattern is `<NO-MESSAGE>`.
+- **Encoding:** input is UTF-8. Invalid UTF-8 bytes count and are shown as U+FFFD. UTF-16 and UTF-32 are refused with exit 2, see [Exit codes and usage errors](#exit-codes-and-usage-errors). NUL bytes are removed from the message before masking; they still count as bytes.
+- **JSON lines:** the bytes are those of the whole JSON line. One UTF-8 byte order mark at the start of the file is skipped for parsing and counts in the bytes of the first line; the same BOM is skipped in a price file. The pattern comes from `--message-field`, or by default from the first of `message`, `msg` or `log` that exists. Without a message field the pattern is `<NO-MESSAGE>`.
 - **Pattern:** the masked message (see [Masking](#masking)). The pattern id is `P` plus the first 8 hex characters of the 64-bit FNV-1a hash of the pattern text, so it is stable between runs.
 - **Share:** bytes of the pattern divided by the total bytes, shown as a percentage with 1 decimal, rounded half away from zero.
 - **Window:** `--window` takes a number and `s`, `m`, `h` or `d`. The daily factor is 86400 divided by the window in seconds. A month is `--days-per-month` days, 30 by default.
@@ -127,6 +128,7 @@ Every row below was run against the binary, and a test keeps it that way. A row 
 | `--max-new-share` | diff | `--explain` does not win: the percentage is checked first. | `diff --explain --max-new-share abc OLD NEW` | 3 | `invalid percentage` |
 | `--max-new-share` | diff | `--json` does not change the message. | `diff --json --max-new-share abc OLD NEW` | 3 | `invalid percentage` |
 | log file | scan and diff | Not a regular file (FIFO, directory). Refused without waiting. |  | 2 | `file is not a regular file` |
+| log file | scan and diff | UTF-16 or UTF-32, with or without a byte order mark. The name is `UTF-16LE`, `UTF-16BE`, `UTF-32LE` or `UTF-32BE`. |  | 2 | `file is UTF-16LE, not UTF-8; convert it first, for example with iconv -f UTF-16LE -t UTF-8, or in PowerShell with Out-File -Encoding utf8` |
 | `--prices` | scan and diff | Price file is not a regular file. |  | 2 | `price file is not a regular file` |
 | `--rules` | scan and diff | Rules file is not a regular file. |  | 2 | `rules file is not a regular file` |
 | `--prices` | scan and diff | `gb_bytes` is not a whole number greater than 0 (a fraction, 0 or negative). |  | 2 | `gb_bytes must be a whole number greater than 0` |
@@ -136,4 +138,6 @@ Every row below was run against the binary, and a test keeps it that way. A row 
 - Fully offline: no network, no API key, no telemetry. Dependencies are limited to clap, regex and serde_json.
 - No output or error message contains a complete raw log line; only masked patterns, counts and line numbers.
 - Tests plant a fake secret (a canary) in plain text, JSON fields, after `password=` and `Authorization: Bearer`, in a broken line and in a rules file, and check that no output (text, JSON, `--explain`, diff, stderr) contains it.
+- A privacy test encodes `password=`, `token=` and `Authorization: Bearer` canaries as UTF-16LE, UTF-16BE, UTF-32LE and UTF-32BE, each with and without a byte order mark, and checks that no output contains them, also not after removing NUL bytes.
+- The `inputs.paths` field of `--json` shows a file name that is not valid UTF-8 with U+FFFD for the invalid bytes.
 - All fixtures are synthetic; see [tests/fixtures/README.md](../tests/fixtures/README.md).
