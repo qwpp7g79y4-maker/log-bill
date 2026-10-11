@@ -180,13 +180,22 @@ fn readme_has_the_sections_and_names() {
     assert!(section(&read(README_NL), "## Steunen").contains("(https://ko-fi.com/pepai)"));
     assert_eq!(read(".github/FUNDING.yml"), "ko_fi: pepai\n");
     let install = section(&readme, "## Installation");
-    assert!(install
-        .contains("cargo install --locked --git https://github.com/qwpp7g79y4-maker/log-bill"));
+    let crates_io = install
+        .find("cargo install --locked log-bill")
+        .expect("crates.io install line");
+    let from_git = install
+        .find("cargo install --locked --git https://github.com/qwpp7g79y4-maker/log-bill")
+        .expect("git install line");
+    assert!(crates_io < from_git, "crates.io is the first install line");
+    assert!(readme.contains("(https://crates.io/crates/log-bill)"));
     assert!(install.contains("Rust 1.85 or newer"));
     assert!(install.contains("(https://github.com/qwpp7g79y4-maker/log-bill/releases)"));
     let manifest = read("Cargo.toml");
     assert!(manifest.contains("rust-version = \"1.85\""));
-    assert!(section(&read(README_NL), "## Installatie").contains("Rust 1.85 of nieuwer"));
+    let readme_nl = read(README_NL);
+    let install_nl = section(&readme_nl, "## Installatie");
+    assert!(install_nl.contains("Rust 1.85 of nieuwer"));
+    assert!(install_nl.contains("cargo install --locked log-bill"));
     assert!(section(&readme, "## License").contains("PEPAI"));
     assert!(section(&readme, "## Contact").contains("pep_ai@icloud.com"));
 }

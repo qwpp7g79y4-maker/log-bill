@@ -4,6 +4,8 @@
 
 Schat offline wat je logs per patroon kosten, voordat je ze verstuurt.
 
+[![crates.io](https://img.shields.io/crates/v/log-bill.svg)](https://crates.io/crates/log-bill) [![CI](https://github.com/qwpp7g79y4-maker/log-bill/actions/workflows/ci.yml/badge.svg)](https://github.com/qwpp7g79y4-maker/log-bill/actions/workflows/ci.yml)
+
 [Installatie](#installatie) • [Snel aan de slag](#snel-aan-de-slag) • [Hoe het rekent](#hoe-het-rekent) • [Alternatieven](#vergelijking-met-alternatieven) • [Beperkingen](#beperkingen) • [Referentie](docs/reference.nl.md)
 
 log-bill is een opdrachtregelprogramma in Rust. Het leest een steekproef uit een logbestand op je eigen machine (platte tekst of JSON lines), groepeert de regels tot patronen door de variabele delen te maskeren, en laat per patroon zien hoeveel regels en bytes het is en welk aandeel van het volume. Met een tijdvenster en een prijsbestand dat je zelf meegeeft rekent het de steekproef om naar een geschatte prijs per dag en per maand. Het kan `drop`- en `sample`-regels simuleren, twee steekproeven vergelijken, elke rekensom uitleggen, JSON schrijven en een CI-job laten falen als een budget wordt overschreden. Het heeft geen account nodig en maakt geen netwerkverbinding.
@@ -16,14 +18,16 @@ Teams betalen per GB voor logs en zien vaak pas op de factuur welk patroon het v
 
 ## Installatie
 
-Kant-en-klare binaries voor Linux (x86_64), Windows (x86_64) en macOS (Intel en Apple Silicon), elk met een SHA-256-checksum, staan op de [Releases-pagina](https://github.com/qwpp7g79y4-maker/log-bill/releases).
-
-Om zelf te bouwen heb je Rust 1.85 of nieuwer nodig.
+Met Rust 1.85 of nieuwer installeer je vanaf [crates.io](https://crates.io/crates/log-bill):
 
 ```sh
-cargo install --locked --git https://github.com/qwpp7g79y4-maker/log-bill
+cargo install --locked log-bill
 log-bill --help
 ```
+
+Kant-en-klare binaries voor Linux (x86_64), Windows (x86_64) en macOS (Intel en Apple Silicon), elk met een SHA-256-checksum, staan op de [Releases-pagina](https://github.com/qwpp7g79y4-maker/log-bill/releases).
+
+Voor de nieuwste `main`: `cargo install --locked --git https://github.com/qwpp7g79y4-maker/log-bill`.
 
 Vanuit een lokale clone: `cargo install --locked --path .`, of `cargo build --release`; de binary staat dan in `target/release/log-bill`.
 

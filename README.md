@@ -4,6 +4,8 @@ English · [Nederlands](README.nl.md)
 
 Estimate what your logs cost per pattern, offline, before you ship them.
 
+[![crates.io](https://img.shields.io/crates/v/log-bill.svg)](https://crates.io/crates/log-bill) [![CI](https://github.com/qwpp7g79y4-maker/log-bill/actions/workflows/ci.yml/badge.svg)](https://github.com/qwpp7g79y4-maker/log-bill/actions/workflows/ci.yml)
+
 [Installation](#installation) • [Quick start](#quick-start) • [How it counts](#how-it-counts) • [Alternatives](#compared-with-alternatives) • [Limitations](#limitations) • [Reference](docs/reference.md)
 
 log-bill is a command-line tool written in Rust. It reads a sample of a log file on your machine (plain text or JSON lines), groups the lines into patterns by masking the variable parts, and shows how many lines and bytes each pattern is and what share of the volume it makes up. With a time window and a price file you supply yourself, it extrapolates the sample to an estimated cost per day and per month. It can simulate `drop` and `sample` rules, compare two samples, explain every calculation, write JSON, and fail a CI job when a budget is exceeded. It needs no account and makes no network connection.
@@ -14,14 +16,16 @@ Teams pay per GB for logs and often only see on the invoice which pattern produc
 
 ## Installation
 
-Ready-made binaries for Linux (x86_64), Windows (x86_64) and macOS (Intel and Apple Silicon), each with a SHA-256 checksum, are on the [Releases page](https://github.com/qwpp7g79y4-maker/log-bill/releases).
-
-To build from source you need Rust 1.85 or newer.
+With Rust 1.85 or newer, install from [crates.io](https://crates.io/crates/log-bill):
 
 ```sh
-cargo install --locked --git https://github.com/qwpp7g79y4-maker/log-bill
+cargo install --locked log-bill
 log-bill --help
 ```
+
+Ready-made binaries for Linux (x86_64), Windows (x86_64) and macOS (Intel and Apple Silicon), each with a SHA-256 checksum, are on the [Releases page](https://github.com/qwpp7g79y4-maker/log-bill/releases).
+
+For the latest `main`: `cargo install --locked --git https://github.com/qwpp7g79y4-maker/log-bill`.
 
 From a local clone: `cargo install --locked --path .`, or `cargo build --release`; the binary is `target/release/log-bill`.
 
