@@ -6,12 +6,15 @@ mod read;
 mod render;
 mod rules;
 
+use std::path::{Path, PathBuf};
+
 use clap::parser::ValueSource;
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum};
 
 /// Estimate log costs per pattern from a sample, offline.
 #[derive(Parser)]
-#[command(name = "log-bill", version, about)]
+// `bin_name` keeps usage lines at `log-bill`, also as `log-bill.exe` on Windows.
+#[command(name = "log-bill", bin_name = "log-bill", version, about)]
 struct Cli {
     #[command(subcommand)]
     command: Cmd,
@@ -34,11 +37,11 @@ struct Cli {
 
     /// Price file (JSON).
     #[arg(long, global = true, value_name = "FILE")]
-    prices: Option<String>,
+    prices: Option<PathBuf>,
 
     /// File with drop and sample rules.
     #[arg(long, global = true, value_name = "FILE")]
-    rules: Option<String>,
+    rules: Option<PathBuf>,
 
     /// Show the N largest patterns; the rest as other.
     #[arg(long, global = true, value_name = "N")]
@@ -67,16 +70,16 @@ enum Cmd {
     Scan {
         /// Log file.
         #[arg(value_name = "FILE")]
-        file: String,
+        file: PathBuf,
     },
     /// Compare two samples.
     Diff {
         /// Old sample.
         #[arg(value_name = "OLD")]
-        old: String,
+        old: PathBuf,
         /// New sample.
         #[arg(value_name = "NEW")]
-        new: String,
+        new: PathBuf,
     },
 }
 
@@ -181,7 +184,8 @@ fn execute(cli: &Cli, days_explicit: bool) -> i32 {
                     let stats = pattern::group(&lines, cli.top);
                     let effect = rules.as_ref().map(|set| rules::effect(&lines, set, &stats));
                     let text = if cli.json {
-                        let paths = [file.as_str()];
+                        let file_text = path_text(file);
+                        let paths = [file_text.as_str()];
                         let rules_json = match (rules.as_ref(), effect.as_ref()) {
                             (Some(set), Some(effect)) => Some((effect, set.len())),
                             _ => None,
@@ -312,8 +316,8 @@ fn execute(cli: &Cli, days_explicit: bool) -> i32 {
                 eprintln!("{message}");
                 return 3;
             }
-            let old_path = old.clone();
-            let new_path = new.clone();
+            let old_path = path_text(old);
+            let new_path = path_text(new);
             let old = match read_input(cli, old) {
                 Ok(lines) => lines,
                 Err(error) => {
@@ -473,7 +477,13 @@ fn format_name(format: InputFormat) -> &'static str {
     }
 }
 
-fn read_input(cli: &Cli, path: &str) -> Result<Vec<read::Line>, read::ReadError> {
+/// A path as shown in `--json` (`inputs.paths`). A path that is not valid
+/// UTF-8 is shown with U+FFFD for the bytes that are not; it is read as is.
+fn path_text(path: &Path) -> String {
+    path.to_string_lossy().into_owned()
+}
+
+fn read_input(cli: &Cli, path: &Path) -> Result<Vec<read::Line>, read::ReadError> {
     match cli.format {
         InputFormat::Text => read::read_text(path),
         InputFormat::Jsonl => read::read_jsonl(path, cli.message_field.as_deref()),

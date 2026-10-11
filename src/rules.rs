@@ -65,7 +65,7 @@ impl std::fmt::Display for RulesError {
 impl std::error::Error for RulesError {}
 
 /// Reads a rules file. An unreadable path yields an error without that path.
-pub fn load_rules(path: &str) -> Result<RuleSet, RulesError> {
+pub fn load_rules(path: &std::path::Path) -> Result<RuleSet, RulesError> {
     let data = match crate::read::read_regular(path) {
         Ok(data) => data,
         Err(crate::read::OpenError::NotRegular) => return Err(RulesError::NotRegular),

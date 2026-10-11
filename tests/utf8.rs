@@ -22,7 +22,9 @@ fn scan(name: &str, bytes: &[u8]) -> (i32, String, String) {
 #[test]
 fn scan_invalid_utf8_and_multibyte() {
     let mut raw = Vec::new();
-    raw.extend_from_slice(b"\xff\xfe foo\n");
+    // Not `\xff\xfe`: at the start of a file that is the UTF-16LE byte order
+    // mark, which is refused (see tests/encoding.rs).
+    raw.extend_from_slice(b"\xff\xfd foo\n");
     raw.extend_from_slice("\u{FFFD}password=abc\n".as_bytes());
     for key in [
         "password",

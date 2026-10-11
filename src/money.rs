@@ -197,7 +197,7 @@ impl fmt::Display for PriceError {
 impl std::error::Error for PriceError {}
 
 /// Reads a price file. An unreadable path yields an error without that path.
-pub fn load_prices(path: &str) -> Result<Prices, PriceError> {
+pub fn load_prices(path: &std::path::Path) -> Result<Prices, PriceError> {
     let data = match crate::read::read_regular(path) {
         Ok(data) => data,
         Err(crate::read::OpenError::NotRegular) => return Err(PriceError::NotRegular),
@@ -209,8 +209,10 @@ pub fn load_prices(path: &str) -> Result<Prices, PriceError> {
 /// `currency`, `source`, `date`, and `ingest_per_gb` are required.
 /// `index_per_gb` and `gb_bytes` may be absent. An unknown field, an empty
 /// string, a negative price, or a price that is not a number is invalid.
-/// The error text does not contain the file contents.
+/// The error text does not contain the file contents. One UTF-8 byte order
+/// mark at the start is skipped.
 pub fn parse_prices(data: &[u8]) -> Result<Prices, PriceError> {
+    let data = data.strip_prefix(crate::read::UTF8_BOM).unwrap_or(data);
     let text = std::str::from_utf8(data).map_err(|_| PriceError::NotJson)?;
     let value: serde_json::Value = serde_json::from_str(text).map_err(|_| PriceError::NotJson)?;
     let Some(object) = value.as_object() else {
@@ -1265,10 +1267,23 @@ mod tests {
     }
 
     #[test]
+    fn price_file_with_utf8_bom() {
+        let body = br#"{"currency":"EUR","source":"manual","date":"2026-10-08","ingest_per_gb":2}"#;
+        let mut raw = b"\xEF\xBB\xBF".to_vec();
+        raw.extend_from_slice(body);
+        let prices = parse_prices(&raw).expect("BOM is skipped");
+        assert_eq!(prices.currency, "EUR");
+        // Only one BOM, and only at the start.
+        let mut twice = b"\xEF\xBB\xBF".to_vec();
+        twice.extend_from_slice(&raw);
+        assert!(matches!(parse_prices(&twice), Err(PriceError::NotJson)));
+    }
+
+    #[test]
     fn valid_price_file() {
         let path =
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/prices.json");
-        let prices = load_prices(path.to_str().expect("path")).expect("price file");
+        let prices = load_prices(&path).expect("price file");
         assert_eq!(prices.currency, "EUR");
         assert_eq!(prices.source, "manual");
         assert_eq!(prices.date, "2026-10-08");
@@ -1466,7 +1481,8 @@ mod tests {
 
     #[test]
     fn unreadable_price_file_omits_the_path() {
-        let err = load_prices("CANARY-PRICE-0007/missing.json").expect_err("should fail");
+        let err = load_prices(std::path::Path::new("CANARY-PRICE-0007/missing.json"))
+            .expect_err("should fail");
         assert_eq!(err, PriceError::Unreadable);
         assert_eq!(err.to_string(), "price file is not readable");
         assert!(!err.to_string().contains("CANARY"));
