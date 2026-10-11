@@ -1,3 +1,6 @@
-# Fixtures and snapshots are byte-exact test data: keep their line endings on every OS.
+# Text files use LF on every OS; the docs tests compare them byte for byte.
+* text=auto eol=lf
+
+# Fixtures and snapshots are byte-exact test data: never convert them.
 tests/fixtures/** -text
 tests/snapshots/** -text
