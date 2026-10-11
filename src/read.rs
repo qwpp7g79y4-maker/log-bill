@@ -171,11 +171,13 @@ pub fn detect_wide(data: &[u8]) -> Option<WideEncoding> {
     }
     let (even_total, even_nul) = (total[0] + total[2], nul[0] + nul[2]);
     let (odd_total, odd_nul) = (total[1] + total[3], nul[1] + nul[3]);
-    // Half of the odd bytes NUL leaves room for text that is not only ASCII.
-    if odd_total > 0 && odd_nul * 2 >= odd_total && even_nul * 10 <= even_total {
+    // Three quarters of one parity NUL: mostly ASCII text in UTF-16. Exactly
+    // half is not enough, UTF-8 with one NUL every 4 bytes reaches that.
+    // Text that this misses still has its NUL bytes removed before masking.
+    if odd_total > 0 && odd_nul * 4 >= odd_total * 3 && even_nul * 10 <= even_total {
         return Some(WideEncoding::Utf16Le);
     }
-    if even_total > 0 && even_nul * 2 >= even_total && odd_nul * 10 <= odd_total {
+    if even_total > 0 && even_nul * 4 >= even_total * 3 && odd_nul * 10 <= odd_total {
         return Some(WideEncoding::Utf16Be);
     }
     None
@@ -341,9 +343,9 @@ mod tests {
             detect_wide(b"\x00\x00\x00a\x00\x00\x00\n"),
             Some(WideEncoding::Utf32Be)
         );
-        // Mixed scripts in UTF-16LE: "ab日本" has 2 of 4 odd bytes NUL.
+        // Mixed scripts in UTF-16LE: "abc日" has 3 of 4 odd bytes NUL.
         assert_eq!(
-            detect_wide(b"a\x00b\x00\xE5\x65\x2C\x67"),
+            detect_wide(b"a\x00b\x00c\x00\xE5\x65"),
             Some(WideEncoding::Utf16Le)
         );
     }
@@ -357,6 +359,9 @@ mod tests {
         // A few NUL bytes in UTF-8 text, and a zero-filled start.
         assert_eq!(detect_wide(b"pa\x00ssword=x\n"), None);
         assert_eq!(detect_wide(&[0u8; 64]), None);
+        // One NUL every 4 bytes is half of one parity: still UTF-8.
+        assert_eq!(detect_wide(&b"abc\x00".repeat(50)), None);
+        assert_eq!(detect_wide(&b"AB\x00C".repeat(50)), None);
     }
 
     #[test]

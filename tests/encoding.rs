@@ -238,6 +238,17 @@ fn zero_filled_start_is_not_a_wide_encoding() {
 }
 
 #[test]
+fn utf8_with_a_nul_every_four_bytes_is_read() {
+    let mut raw = b"abc\0".repeat(50);
+    raw.push(b'\n');
+    let file = tmp("encoding-nul-stride.log", &raw);
+    let (code, out, err) = run(&["scan".as_ref(), file.as_os_str()]);
+    assert_eq!(code, 0, "{}", String::from_utf8_lossy(&err));
+    let text = String::from_utf8(out).expect("utf-8");
+    assert!(text.starts_with("total: 1 line, 201 bytes\n"), "{text}");
+}
+
+#[test]
 fn utf8_bom_in_jsonl_is_skipped_and_counted() {
     // BOM (3) + {"message":"hello"} (19) + \n = 23 bytes.
     let file = tmp(
