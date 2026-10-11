@@ -43,7 +43,7 @@ fn example_4_32_equal_is_exit_0_above_is_exit_1() {
     let log = million("budget-voorbeeld.log");
     let prices = prices(
         "budget-ingest.json",
-        r#"{"currency":"EUR","source":"kladblok","date":"1999-01-02","ingest_per_gb":0.10}"#,
+        r#"{"currency":"EUR","source":"scratchpad","date":"1999-01-02","ingest_per_gb":0.10}"#,
     );
     let log_path = file_path(&log);
     let prices_file = file_path(&prices);
@@ -110,7 +110,7 @@ fn ingest_plus_index_15_12() {
     let log = million("budget-index.log");
     let prices = prices(
         "budget-index.json",
-        r#"{"currency":"EUR","source":"kladblok","date":"1999-01-02","ingest_per_gb":0.10,"index_per_gb":0.25}"#,
+        r#"{"currency":"EUR","source":"scratchpad","date":"1999-01-02","ingest_per_gb":0.10,"index_per_gb":0.25}"#,
     );
     let basis = [
         "scan",
@@ -149,7 +149,7 @@ fn after_rules_counts_ingest_plus_index() {
     let lines = tmp("budget-rules.txt", b"drop drop-me\n");
     let prices = prices(
         "budget-rules.json",
-        r#"{"currency":"EUR","source":"kladblok","date":"1999-01-02","ingest_per_gb":1,"index_per_gb":1,"gb_bytes":1}"#,
+        r#"{"currency":"EUR","source":"scratchpad","date":"1999-01-02","ingest_per_gb":1,"index_per_gb":1,"gb_bytes":1}"#,
     );
     let (code, out, err) = run(&[
         "scan",
@@ -223,7 +223,7 @@ fn budget_compares_the_fraction_not_the_cent() {
     let log = tmp("budget-fraction.log", b"abcdefgh\n");
     let prices = prices(
         "budget-fraction.json",
-        r#"{"currency":"EUR","source":"kladblok","date":"1999-01-02","ingest_per_gb":1,"gb_bytes":2000}"#,
+        r#"{"currency":"EUR","source":"scratchpad","date":"1999-01-02","ingest_per_gb":1,"gb_bytes":2000}"#,
     );
     let (code, out, err) = run(&[
         "scan",
@@ -279,7 +279,7 @@ fn sum_of_the_fractions_not_of_the_cents() {
     let log = tmp("budget-sum.log", b"abcdefghijklmnopqrstuvwxy\n");
     let prices = prices(
         "budget-sum.json",
-        r#"{"currency":"EUR","source":"kladblok","date":"1999-01-02","ingest_per_gb":1,"index_per_gb":1,"gb_bytes":250}"#,
+        r#"{"currency":"EUR","source":"scratchpad","date":"1999-01-02","ingest_per_gb":1,"index_per_gb":1,"gb_bytes":250}"#,
     );
     let (code, out, err) = run(&[
         "scan",
@@ -328,7 +328,7 @@ fn zero_bytes_budget_zero_is_exit_0() {
     let log = tmp("budget-empty.log", b"\n");
     let prices = prices(
         "budget-empty.json",
-        r#"{"currency":"EUR","source":"kladblok","date":"1999-01-02","ingest_per_gb":1}"#,
+        r#"{"currency":"EUR","source":"scratchpad","date":"1999-01-02","ingest_per_gb":1}"#,
     );
     let (code, out, err) = run(&[
         "scan",
@@ -362,7 +362,7 @@ fn without_prices_or_window_exit_3() {
 
     let prices = prices(
         "budget-without-window.json",
-        r#"{"currency":"EUR","source":"kladblok","date":"1999-01-02","ingest_per_gb":0.10}"#,
+        r#"{"currency":"EUR","source":"scratchpad","date":"1999-01-02","ingest_per_gb":0.10}"#,
     );
     let (code, out, err) = run(&[
         "scan",
@@ -417,7 +417,7 @@ fn invalid_budget_exit_3_without_the_text() {
 fn missing_file_and_broken_rules_stay_exit_2() {
     let prices = prices(
         "budget-exit2.json",
-        r#"{"currency":"EUR","source":"kladblok","date":"1999-01-02","ingest_per_gb":0.10}"#,
+        r#"{"currency":"EUR","source":"scratchpad","date":"1999-01-02","ingest_per_gb":0.10}"#,
     );
     let (code, out, err) = run(&[
         "scan",

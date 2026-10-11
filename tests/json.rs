@@ -173,6 +173,8 @@ fn run_exit(args: &[&str]) -> (i32, String, String) {
 
 fn json(body: &str) -> Node {
     let mut child = Command::new("python3")
+        // Python on Windows reads stdin as the ANSI code page unless told otherwise.
+        .env("PYTHONIOENCODING", "utf-8")
         .args(["-c", BOOM])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -302,6 +304,8 @@ fn has_text(value: &Node, needle: &str) -> bool {
 
 fn valid_via_json_tool(body: &str) {
     let mut child = Command::new("python3")
+        // Python on Windows reads stdin as the ANSI code page unless told otherwise.
+        .env("PYTHONIOENCODING", "utf-8")
         .args(["-m", "json.tool"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -446,11 +450,11 @@ fn costs_only_with_prices_and_window() {
     let log = tmp("json-cost.log", &raw);
     let prices = tmp(
         "json-cost.json",
-        br#"{"currency":"EUR","source":"kladblok","date":"1999-01-02","ingest_per_gb":0.10}"#,
+        br#"{"currency":"EUR","source":"scratchpad","date":"1999-01-02","ingest_per_gb":0.10}"#,
     );
     let with_index = tmp(
         "json-cost-index.json",
-        br#"{"currency":"EUR","source":"kladblok","date":"1999-01-02","ingest_per_gb":0.10,"index_per_gb":0.20}"#,
+        br#"{"currency":"EUR","source":"scratchpad","date":"1999-01-02","ingest_per_gb":0.10,"index_per_gb":0.20}"#,
     );
     let file_path = log.to_str().expect("path");
     let price = prices.to_str().expect("path");
@@ -489,7 +493,7 @@ fn costs_only_with_prices_and_window() {
     assert_eq!(key_list(&day30), with_costs);
     assert_eq!(day30["estimate"], ESTIMATE);
     assert_eq!(day30["costs"]["currency"], "EUR");
-    assert_eq!(day30["costs"]["source"], "kladblok");
+    assert_eq!(day30["costs"]["source"], "scratchpad");
     assert_eq!(day30["costs"]["date"], "1999-01-02");
     assert_eq!(day30["costs"]["gb_bytes"], 1_000_000_000);
     assert!(day30["costs"]["totals"].get("index").is_none());
@@ -551,7 +555,7 @@ fn explain_is_in_the_json_only_with_explain() {
     let log = tmp("json-explain.log", &raw);
     let prices = tmp(
         "json-explain.json",
-        br#"{"currency":"EUR","source":"kladblok","date":"1999-01-02","ingest_per_gb":0.10}"#,
+        br#"{"currency":"EUR","source":"scratchpad","date":"1999-01-02","ingest_per_gb":0.10}"#,
     );
     let file_path = log.to_str().expect("path");
     let price = prices.to_str().expect("path");
@@ -705,7 +709,7 @@ fn diff_costs_signs_and_rules() {
     let new_sample = manifest("tests/fixtures/diff-new.log");
     let prices = tmp(
         "json-diff-price.json",
-        br#"{"currency":"EUR","source":"kladblok","date":"1999-01-02","ingest_per_gb":1,"index_per_gb":2,"gb_bytes":1000}"#,
+        br#"{"currency":"EUR","source":"scratchpad","date":"1999-01-02","ingest_per_gb":1,"index_per_gb":2,"gb_bytes":1000}"#,
     );
     let old_path = old.to_str().expect("path");
     let new_path = new_sample.to_str().expect("path");
@@ -741,7 +745,7 @@ fn diff_costs_signs_and_rules() {
     let plus_new = tmp("json-plus-new.log", b"aa\nbb\n");
     let plus_price = tmp(
         "json-plus.json",
-        br#"{"currency":"EUR","source":"kladblok","date":"1999-01-02","ingest_per_gb":1,"gb_bytes":1000}"#,
+        br#"{"currency":"EUR","source":"scratchpad","date":"1999-01-02","ingest_per_gb":1,"gb_bytes":1000}"#,
     );
     let (code, plus, err) = run_exit(&[
         "diff",
@@ -862,7 +866,7 @@ fn zero_difference_empty_input_and_top() {
 
     let prices = tmp(
         "json-nul.json",
-        br#"{"currency":"EUR","source":"kladblok","date":"1999-01-02","ingest_per_gb":1,"gb_bytes":1000}"#,
+        br#"{"currency":"EUR","source":"scratchpad","date":"1999-01-02","ingest_per_gb":1,"gb_bytes":1000}"#,
     );
     let (code, geld, err) = run_exit(&[
         "diff",
@@ -1058,7 +1062,7 @@ fn budget_and_errors_keep_the_same_codes() {
     let log = tmp("json-budget.log", b"z\n");
     let prices = tmp(
         "json-budget.json",
-        br#"{"currency":"EUR","source":"kladblok","date":"1999-01-02","ingest_per_gb":1,"gb_bytes":1}"#,
+        br#"{"currency":"EUR","source":"scratchpad","date":"1999-01-02","ingest_per_gb":1,"gb_bytes":1}"#,
     );
     let (code, output_2, err) = run_exit(&[
         "scan",
@@ -1114,7 +1118,7 @@ fn budget_and_errors_keep_the_same_codes() {
     let over_log = tmp("json-over.log", b"ok\n");
     let price_over = tmp(
         "json-over.json",
-        br#"{"currency":"EUR","source":"kladblok","date":"1999-01-02","ingest_per_gb":1,"gb_bytes":1e20}"#,
+        br#"{"currency":"EUR","source":"scratchpad","date":"1999-01-02","ingest_per_gb":1,"gb_bytes":1e20}"#,
     );
     for cmd in [
         vec![

@@ -127,7 +127,7 @@ fn large_window_and_gb_bytes_exit_3() {
     std::fs::write(&log, "ok\n").expect("write fixture");
     std::fs::write(
         &prices,
-        r#"{"currency":"EUR","source":"kladblok","date":"1999-01-02","ingest_per_gb":1,"gb_bytes":1e20}"#,
+        r#"{"currency":"EUR","source":"scratchpad","date":"1999-01-02","ingest_per_gb":1,"gb_bytes":1e20}"#,
     )
     .expect("write fixture");
     let output = bin()
@@ -211,7 +211,7 @@ fn gb_bytes_fraction_exit_2() {
     std::fs::write(&log, "ok\n").expect("log");
     std::fs::write(
         &prices,
-        r#"{"currency":"EUR","source":"kladblok","date":"1999-01-02","ingest_per_gb":1,"gb_bytes":0.5}"#,
+        r#"{"currency":"EUR","source":"scratchpad","date":"1999-01-02","ingest_per_gb":1,"gb_bytes":0.5}"#,
     )
     .expect("prices");
     let output = bin()

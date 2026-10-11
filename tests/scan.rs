@@ -117,7 +117,7 @@ fn cost_example_ingest() {
     let log = write_tmp("cost-1m.log", &raw);
     let prices = write_tmp(
         "cost-ingest.json",
-        br#"{"currency":"EUR","source":"kladblok","date":"1999-01-02","ingest_per_gb":0.10}"#,
+        br#"{"currency":"EUR","source":"scratchpad","date":"1999-01-02","ingest_per_gb":0.10}"#,
     );
     let text = scan(&[
         "scan",
@@ -132,7 +132,7 @@ fn cost_example_ingest() {
 
     assert!(!text.contains('q'), "{text}");
     assert!(
-        text.contains("prices: EUR, source kladblok, date 1999-01-02\n"),
+        text.contains("prices: EUR, source scratchpad, date 1999-01-02\n"),
         "{text}"
     );
     assert!(
@@ -160,7 +160,7 @@ fn cost_example_with_index() {
     let log = write_tmp("cost-index.log", &raw);
     let prices = write_tmp(
         "cost-index.json",
-        br#"{"currency":"EUR","source":"kladblok","date":"1999-01-02","ingest_per_gb":0.10,"index_per_gb":0.25}"#,
+        br#"{"currency":"EUR","source":"scratchpad","date":"1999-01-02","ingest_per_gb":0.10,"index_per_gb":0.25}"#,
     );
     let text = scan(&[
         "scan",
@@ -202,7 +202,7 @@ fn cost_rounding_half_cent() {
     // 1005 bytes, gb_bytes 1000: 1.005 -> 1.01. Month exactly 30.15.
     let prices = write_tmp(
         "cost-half.json",
-        br#"{"currency":"GULDEN","source":"kladblok","date":"1999-01-02","ingest_per_gb":1,"gb_bytes":2000}"#,
+        br#"{"currency":"GULDEN","source":"scratchpad","date":"1999-01-02","ingest_per_gb":1,"gb_bytes":2000}"#,
     );
     let half = write_tmp("cost-half.log", b"abcdefghi\n");
     let below = write_tmp("cost-below.log", b"abcdefgh\n");
@@ -225,7 +225,7 @@ fn cost_rounding_half_cent() {
 
     let thousand = write_tmp(
         "cost-1005.json",
-        br#"{"currency":"GULDEN","source":"kladblok","date":"1999-01-02","ingest_per_gb":1,"gb_bytes":1000}"#,
+        br#"{"currency":"GULDEN","source":"scratchpad","date":"1999-01-02","ingest_per_gb":1,"gb_bytes":1000}"#,
     );
     let mut large = vec![b'q'; 1004];
     large.push(b'\n');
@@ -267,7 +267,7 @@ fn cost_per_pattern() {
     let log = write_tmp("cost-patterns.log", b"hond\nkat\n");
     let prices = write_tmp(
         "cost-patterns.json",
-        br#"{"currency":"MARK","source":"kladblok","date":"1999-01-02","ingest_per_gb":1,"gb_bytes":9}"#,
+        br#"{"currency":"MARK","source":"scratchpad","date":"1999-01-02","ingest_per_gb":1,"gb_bytes":9}"#,
     );
     let text = scan(&[
         "scan",
@@ -309,7 +309,7 @@ fn without_prices_no_currency() {
     let log = manifest("tests/fixtures/scan-text.log");
     let prices = write_tmp(
         "cost-unused.json",
-        br#"{"currency":"KRONER","source":"kladblok","date":"1999-01-02","ingest_per_gb":1}"#,
+        br#"{"currency":"KRONER","source":"scratchpad","date":"1999-01-02","ingest_per_gb":1}"#,
     );
     let with_window = scan(&["scan", "--window", "1m", log.to_str().expect("path")]);
     // Prices without a window are no longer a silent scan.
@@ -356,7 +356,7 @@ fn drop_ten_lines_four_gone() {
     let line_list = write_tmp("drop-ten.rules", b"drop ^weg$\n");
     let prices = write_tmp(
         "drop-ten.json",
-        br#"{"currency":"EUR","source":"kladblok","date":"1999-01-02","ingest_per_gb":1,"index_per_gb":0.5,"gb_bytes":16}"#,
+        br#"{"currency":"EUR","source":"scratchpad","date":"1999-01-02","ingest_per_gb":1,"index_per_gb":0.5,"gb_bytes":16}"#,
     );
     let args = [
         "scan",
@@ -547,7 +547,7 @@ fn sample_0_1_bytes_and_savings() {
     let line_list = write_tmp("sample-dot1.rules", b"sample 0.1 ^aa$\n");
     let prices = write_tmp(
         "sample-dot1.json",
-        br#"{"currency":"EUR","source":"kladblok","date":"1999-01-02","ingest_per_gb":1,"gb_bytes":27}"#,
+        br#"{"currency":"EUR","source":"scratchpad","date":"1999-01-02","ingest_per_gb":1,"gb_bytes":27}"#,
     );
     let text = scan(&[
         "scan",
@@ -724,7 +724,7 @@ fn explain_example_1m() {
     let log = write_tmp("explain-1m.log", &raw);
     let prices = write_tmp(
         "explain-1m.json",
-        br#"{"currency":"EUR","source":"kladblok","date":"1999-01-02","ingest_per_gb":0.10}"#,
+        br#"{"currency":"EUR","source":"scratchpad","date":"1999-01-02","ingest_per_gb":0.10}"#,
     );
     let file_path = log.to_str().expect("path");
     let prices_file = prices.to_str().expect("path");
@@ -766,7 +766,7 @@ fn explain_masks_and_line_number() {
     let line_list = write_tmp("explain-line.rules", b"drop pod\n");
     let prices = write_tmp(
         "explain-line.json",
-        br#"{"currency":"EUR","source":"kladblok","date":"1999-01-02","ingest_per_gb":1,"gb_bytes":6}"#,
+        br#"{"currency":"EUR","source":"scratchpad","date":"1999-01-02","ingest_per_gb":1,"gb_bytes":6}"#,
     );
     let text = scan(&[
         "scan",

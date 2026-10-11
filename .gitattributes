@@ -1,2 +1,3 @@
-# Fixtures are byte-exact test input: keep their line endings on every OS.
+# Fixtures and snapshots are byte-exact test data: keep their line endings on every OS.
 tests/fixtures/** -text
+tests/snapshots/** -text

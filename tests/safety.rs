@@ -81,6 +81,8 @@ fn error(label: &str, args: &[&str], stderr: &str) {
 
 fn json_tool(label: &str, body: &str) -> String {
     let mut child = Command::new("python3")
+        // Python on Windows reads stdin as the ANSI code page unless told otherwise.
+        .env("PYTHONIOENCODING", "utf-8")
         .args(["-m", "json.tool"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

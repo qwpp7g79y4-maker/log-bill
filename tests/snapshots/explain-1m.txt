@@ -4,7 +4,7 @@ masks P5a76f64f: <VAR> 1
 factor: 1440
 per day: 1440000000 bytes, 1.440 GB
 per month: 43200000000 bytes, 43.200 GB
-prices: EUR, source kladblok, date 1999-01-02
+prices: EUR, source scratchpad, date 1999-01-02
 total ingest: 0.14 EUR per day, 4.32 EUR per month
 calculation total ingest: 1000000 × 1440 / 1000000000 × (1/10) = 0.144 → 0.14 per day, × 30 = 4.32 → 4.32 per month
 P5a76f64f ingest: 0.14 EUR per day, 4.32 EUR per month

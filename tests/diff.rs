@@ -71,7 +71,7 @@ fn month_difference_only_with_prices_and_window() {
     let (old, new_sample) = old_and_new();
     let price_set = write_tmp(
         "diff-prices.json",
-        br#"{"currency":"EUR","source":"kladblok","date":"1999-01-02","ingest_per_gb":1,"index_per_gb":2,"gb_bytes":1000}"#,
+        br#"{"currency":"EUR","source":"scratchpad","date":"1999-01-02","ingest_per_gb":1,"index_per_gb":2,"gb_bytes":1000}"#,
     );
     let old_path = old.to_str().expect("path");
     let new_path = new_sample.to_str().expect("path");
@@ -90,7 +90,7 @@ fn month_difference_only_with_prices_and_window() {
     assert!(err.is_empty(), "{err}");
     assert!(day30.starts_with(BASIS), "{day30}");
     assert!(
-        day30.contains("prices: EUR, source kladblok, date 1999-01-02\n"),
+        day30.contains("prices: EUR, source scratchpad, date 1999-01-02\n"),
         "{day30}"
     );
     assert!(
@@ -330,7 +330,7 @@ fn crlf_rounds_the_byte_difference() {
     let new_sample = write_tmp("crlf-new.log", b"abc\n");
     let price_set = write_tmp(
         "crlf-prices.json",
-        br#"{"currency":"EUR","source":"kladblok","date":"1999-01-02","ingest_per_gb":1,"gb_bytes":3}"#,
+        br#"{"currency":"EUR","source":"scratchpad","date":"1999-01-02","ingest_per_gb":1,"gb_bytes":3}"#,
     );
     let (code, out, err) = run_exit(&[
         "diff",
@@ -372,7 +372,7 @@ fn more_bytes_gives_plus() {
     let new_sample = write_tmp("plus-new.log", b"aa\nbb\n");
     let price_set = write_tmp(
         "plus-prices.json",
-        br#"{"currency":"EUR","source":"kladblok","date":"1999-01-02","ingest_per_gb":1,"gb_bytes":1000}"#,
+        br#"{"currency":"EUR","source":"scratchpad","date":"1999-01-02","ingest_per_gb":1,"gb_bytes":1000}"#,
     );
     let (code, out, err) = run_exit(&[
         "diff",
@@ -474,7 +474,7 @@ fn diff_applies_drop_and_sample() {
     let line_list = write_tmp("rules-diff.txt", b"drop bb\nsample 0.5 cc\n");
     let price_set = write_tmp(
         "rules-diff.json",
-        br#"{"currency":"EUR","source":"kladblok","date":"1999-01-02","ingest_per_gb":1,"gb_bytes":1000}"#,
+        br#"{"currency":"EUR","source":"scratchpad","date":"1999-01-02","ingest_per_gb":1,"gb_bytes":1000}"#,
     );
     let file_path = |path: &std::path::Path| path.to_str().expect("path").to_owned();
     let (code, without, err) = run_exit(&["diff", &file_path(&old), &file_path(&new_sample)]);
@@ -517,7 +517,7 @@ new P08915407  0 -> 3 bytes, change +3 bytes, share 0.0% -> 33.3%, change +33.3 
 P089c4307  6 -> 3 bytes, change -3 bytes, share 50.0% -> 33.3%, change -16.7 percentage points  aa
 P08a24d07  6 -> 3 bytes, change -3 bytes, share 50.0% -> 33.3%, change -16.7 percentage points  cc
 new patterns: 3 of 9 bytes, 33.3%
-prices: EUR, source kladblok, date 1999-01-02
+prices: EUR, source scratchpad, date 1999-01-02
 change per month ingest: -0.09 EUR
 estimate: extrapolation of one sample with your own prices; not an official rate
 "
@@ -542,7 +542,7 @@ fn overflow_diff_matches_scan() {
     std::fs::write(&log, "ok\n").expect("write fixture");
     std::fs::write(
         &price_set,
-        r#"{"currency":"EUR","source":"kladblok","date":"1999-01-02","ingest_per_gb":1,"gb_bytes":1e20}"#,
+        r#"{"currency":"EUR","source":"scratchpad","date":"1999-01-02","ingest_per_gb":1,"gb_bytes":1e20}"#,
     )
     .expect("write fixture");
     let log_file = log.to_str().expect("path");
