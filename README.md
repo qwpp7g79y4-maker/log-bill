@@ -145,3 +145,5 @@ at your option. Copyright 2026 PEPAI.
 ## Contact
 
 PEPAI, pep_ai@icloud.com
+
+Report bugs and ideas via [Issues](https://github.com/qwpp7g79y4-maker/log-bill/issues); report security problems privately as described in [SECURITY.md](SECURITY.md).

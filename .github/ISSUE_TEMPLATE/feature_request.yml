@@ -1,0 +1,32 @@
+name: Feature request
+description: Suggest an idea or an improvement for log-bill.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion. Please check the [limitations](https://github.com/qwpp7g79y4-maker/log-bill#limitations) first; some of them are deliberate.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do, and what gets in the way?
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: How you would like log-bill to behave, for example a new option or output.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Other ways you considered or currently use.
+  - type: input
+    id: format
+    attributes:
+      label: Log format or vendor involved
+      placeholder: JSON lines from Kubernetes, Datadog, Grafana Loki, CloudWatch Logs

@@ -197,7 +197,15 @@ fn readme_has_the_sections_and_names() {
     assert!(install_nl.contains("Rust 1.85 of nieuwer"));
     assert!(install_nl.contains("cargo install --locked log-bill"));
     assert!(section(&readme, "## License").contains("PEPAI"));
-    assert!(section(&readme, "## Contact").contains("pep_ai@icloud.com"));
+    let contact = section(&readme, "## Contact");
+    assert!(contact.contains("pep_ai@icloud.com"));
+    assert!(contact.contains("(https://github.com/qwpp7g79y4-maker/log-bill/issues)"));
+    assert!(contact.contains("[SECURITY.md](SECURITY.md)"));
+    let contact_nl = section(&readme_nl, "## Contact");
+    assert!(contact_nl.contains("[SECURITY.md](SECURITY.md)"));
+    let security = read("SECURITY.md");
+    assert!(security.contains("pep_ai@icloud.com"));
+    assert!(security.contains("| 0.1.x | Yes |"));
 }
 
 #[test]

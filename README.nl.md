@@ -147,3 +147,5 @@ Copyright 2026 PEPAI.
 ## Contact
 
 PEPAI, pep_ai@icloud.com
+
+Meld bugs en ideeën via [Issues](https://github.com/qwpp7g79y4-maker/log-bill/issues); meld beveiligingsproblemen privé zoals beschreven in [SECURITY.md](SECURITY.md).

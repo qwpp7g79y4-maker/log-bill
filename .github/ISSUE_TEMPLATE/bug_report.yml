@@ -1,0 +1,80 @@
+name: Bug report
+description: Something in log-bill does not work as documented.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please check the [reference](https://github.com/qwpp7g79y4-maker/log-bill/blob/main/docs/reference.md) first: it lists every option, exit code and error message.
+
+        For a security problem, such as a secret that is not masked in the output, do not open a public issue. Follow [SECURITY.md](https://github.com/qwpp7g79y4-maker/log-bill/blob/main/SECURITY.md) instead.
+  - type: input
+    id: version
+    attributes:
+      label: log-bill version
+      description: Output of `log-bill --version`.
+      placeholder: log-bill 0.1.0
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: Ubuntu 24.04, Windows 11, macOS 15 (Apple Silicon)
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Install method
+      options:
+        - crates.io (cargo install log-bill)
+        - Binary from the Releases page
+        - Git (cargo install --git)
+        - Built from a local clone
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Exact command
+      description: The full command line you ran.
+      render: shell
+      placeholder: log-bill scan --window 1m app.log
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened
+      description: The output or error message you got.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: input
+    id: exit-code
+    attributes:
+      label: Exit code
+      description: "`echo $?` on Linux and macOS, `echo $LASTEXITCODE` in PowerShell."
+      placeholder: "0"
+  - type: textarea
+    id: sample
+    attributes:
+      label: Small sample input
+      description: |
+        A few lines that reproduce the problem.
+        **Remove secrets, tokens, passwords, e-mail addresses, IP addresses and other personal data before you paste.** log-bill masks its own output, but raw input pasted in an issue is public. Replace real values with made-up ones of the same shape.
+      render: text
+  - type: checkboxes
+    id: no-secrets
+    attributes:
+      label: Check
+      options:
+        - label: The sample input above contains no real secrets or personal data.
+          required: true
