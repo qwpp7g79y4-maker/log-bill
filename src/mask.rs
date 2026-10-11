@@ -1052,7 +1052,7 @@ mod tests {
 
     #[test]
     fn key_with_prefix_or_suffix() {
-        let gevallen = [
+        let cases = [
             ("db_password=hunterSecretWord", "db_password=<SECRET>"),
             ("SECRET_KEY=abcdef", "SECRET_KEY=<SECRET>"),
             ("x_token=abcSuperSecretValue", "x_token=<SECRET>"),
@@ -1076,7 +1076,7 @@ mod tests {
             ("passwordless=zzzz", "passwordless=<SECRET>"),
             ("secretary=jane", "secretary=<SECRET>"),
         ];
-        for (input_text, expected) in gevallen {
+        for (input_text, expected) in cases {
             let (text_body, n) = mask_detail(input_text);
             assert_eq!(text_body, expected, "{input_text}");
             assert_eq!(n.secret, 1, "{input_text}");
@@ -1095,7 +1095,7 @@ mod tests {
 
     #[test]
     fn authorization_masks_the_whole_value() {
-        let gevallen = [
+        let cases = [
             (
                 "Authorization: Basic dXNlcjpwYXNz",
                 "Authorization: <SECRET>",
@@ -1214,7 +1214,7 @@ mod tests {
             "negotiateLetter",
             "fooLetterToken",
         ];
-        for (input_text, expected) in gevallen {
+        for (input_text, expected) in cases {
             let (text_body, n) = mask_detail(input_text);
             assert_eq!(text_body, expected, "{input_text}");
             assert!(n.secret >= 1, "{input_text}");

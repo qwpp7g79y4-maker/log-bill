@@ -319,10 +319,10 @@ fn sources_are_quoted_verbatim() {
         "Datadog charges per million log events submitted for indexing at the rate designated for the retention policy you selected.",
     ];
     let limits = section(&readme, "## Limitations");
-    let beperkingen = section(&nl, "## Beperkingen");
+    let limits_nl = section(&nl, "## Beperkingen");
     for part in datadog {
         assert!(limits.contains(part), "Limitations is missing {part}");
-        assert!(beperkingen.contains(part), "Beperkingen is missing {part}");
+        assert!(limits_nl.contains(part), "Beperkingen is missing {part}");
     }
     // Errors that were corrected earlier must not come back.
     for wrong in [

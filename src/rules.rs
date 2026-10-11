@@ -546,10 +546,10 @@ mod tests {
         assert_eq!(user.new_bytes, 0);
         assert_eq!(user.rule_lines, vec![1, 2]);
 
-        let vast = &effect.patterns[1];
-        assert_eq!(vast.text, "vast");
-        assert_eq!(vast.old_bytes, 5);
-        assert_eq!(vast.rule_lines, vec![3]);
+        let vast_pattern = &effect.patterns[1];
+        assert_eq!(vast_pattern.text, "vast");
+        assert_eq!(vast_pattern.old_bytes, 5);
+        assert_eq!(vast_pattern.rule_lines, vec![3]);
     }
 
     #[test]
@@ -597,12 +597,12 @@ mod tests {
         assert_eq!(effect.new_bytes, 12);
         assert_eq!(effect.patterns.len(), 2);
 
-        let genoemd = &effect.patterns[0];
-        assert_eq!(genoemd.text, "other");
-        assert_eq!(genoemd.id, crate::pattern::pattern_id("other"));
-        assert_eq!(genoemd.old_bytes, 10);
-        assert_eq!(genoemd.new_bytes, 10);
-        assert!(genoemd.rule_lines.is_empty());
+        let other_pattern = &effect.patterns[0];
+        assert_eq!(other_pattern.text, "other");
+        assert_eq!(other_pattern.id, crate::pattern::pattern_id("other"));
+        assert_eq!(other_pattern.old_bytes, 10);
+        assert_eq!(other_pattern.new_bytes, 10);
+        assert!(other_pattern.rule_lines.is_empty());
 
         let rest = &effect.patterns[1];
         assert_eq!(rest.id, "other");
@@ -821,10 +821,10 @@ mod tests {
             lines.push(sample_line("weg", 4));
         }
         lines.push(sample_line("blijf", 6));
-        let eerst_drop =
+        let drop_first =
             parse_rules(b"drop ^user 1\x24\nsample 0.1 ^user\ndrop ^weg\x24\n").unwrap();
         let stats = group(&lines, None);
-        let outcome = effect(&lines, &eerst_drop, &stats);
+        let outcome = effect(&lines, &drop_first, &stats);
         assert_eq!(outcome.old_lines, 12);
         assert_eq!(outcome.old_bytes, 77);
         assert_eq!(outcome.new_lines, 1);
@@ -859,8 +859,8 @@ mod tests {
         // Lines: floor(4 × 1/10) = 0, not the 4 whole lines.
         // `user 2` now falls under drop: 0, not floor(3.5)=3.
         // New for the pattern: 0 lines, 2 bytes. Rules 1 and 2.
-        let eerst_sample = parse_rules(b"sample 0.1 ^user 1\x24\ndrop ^user\n").unwrap();
-        let reversed = effect(&lines, &eerst_sample, &stats);
+        let sample_first = parse_rules(b"sample 0.1 ^user 1\x24\ndrop ^user\n").unwrap();
+        let reversed = effect(&lines, &sample_first, &stats);
         let user = reversed
             .patterns
             .iter()
@@ -960,8 +960,8 @@ mod tests {
             let rules = parse_rules(source.as_bytes()).unwrap();
             assert_eq!(effect(&lines, &rules, &stats).new_bytes, 1, "{source}");
         }
-        let bijna = parse_rules(b"sample 0.999 ^a\x24\n").unwrap();
-        assert_eq!(effect(&lines, &bijna, &stats).new_bytes, 9);
+        let almost_all = parse_rules(b"sample 0.999 ^a\x24\n").unwrap();
+        assert_eq!(effect(&lines, &almost_all, &stats).new_bytes, 9);
 
         // Rule 1 is valid, so a fraction that is too large on line 2 keeps that number.
         let too_large = parse_rules(b"sample 0.1 ^a\x24\nsample 1 ^b\x24\n").unwrap_err();

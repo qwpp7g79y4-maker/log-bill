@@ -1197,7 +1197,7 @@ mod tests {
         assert_eq!(cent_value(&no_days.per_day), 1);
         assert_eq!(cent_value(&no_days.per_month), 0);
 
-        let klein = cost(
+        let small_cost = cost(
             1,
             window,
             30,
@@ -1208,8 +1208,8 @@ mod tests {
             u128::MAX,
         )
         .unwrap();
-        assert_eq!(cent_value(&klein.per_day), 0);
-        assert_eq!(cent_value(&klein.per_month), 0);
+        assert_eq!(cent_value(&small_cost.per_day), 0);
+        assert_eq!(cent_value(&small_cost.per_month), 0);
     }
 
     #[test]

@@ -5,7 +5,7 @@ use crate::read::Line;
 
 const FNV_OFFSET: u64 = 0xcbf29ce484222325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
-const OVERIG: &str = "other";
+const OTHER: &str = "other";
 
 /// FNV-1a 64-bit over the bytes. The empty input is `cbf29ce484222325`.
 pub fn fnv1a64(data: &[u8]) -> u64 {
@@ -96,8 +96,8 @@ pub fn group(lines: &[Line], top: Option<u32>) -> Stats {
                     acc
                 });
             patterns.push(Pattern {
-                id: OVERIG.to_owned(),
-                text: OVERIG.to_owned(),
+                id: OTHER.to_owned(),
+                text: OTHER.to_owned(),
                 lines,
                 bytes,
                 share_tenths: share_tenths(bytes, total_bytes),
@@ -245,15 +245,15 @@ mod tests {
         assert_eq!(combined.patterns[0].masks.var, 2);
         assert_eq!(combined.patterns[0].masks.num, 0);
 
-        let letterlijk = group(
+        let literal = group(
             &[sample_line("user 7", 7), sample_line("user <NUM>", 11)],
             None,
         );
-        assert_eq!(letterlijk.patterns.len(), 1);
-        assert_eq!(letterlijk.patterns[0].text, "user <NUM>");
-        assert_eq!(letterlijk.patterns[0].lines, 2);
-        assert_eq!(letterlijk.patterns[0].masks.num, 1);
-        assert_eq!(letterlijk.patterns[0].masks.var, 0);
+        assert_eq!(literal.patterns.len(), 1);
+        assert_eq!(literal.patterns[0].text, "user <NUM>");
+        assert_eq!(literal.patterns[0].lines, 2);
+        assert_eq!(literal.patterns[0].masks.num, 1);
+        assert_eq!(literal.patterns[0].masks.var, 0);
     }
 
     #[test]

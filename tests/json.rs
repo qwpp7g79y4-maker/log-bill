@@ -191,7 +191,7 @@ fn json(body: &str) -> Node {
         "not JSON ({}): {body}",
         String::from_utf8_lossy(&done.stderr)
     );
-    let mut cursor = Lezer {
+    let mut cursor = JsonCursor {
         buf: &done.stdout,
         pos: 0,
     };
@@ -204,12 +204,12 @@ fn json(body: &str) -> Node {
     node
 }
 
-struct Lezer<'a> {
+struct JsonCursor<'a> {
     buf: &'a [u8],
     pos: usize,
 }
 
-impl<'a> Lezer<'a> {
+impl<'a> JsonCursor<'a> {
     fn line(&mut self) -> &'a [u8] {
         let rest = &self.buf[self.pos..];
         let end = rest

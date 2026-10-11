@@ -223,7 +223,7 @@ fn cost_rounding_half_cent() {
         below.to_str().expect("path"),
     ]);
 
-    let duizend = write_tmp(
+    let thousand = write_tmp(
         "cost-1005.json",
         br#"{"currency":"GULDEN","source":"kladblok","date":"1999-01-02","ingest_per_gb":1,"gb_bytes":1000}"#,
     );
@@ -235,10 +235,10 @@ fn cost_rounding_half_cent() {
         "--window",
         "1d",
         "--prices",
-        duizend.to_str().expect("path"),
+        thousand.to_str().expect("path"),
         large_log.to_str().expect("path"),
     ]);
-    for file_path in [&prices, &half, &below, &duizend, &large_log] {
+    for file_path in [&prices, &half, &below, &thousand, &large_log] {
         let _ = std::fs::remove_file(file_path);
     }
 
