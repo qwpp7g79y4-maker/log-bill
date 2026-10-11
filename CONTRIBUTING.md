@@ -4,14 +4,16 @@ Thanks for your interest in log-bill.
 
 ## Building and testing
 
+You need Rust 1.85 or newer and Python 3: the JSON tests check the output with Python's `json` module. The tests run `python3`, or `python` if `python3` is not found (as on many Windows installs).
+
 ```sh
 cargo build
 cargo fmt --check
-cargo clippy --all-targets -- -D warnings
-cargo test
+cargo clippy --all-targets --locked -- -D warnings
+cargo test --locked
 ```
 
-These checks must pass before a change is merged. Test fixtures must be synthetic: never add real logs or real secrets.
+These checks must pass before a change is merged, on stable and on Rust 1.85 (`cargo +1.85 clippy ...`, `cargo +1.85 test ...`). Test fixtures must be synthetic: never add real logs or real secrets.
 
 ## Issues
 

@@ -11,14 +11,24 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # fmt, clippy and tests on every OS and on Rust 1.85, on the tag commit.
+  # No binary is built and no release is made unless all of them pass.
+  checks:
+    uses: ./.github/workflows/ci.yml
+
   build:
     name: Build ${{ matrix.target }}
+    needs: checks
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
+          # Built on Ubuntu 22.04: the binary needs glibc 2.34 or newer (GLIBC_2.34 symbols).
           - target: x86_64-unknown-linux-gnu
+            os: ubuntu-22.04
+          # Statically linked: no glibc version needed, also runs on Alpine.
+          - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
           - target: x86_64-pc-windows-msvc
             os: windows-latest
@@ -37,7 +47,12 @@ jobs:
         run: |
           name="log-bill-${GITHUB_REF_NAME}-${{ matrix.target }}"
           mkdir -p "dist/$name"
-          cp README.md LICENSE-MIT LICENSE-APACHE CHANGELOG.md "dist/$name/"
+          # Everything the README links to with a relative link, so the links
+          # and the quick start examples work inside the archive.
+          cp README.md README.nl.md LICENSE-MIT LICENSE-APACHE CHANGELOG.md CONTRIBUTING.md SECURITY.md "dist/$name/"
+          mkdir -p "dist/$name/docs" "dist/$name/tests"
+          cp docs/*.md "dist/$name/docs/"
+          cp -R tests/fixtures "dist/$name/tests/"
           cd dist
           if [ "${{ runner.os }}" = "Windows" ]; then
             cp "../target/${{ matrix.target }}/release/log-bill.exe" "$name/"
@@ -56,7 +71,7 @@ jobs:
 
   release:
     name: Publish release
-    needs: build
+    needs: [checks, build]
     runs-on: ubuntu-latest
     permissions:
       contents: write

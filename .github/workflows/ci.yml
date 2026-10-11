@@ -3,6 +3,8 @@ name: CI
 on:
   push:
   pull_request:
+  # The release workflow runs these same checks on the tag commit first.
+  workflow_call:
 
 permissions:
   contents: read
@@ -17,9 +19,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        # macos-latest is Apple Silicon; macos-15-intel is the Intel (x86_64) Mac.
+        os: [ubuntu-latest, windows-latest, macos-latest, macos-15-intel]
     steps:
       - uses: actions/checkout@v4
+      # The JSON tests check the output with Python's json module.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -33,6 +40,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
       - uses: dtolnay/rust-toolchain@1.85
+        with:
+          components: clippy
       - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --all-targets --locked -- -D warnings
       - run: cargo test --locked
