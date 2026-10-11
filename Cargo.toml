@@ -6,6 +6,11 @@ rust-version = "1.85"
 authors = ["PEPAI <pep_ai@icloud.com>"]
 license = "MIT OR Apache-2.0"
 description = "Offline estimate of log costs per pattern"
+repository = "https://github.com/qwpp7g79y4-maker/log-bill"
+readme = "README.md"
+keywords = ["logs", "logging", "cost", "observability", "cli"]
+categories = ["command-line-utilities", "development-tools"]
+exclude = [".github/", ".gitattributes"]
 
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
