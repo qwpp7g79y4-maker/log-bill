@@ -125,6 +125,10 @@ Een eerlijke vergelijking met vijf producten. De pagina's zijn nagelezen op 8 ok
 
 log-bill werkt volledig offline: geen netwerk, geen API-key, geen telemetrie. Geen uitvoer of foutmelding bevat een volledige ruwe logregel; alleen gemaskeerde patronen, aantallen en regelnummers. Lektests stoppen een nepgeheim in elk soort invoer en controleren dat geen enkele uitvoer het bevat. Alle fixtures zijn synthetisch.
 
+## Steunen
+
+log-bill is gratis te gebruiken. Bespaart het je geld, dan kun je het werk steunen via [Ko-fi](https://ko-fi.com/pepai).
+
 ## Licentie
 
 Naar keuze onder een van deze licenties:

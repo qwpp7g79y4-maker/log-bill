@@ -123,6 +123,10 @@ An honest comparison with five products. The pages were checked on 8 October 202
 
 log-bill is fully offline: no network, no API key, no telemetry. No output or error message contains a complete raw log line; only masked patterns, counts and line numbers. Leak tests plant a fake secret in every input type and check that no output contains it. All fixtures are synthetic.
 
+## Support
+
+log-bill is free to use. If it saves you money, you can support the work via [Ko-fi](https://ko-fi.com/pepai).
+
 ## License
 
 Licensed under either of

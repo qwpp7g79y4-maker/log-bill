@@ -141,6 +141,7 @@ fn readme_has_the_sections_and_names() {
         "## How it counts",
         "## Compared with alternatives",
         "## Limitations",
+        "## Support",
         "## License",
         "## Contact",
     ] {
@@ -175,6 +176,9 @@ fn readme_has_the_sections_and_names() {
             "Limitations is missing {part}\n{limits}"
         );
     }
+    assert!(section(&readme, "## Support").contains("(https://ko-fi.com/pepai)"));
+    assert!(section(&read(README_NL), "## Steunen").contains("(https://ko-fi.com/pepai)"));
+    assert_eq!(read(".github/FUNDING.yml"), "ko_fi: pepai\n");
     assert!(section(&readme, "## License").contains("PEPAI"));
     assert!(section(&readme, "## Contact").contains("pep_ai@icloud.com"));
 }
