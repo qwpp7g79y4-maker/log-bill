@@ -35,6 +35,7 @@ Deze pagina laat zien hoe elke release van log-bill is gecontroleerd, wat we von
 ### Hoe we controleerden
 
 - Onafhankelijke codereview, door reviewers die de code niet schreven.
+- Een externe automatische codereview. Al zijn bevindingen zijn in deze versie opgelost.
 - Automatische tests in CI. Runs: [release v0.1.1](https://github.com/qwpp7g79y4-maker/log-bill/actions/runs/38164492339), [CI op main](https://github.com/qwpp7g79y4-maker/log-bill/actions/workflows/ci.yml?query=branch%3Amain).
 - Controle van afhankelijkheden met `cargo audit`.
 

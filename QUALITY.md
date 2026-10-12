@@ -35,6 +35,7 @@ This page shows how each release of log-bill was checked, what we found, and wha
 ### How we checked
 
 - Independent code review, by reviewers who did not write the code.
+- An external automated code review. All its findings are fixed in this version.
 - Automated tests in CI. Runs: [release v0.1.1](https://github.com/qwpp7g79y4-maker/log-bill/actions/runs/38164492339), [CI on main](https://github.com/qwpp7g79y4-maker/log-bill/actions/workflows/ci.yml?query=branch%3Amain).
 - Dependency audit with `cargo audit`.
 
