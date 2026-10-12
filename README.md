@@ -4,7 +4,7 @@ English · [Nederlands](README.nl.md)
 
 Estimate what your logs cost per pattern, offline, before you ship them.
 
-[![crates.io](https://img.shields.io/crates/v/log-bill.svg)](https://crates.io/crates/log-bill) [![CI](https://github.com/qwpp7g79y4-maker/log-bill/actions/workflows/ci.yml/badge.svg)](https://github.com/qwpp7g79y4-maker/log-bill/actions/workflows/ci.yml)
+[![crates.io](https://img.shields.io/crates/v/log-bill.svg)](https://crates.io/crates/log-bill) [![CI](https://github.com/qwpp7g79y4-maker/log-bill/actions/workflows/ci.yml/badge.svg)](https://github.com/qwpp7g79y4-maker/log-bill/actions/workflows/ci.yml) [![PEPAI checked](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fqwpp7g79y4-maker%2Flog-bill%2Fmain%2F.github%2Fbadge.json)](QUALITY.md)
 
 [Installation](#installation) • [Quick start](#quick-start) • [How it counts](#how-it-counts) • [Alternatives](#compared-with-alternatives) • [Limitations](#limitations) • [Reference](docs/reference.md)
 
