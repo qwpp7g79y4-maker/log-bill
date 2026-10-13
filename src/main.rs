@@ -6,6 +6,7 @@ mod read;
 mod render;
 mod rules;
 
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use clap::parser::ValueSource;
@@ -106,21 +107,58 @@ fn main() {
 }
 
 fn report(error: clap::Error) -> i32 {
-    let code = if error.use_stderr() { 3 } else { 0 };
-    if error.print().is_err() {
+    let to_stderr = error.use_stderr();
+    let code = if to_stderr { 3 } else { 0 };
+    // Help and version are buffered. Flush, or a full disk still exits 0.
+    if error.print().is_err() || flush_stream(to_stderr).is_err() {
+        return fail("could not write output", 3);
+    }
+    code
+}
+
+fn flush_stream(stderr: bool) -> io::Result<()> {
+    if stderr {
+        io::stderr().flush()
+    } else {
+        io::stdout().flush()
+    }
+}
+
+/// Writes the scan or diff result. A full disk is exit 3, not a panic.
+fn emit(text: &str) -> i32 {
+    if write_stdout(text).is_err() {
+        return fail("could not write output", 3);
+    }
+    0
+}
+
+/// Writes `message` to stderr and returns `code`.
+/// If stderr itself cannot be written, the code is 3 and there is no panic.
+fn fail(message: &str, code: i32) -> i32 {
+    if write_stderr(message).is_err() {
         return 3;
     }
     code
+}
+
+fn write_stdout(text: &str) -> io::Result<()> {
+    let mut out = io::stdout().lock();
+    out.write_all(text.as_bytes())?;
+    out.flush()
+}
+
+fn write_stderr(text: &str) -> io::Result<()> {
+    let mut err = io::stderr().lock();
+    err.write_all(text.as_bytes())?;
+    err.write_all(b"\n")?;
+    err.flush()
 }
 
 fn execute(cli: &Cli, days_explicit: bool) -> i32 {
     let window = if let Some(text) = &cli.window {
         match money::parse_window(text) {
             Ok(window) => Some(window),
-            Err(error) => {
-                eprintln!("{error}");
-                return 3;
-            }
+            Err(error) => return fail(&error.to_string(), 3),
         }
     } else {
         None
@@ -129,25 +167,18 @@ fn execute(cli: &Cli, days_explicit: bool) -> i32 {
         None => None,
         Some(text) => match money::parse_budget(text) {
             Some(budget) => Some(budget),
-            None => {
-                eprintln!("invalid budget");
-                return 3;
-            }
+            None => return fail("invalid budget", 3),
         },
     };
     // Budget keeps its own message, even when --prices is set.
     // Then: --prices without a window, before the price file and the logs.
     if let Some(message) = check_before_read(cli, window.is_some(), budget.is_some()) {
-        eprintln!("{message}");
-        return 3;
+        return fail(message, 3);
     }
     let prices = if let Some(path) = &cli.prices {
         match money::load_prices(path) {
             Ok(prices) => Some(prices),
-            Err(error) => {
-                eprintln!("{error}");
-                return 2;
-            }
+            Err(error) => return fail(&error.to_string(), 2),
         }
     } else {
         None
@@ -155,10 +186,7 @@ fn execute(cli: &Cli, days_explicit: bool) -> i32 {
     let rules = if let Some(path) = &cli.rules {
         match rules::load_rules(path) {
             Ok(rules) => Some(rules),
-            Err(error) => {
-                eprintln!("{error}");
-                return 2;
-            }
+            Err(error) => return fail(&error.to_string(), 2),
         }
     } else {
         None
@@ -167,17 +195,13 @@ fn execute(cli: &Cli, days_explicit: bool) -> i32 {
         None => None,
         Some(text) => match diff::parse_percent(text) {
             Some(percent) => Some(percent),
-            None => {
-                eprintln!("invalid percentage");
-                return 3;
-            }
+            None => return fail("invalid percentage", 3),
         },
     };
     match &cli.command {
         Cmd::Scan { file } => {
             if let Some(message) = ignored_option(cli, days_explicit) {
-                eprintln!("{message}");
-                return 3;
+                return fail(message, 3);
             }
             match read_input(cli, file) {
                 Ok(lines) => {
@@ -206,10 +230,7 @@ fn execute(cli: &Cli, days_explicit: bool) -> i32 {
                             prices.as_ref(),
                         ) {
                             Ok(body) => body,
-                            Err(error) => {
-                                eprintln!("{error}");
-                                return 3;
-                            }
+                            Err(error) => return fail(&error.to_string(), 3),
                         }
                     } else {
                         let mut text = render::scan_text(&stats);
@@ -228,10 +249,7 @@ fn execute(cli: &Cli, days_explicit: bool) -> i32 {
                                 gb_bytes,
                             ) {
                                 Ok(volume) => volume,
-                                Err(error) => {
-                                    eprintln!("{error}");
-                                    return 3;
-                                }
+                                Err(error) => return fail(&error.to_string(), 3),
                             };
                             text.push_str(&render::volume_text(window, &volume));
                         }
@@ -249,10 +267,7 @@ fn execute(cli: &Cli, days_explicit: bool) -> i32 {
                                     cli.explain,
                                 ) {
                                     Ok(costs) => text.push_str(&costs),
-                                    Err(error) => {
-                                        eprintln!("{error}");
-                                        return 3;
-                                    }
+                                    Err(error) => return fail(&error.to_string(), 3),
                                 }
                             }
                         }
@@ -275,62 +290,51 @@ fn execute(cli: &Cli, days_explicit: bool) -> i32 {
                             budget,
                         ) {
                             Ok(above) => above,
-                            Err(error) => {
-                                eprintln!("{error}");
-                                return 3;
-                            }
+                            Err(error) => return fail(&error.to_string(), 3),
                         }
                     } else {
                         false
                     };
-                    print!("{text}");
+                    let written = emit(&text);
+                    if written != 0 {
+                        return written;
+                    }
                     if over_budget {
-                        eprintln!("monthly cost above budget");
-                        1
+                        fail("monthly cost above budget", 1)
                     } else {
                         0
                     }
                 }
-                Err(error) => {
-                    eprintln!("{error}");
-                    2
-                }
+                Err(error) => fail(&error.to_string(), 2),
             }
         }
         Cmd::Diff { old, new } => {
             // `--explain` and `--top` belong with scan. So does a valid monthly budget.
             if cli.explain {
-                eprintln!("--explain only works with scan");
-                return 3;
+                return fail("--explain only works with scan", 3);
             }
             if cli.top.is_some() {
-                eprintln!("--top only works with scan");
-                return 3;
+                return fail("--top only works with scan", 3);
             }
             // Without prices or JSON the window is not in the output.
             if window.is_some() && prices.is_none() && !cli.json {
-                eprintln!("--window with diff only works together with --prices or --json");
-                return 3;
+                return fail(
+                    "--window with diff only works together with --prices or --json",
+                    3,
+                );
             }
             if let Some(message) = ignored_option(cli, days_explicit) {
-                eprintln!("{message}");
-                return 3;
+                return fail(message, 3);
             }
             let old_path = path_text(old);
             let new_path = path_text(new);
             let old = match read_input(cli, old) {
                 Ok(lines) => lines,
-                Err(error) => {
-                    eprintln!("{error}");
-                    return 2;
-                }
+                Err(error) => return fail(&error.to_string(), 2),
             };
             let new = match read_input(cli, new) {
                 Ok(lines) => lines,
-                Err(error) => {
-                    eprintln!("{error}");
-                    return 2;
-                }
+                Err(error) => return fail(&error.to_string(), 2),
             };
             // Match is on the pattern text. `--top` would give the rest one id, `other`.
             // Counting matches scan: the diff is taken after the rules.
@@ -348,8 +352,7 @@ fn execute(cli: &Cli, days_explicit: bool) -> i32 {
                     if let Err(error) =
                         money::extrapolate(bytes, window, cli.days_per_month, gb_bytes)
                     {
-                        eprintln!("{error}");
-                        return 3;
+                        return fail(&error.to_string(), 3);
                     }
                 }
             }
@@ -371,10 +374,7 @@ fn execute(cli: &Cli, days_explicit: bool) -> i32 {
                     prices.as_ref(),
                 ) {
                     Ok(body) => body,
-                    Err(error) => {
-                        eprintln!("{error}");
-                        return 3;
-                    }
+                    Err(error) => return fail(&error.to_string(), 3),
                 }
             } else {
                 let mut text = render::diff_text(&report, applied);
@@ -387,10 +387,7 @@ fn execute(cli: &Cli, days_explicit: bool) -> i32 {
                         prices,
                     ) {
                         Ok(costs) => text.push_str(&costs),
-                        Err(error) => {
-                            eprintln!("{error}");
-                            return 3;
-                        }
+                        Err(error) => return fail(&error.to_string(), 3),
                     }
                 }
                 text
@@ -398,10 +395,13 @@ fn execute(cli: &Cli, days_explicit: bool) -> i32 {
             let over = max_new_share
                 .as_ref()
                 .is_some_and(|percent| percent.exceeded_by(report.added_bytes, report.new_bytes));
-            if over {
-                eprintln!("new patterns above the threshold");
+            if over && write_stderr("new patterns above the threshold").is_err() {
+                return 3;
             }
-            print!("{text}");
+            let written = emit(&text);
+            if written != 0 {
+                return written;
+            }
             if over {
                 1
             } else {

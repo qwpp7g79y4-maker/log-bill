@@ -38,7 +38,7 @@ fn unknown_option_exit_3() {
 
 #[test]
 fn invalid_window_exit_3() {
-    for window in ["0m", "5x", ""] {
+    for window in ["0m", "5x", "", "1é"] {
         let output = bin()
             .args(["scan", "--window", window, "missing-file.log"])
             .output()
@@ -147,6 +147,37 @@ fn large_window_and_gb_bytes_exit_3() {
     assert!(output.stdout.is_empty());
     let err = String::from_utf8(output.stderr).expect("stderr is utf-8");
     assert_eq!(err, "calculation overflow\n");
+}
+
+/// `scan m2.log > /dev/full`, and the same for `--version` and `--help`.
+/// A full disk must be exit 3 with a message, not a panic (101) and not 0.
+#[cfg(target_os = "linux")]
+#[test]
+fn full_stdout_is_exit_3() {
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR"));
+    let log = dir.join("m2.log");
+    std::fs::write(&log, "disk full\n").expect("write fixture");
+    let full = std::fs::OpenOptions::new()
+        .write(true)
+        .open("/dev/full")
+        .expect("/dev/full");
+    let cases = [
+        vec!["scan".to_string(), log.display().to_string()],
+        vec!["--version".to_string()],
+        vec!["--help".to_string()],
+    ];
+    for args in cases {
+        let output = bin()
+            .args(&args)
+            .stdout(full.try_clone().expect("clone /dev/full"))
+            .output()
+            .expect("start binary");
+        let err = String::from_utf8_lossy(&output.stderr);
+        assert_eq!(output.status.code(), Some(3), "{args:?} stderr: {err}");
+        assert_eq!(err, "could not write output\n", "{args:?}");
+        assert!(!err.contains("panicked"), "{args:?}");
+    }
+    let _ = std::fs::remove_file(&log);
 }
 
 #[test]

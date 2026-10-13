@@ -44,7 +44,7 @@ Prijzen komen alleen uit een JSON-bestand dat je meegeeft met `--prices` (samen 
 ## Hoe het rekent
 
 - **Bytes van een regel:** de ruwe bytes van de regel plus 1 voor het regeleinde. Een `\r` vóór de `\n` telt mee als byte. Een laatste regel zonder regeleinde telt ook +1. Lege regels tellen niet.
-- **Codering:** invoer is UTF-8. Ongeldige UTF-8-bytes tellen mee en worden getoond als U+FFFD. UTF-16 en UTF-32 worden geweigerd met exit 2, zie [Exitcodes en gebruiksfouten](#exitcodes-en-gebruiksfouten). NUL-bytes worden vóór het maskeren uit het bericht gehaald; als bytes tellen ze wel mee.
+- **Codering:** invoer is UTF-8. Ongeldige UTF-8-bytes tellen mee en worden getoond als U+FFFD. UTF-16 en UTF-32 worden geweigerd met exit 2, zie [Exitcodes en gebruiksfouten](#exitcodes-en-gebruiksfouten). NUL-bytes worden vóór het maskeren uit het bericht gehaald; als bytes tellen ze wel mee. Eén UTF-8-byte order mark aan het begin van een tekstbestand wordt voor de regeltekst overgeslagen en telt mee in de bytes van de eerste regel, zodat dezelfde regel met en zonder dat teken één patroon is. Stuurtekens in een logregel en in currency, source en date van een prijsbestand worden niet ruw geschreven. Tekstuitvoer toont ze als `\u00XX` (ESC is `\u001b`). JSON houdt het teken en escaped het, zodat het bestand geldige JSON blijft. Het patroon-id is de hash van de gemaskeerde tekst, stuurtekens inbegrepen.
 - **JSON lines:** de bytes zijn die van de hele JSON-regel. Eén UTF-8-byte order mark aan het begin van het bestand wordt overgeslagen bij het parsen en telt mee in de bytes van de eerste regel; in een prijsbestand wordt dezelfde BOM overgeslagen. Het patroon komt uit `--message-field`, of standaard uit het eerste veld dat bestaat van `message`, `msg` of `log`. Zonder berichtveld is het patroon `<NO-MESSAGE>`.
 - **Patroon:** het gemaskeerde bericht (zie [Maskering](#maskering)). Het patroon-id is `P` plus de eerste 8 hextekens van de 64-bit FNV-1a-hash van de patroontekst, dus stabiel tussen runs.
 - **Aandeel:** bytes van het patroon gedeeld door de totale bytes, als procent met 1 decimaal, half van nul af afgerond.
@@ -87,7 +87,9 @@ Met `--explain` krijgt een telling van `<SECRET>` de tekst `possible secret` ("m
 | 0 | In orde |
 | 1 | Budget (`--budget-month`) of drempel (`--max-new-share`) overschreden |
 | 2 | Invoerfout: logbestand, JSON, prijsbestand of regelsbestand |
-| 3 | Gebruiksfout |
+| 3 | Gebruiksfout, of de uitvoer kon niet geschreven worden |
+
+Als de uitvoer niet geschreven kan worden, bijvoorbeeld omdat de schijf vol is, is de exitcode 3 en is stderr `could not write output`. `--help` en `--version` gebruiken diezelfde code; ze eindigen niet met 0 als hun tekst niet weg kan.
 
 Een logbestand, prijsbestand of regelsbestand moet een gewoon bestand zijn. Een FIFO, een map of iets anders wordt geweigerd met exit 2, zonder te wachten tot een schrijver opent. Een `gb_bytes` die een breuk is zoals `0.5`, 0 of negatief is exit 2; een prijs die tekst is in plaats van een getal geeft `price file has a price that is not a number`. Dezelfde sleutel twee keer geeft `price file has a duplicate key`. `sample 0,1` is geen geldige fractie: exit 2 met `invalid rule on line 1 of the rules file`, zonder de regel te tonen. De meldingen over gewone bestanden noemen het pad niet, en geen foutmelding bevat een ruwe logregel.
 
@@ -103,6 +105,7 @@ Elke rij hieronder is op de binary gedraaid, en een test houdt dat zo. Een rij m
 | `--window` | diff | `--explain` wordt eerder getoetst. | `diff --explain --window 1m OLD NEW` | 3 | `--explain only works with scan` |
 | `--window` | scan | 0m is ongeldig. | `scan --window 0m file.log` | 3 | `invalid window` |
 | `--window` | scan | 5x is ongeldig. | `scan --window 5x file.log` | 3 | `invalid window` |
+| `--window` | scan | De eenheid is niet `s`, `m`, `h` of `d`. | `scan --window 1é file.log` | 3 | `invalid window` |
 | `--window` | diff | 0m is ongeldig, vóór de diff-toets. | `diff --window 0m OLD NEW` | 3 | `invalid window` |
 | `--days-per-month` | scan | Zonder venster. | `scan --days-per-month 31 file.log` | 3 | `--days-per-month only works together with --window` |
 | `--days-per-month` | diff | Zonder venster. | `diff --days-per-month 31 OLD NEW` | 3 | `--days-per-month only works together with --window` |

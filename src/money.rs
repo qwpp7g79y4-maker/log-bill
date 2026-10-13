@@ -29,13 +29,16 @@ impl fmt::Display for WindowError {
 impl std::error::Error for WindowError {}
 
 /// `--window`: a positive integer and `s`, `m`, `h`, or `d`.
-/// `0m`, `5x`, and an empty string are invalid.
+/// `0m`, `5x`, an empty string, and a unit that is not one ASCII letter
+/// (`1é`) are invalid. The split is on a character, so a multibyte unit
+/// is a usage error and not a panic.
 pub fn parse_window(text: &str) -> Result<Window, WindowError> {
-    if text.len() < 2 {
+    let mut chars = text.chars();
+    let Some(unit) = chars.next_back() else {
         return Err(WindowError);
-    }
-    let (num, unit) = text.split_at(text.len() - 1);
-    if !num.bytes().all(|byte| byte.is_ascii_digit()) {
+    };
+    let num = chars.as_str();
+    if num.is_empty() || !num.bytes().all(|byte| byte.is_ascii_digit()) {
         return Err(WindowError);
     }
     let value: u64 = num.parse().map_err(|_| WindowError)?;
@@ -43,10 +46,10 @@ pub fn parse_window(text: &str) -> Result<Window, WindowError> {
         return Err(WindowError);
     }
     let unit_seconds: u64 = match unit {
-        "s" => 1,
-        "m" => 60,
-        "h" => 3_600,
-        "d" => 86_400,
+        's' => 1,
+        'm' => 60,
+        'h' => 3_600,
+        'd' => 86_400,
         _ => return Err(WindowError),
     };
     let seconds = value.checked_mul(unit_seconds).ok_or(WindowError)?;
@@ -1524,7 +1527,7 @@ mod tests {
 
     #[test]
     fn invalid_window() {
-        for text in ["0m", "5x", ""] {
+        for text in ["0m", "5x", "", "1é", "é", "1"] {
             assert!(parse_window(text).is_err(), "{text:?}");
         }
     }

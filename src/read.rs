@@ -71,7 +71,9 @@ impl std::error::Error for ReadError {}
 /// Reads a text file. Each line weighs its raw bytes plus 1 for the
 /// newline; without `\n` that +1 still counts. A `\r` just before `\n` counts.
 /// Empty lines are dropped. Invalid UTF-8 counts and is read lossily.
-/// UTF-16 and UTF-32 are refused, see [`detect_wide`].
+/// One UTF-8 byte order mark at the start is skipped for the line text and
+/// still counts in the bytes of the first line. UTF-16 and UTF-32 are
+/// refused, see [`detect_wide`].
 pub fn read_text(path: &Path) -> Result<Vec<Line>, ReadError> {
     let data = read_bytes(path)?;
     refuse_wide(&data)?;
@@ -279,23 +281,30 @@ fn text_at(value: &serde_json::Value, name: &str) -> String {
 fn text_lines(data: &[u8]) -> Vec<Line> {
     let mut lines = Vec::new();
     let mut start = 0;
+    let mut line_no = 0u64;
     for (index, &byte) in data.iter().enumerate() {
         if byte != b'\n' {
             continue;
         }
+        line_no += 1;
         // `raw` ends before the `\n`; the +1 is that newline.
-        push_line(&mut lines, &data[start..index], true);
+        push_line(&mut lines, &data[start..index], true, line_no);
         start = index + 1;
     }
     if start < data.len() {
+        line_no += 1;
         // Last line without `\n`: the same +1, so each line weighs the same.
-        push_line(&mut lines, &data[start..], false);
+        push_line(&mut lines, &data[start..], false, line_no);
     }
     lines
 }
 
-fn push_line(lines: &mut Vec<Line>, raw: &[u8], had_newline: bool) {
-    let content = line_body(raw, had_newline);
+fn push_line(lines: &mut Vec<Line>, raw: &[u8], had_newline: bool, line_no: u64) {
+    let mut content = line_body(raw, had_newline);
+    if line_no == 1 {
+        // Skipped for the text; `raw.len()` below still counts the mark.
+        content = content.strip_prefix(UTF8_BOM).unwrap_or(content);
+    }
     if content.is_empty() {
         return;
     }
@@ -375,6 +384,23 @@ mod tests {
                 bytes: 6
             }]
         );
+    }
+
+    #[test]
+    fn text_bom_is_skipped_and_counted() {
+        // 3 BOM bytes + `disk full` (9) + `\n` = 13. The second line is 10.
+        // The mark is not part of the text, so both lines are `disk full`.
+        let lines = text_lines(b"\xEF\xBB\xBFdisk full\ndisk full\n");
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0].text, "disk full");
+        assert_eq!(lines[1].text, "disk full");
+        assert_eq!(lines[0].raw, "disk full");
+        assert_eq!(lines[0].bytes, 13);
+        assert_eq!(lines[1].bytes, 10);
+        // A mark on a later line stays in that line.
+        let later = text_lines(b"disk full\n\xEF\xBB\xBFdisk full\n");
+        assert_eq!(later[0].text, "disk full");
+        assert!(later[1].text.starts_with('\u{feff}'));
     }
 
     #[test]

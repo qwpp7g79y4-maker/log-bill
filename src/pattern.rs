@@ -17,6 +17,25 @@ pub fn fnv1a64(data: &[u8]) -> u64 {
     hash
 }
 
+/// Control characters are shown as `\u00XX`, the same spelling as a JSON
+/// escape. A log line can then not move the cursor or clear the screen.
+/// Characters that are not controls are left as they are. Applying this
+/// twice does not change the text: the escape itself has no controls.
+pub fn show_controls(text: &str) -> String {
+    if !text.chars().any(char::is_control) {
+        return text.to_owned();
+    }
+    let mut out = String::with_capacity(text.len());
+    for ch in text.chars() {
+        if ch.is_control() {
+            out.push_str(&format!("\\u{:04x}", u32::from(ch)));
+        } else {
+            out.push(ch);
+        }
+    }
+    out
+}
+
 /// `P` plus the first 8 hex digits of FNV-1a 64-bit over the pattern text.
 pub fn pattern_id(text: &str) -> String {
     let high = (fnv1a64(text.as_bytes()) >> 32) as u32;
@@ -57,13 +76,16 @@ struct Acc {
 }
 
 /// Group lines by the masked message. Bytes stay the raw bytes.
+/// Control characters stay in the pattern text. Text output shows them
+/// as `\u00XX`; JSON keeps the character. The pattern id is the hash of
+/// the masked text.
 /// Sort: bytes descending, then pattern text ascending. `top` keeps
 /// the first N and folds the rest into `other`.
 pub fn group(lines: &[Line], top: Option<u32>) -> Stats {
     let mut groups: BTreeMap<String, Acc> = BTreeMap::new();
     for line in lines {
-        let (text, counts) = mask::mask_detail(&line.text);
-        let acc = groups.entry(text).or_default();
+        let (masked, counts) = mask::mask_detail(&line.text);
+        let acc = groups.entry(masked).or_default();
         acc.lines += 1;
         acc.bytes += line.bytes;
         acc.masks.add(counts);
@@ -129,7 +151,7 @@ pub(crate) fn share_tenths(bytes: u64, total: u64) -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{fnv1a64, format_share, group, pattern_id};
+    use super::{fnv1a64, format_share, group, pattern_id, show_controls};
     use crate::read::Line;
 
     fn sample_line(text: &str, bytes: u64) -> Line {
@@ -138,6 +160,22 @@ mod tests {
             raw: text.to_owned(),
             bytes,
         }
+    }
+
+    #[test]
+    fn control_in_the_message_stays_in_the_pattern() {
+        // `boom \033[H here`: the pattern keeps the ESC. The id is the hash
+        // of that masked text. Showing it writes `\u001b`, not the raw byte.
+        let raw = "boom \u{1b}[H here";
+        let stats = group(&[sample_line(raw, 16)], None);
+        assert_eq!(stats.patterns.len(), 1);
+        assert_eq!(stats.patterns[0].text, raw);
+        assert_eq!(stats.patterns[0].id, pattern_id(raw));
+        assert_ne!(stats.patterns[0].id, pattern_id("boom \\u001b[H here"));
+        assert_eq!(show_controls(raw), "boom \\u001b[H here");
+        assert!(!show_controls(raw).chars().any(char::is_control));
+        assert_eq!(show_controls("E\u{1b}[2JUR"), "E\\u001b[2JUR");
+        assert_eq!(show_controls("disk full"), "disk full");
     }
 
     #[test]

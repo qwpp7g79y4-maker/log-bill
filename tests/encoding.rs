@@ -2,7 +2,8 @@
 //! key such as `password`, so masking would not recognise it. Such input is
 //! refused with exit 2 before anything of it reaches the output. NUL bytes
 //! inside otherwise UTF-8 text are removed before masking. A UTF-8 byte order
-//! mark is skipped for JSON lines and price files and still counts in the bytes.
+//! mark is skipped for text, JSON lines and price files and still counts in the bytes.
+//! Control characters in a log line and in price-file text are shown as `\u00XX`.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -290,6 +291,109 @@ fn utf8_bom_in_price_file_is_skipped() {
     let (code, out, err) = priced(&with_bom);
     assert_eq!(code, 0, "{}", String::from_utf8_lossy(&err));
     assert_eq!(out, priced(&fixture).1);
+}
+
+fn assert_no_raw_esc(label: &str, out: &[u8], err: &[u8]) {
+    assert!(
+        !out.contains(&0x1b),
+        "{label} has a raw ESC in stdout: {}",
+        String::from_utf8_lossy(out)
+    );
+    assert!(
+        !err.contains(&0x1b),
+        "{label} has a raw ESC in stderr: {}",
+        String::from_utf8_lossy(err)
+    );
+}
+
+#[test]
+fn esc_in_a_log_line_is_shown() {
+    // `printf 'boom \033[H here\n'`
+    let mut raw = b"boom ".to_vec();
+    raw.push(0x1b);
+    raw.extend_from_slice(b"[H here\n");
+    let file = tmp("encoding-esc.log", &raw);
+    let (code, out, err) = run(&["scan".as_ref(), file.as_os_str()]);
+    assert_eq!(code, 0, "{}", String::from_utf8_lossy(&err));
+    assert_no_raw_esc("text", &out, &err);
+    let text = String::from_utf8(out).expect("utf-8");
+    assert!(text.contains("boom \\u001b[H here"), "{text}");
+
+    let (code, out, err) = run(&["scan".as_ref(), "--json".as_ref(), file.as_os_str()]);
+    assert_eq!(code, 0, "{}", String::from_utf8_lossy(&err));
+    assert_no_raw_esc("json", &out, &err);
+    let body = String::from_utf8(out).expect("JSON is UTF-8");
+    assert!(body.contains("\\u001b"), "{body}");
+    let value: serde_json::Value = serde_json::from_str(&body).expect("valid JSON");
+    assert_eq!(value["patterns"][0]["text"], "boom \u{1b}[H here");
+}
+
+#[test]
+fn esc_in_currency_is_shown() {
+    // currency `E\u001b[2JUR` in the price file.
+    let prices = tmp(
+        "encoding-esc-prices.json",
+        br#"{"currency":"E\u001b[2JUR","source":"manual","date":"2026-10-08","ingest_per_gb":1}"#,
+    );
+    let log = tmp("encoding-esc-prices.log", b"ok\n");
+    let run_prices = |json: bool| {
+        let mut args = vec![
+            "scan".as_ref(),
+            "--window".as_ref(),
+            "1m".as_ref(),
+            "--prices".as_ref(),
+            prices.as_os_str(),
+        ];
+        if json {
+            args.insert(1, "--json".as_ref());
+        }
+        args.push(log.as_os_str());
+        run(&args)
+    };
+    let (code, out, err) = run_prices(false);
+    assert_eq!(code, 0, "{}", String::from_utf8_lossy(&err));
+    assert_no_raw_esc("text", &out, &err);
+    let text = String::from_utf8(out).expect("utf-8");
+    assert!(text.contains("E\\u001b[2JUR"), "{text}");
+    assert!(err.is_empty(), "{}", String::from_utf8_lossy(&err));
+
+    let (code, out, err) = run_prices(true);
+    assert_eq!(code, 0, "{}", String::from_utf8_lossy(&err));
+    assert_no_raw_esc("json", &out, &err);
+    let body = String::from_utf8(out).expect("JSON is UTF-8");
+    assert!(body.contains("\\u001b"), "{body}");
+    let value: serde_json::Value = serde_json::from_str(&body).expect("valid JSON");
+    assert_eq!(value["costs"]["currency"], "E\u{1b}[2JUR");
+}
+
+#[test]
+fn text_bom_is_one_pattern() {
+    // `printf '\xef\xbb\xbfdisk full\ndisk full\n'`
+    // 3 + 10 + 10 = 23 bytes. Both lines are the pattern `disk full`.
+    let file = tmp(
+        "encoding-text-bom.log",
+        b"\xef\xbb\xbfdisk full\ndisk full\n",
+    );
+    let (code, out, err) = run(&["scan".as_ref(), file.as_os_str()]);
+    assert_eq!(code, 0, "{}", String::from_utf8_lossy(&err));
+    let text = String::from_utf8(out).expect("utf-8");
+    assert!(text.starts_with("total: 2 lines, 23 bytes\n"), "{text}");
+    let shown: Vec<_> = text
+        .lines()
+        .filter(|line| line.contains("disk full"))
+        .collect();
+    assert_eq!(shown.len(), 1, "{text}");
+    assert!(shown[0].contains("2 lines"), "{text}");
+    assert!(!text.contains('\u{feff}'), "{text}");
+
+    let (code, out, err) = run(&["scan".as_ref(), "--json".as_ref(), file.as_os_str()]);
+    assert_eq!(code, 0, "{}", String::from_utf8_lossy(&err));
+    let body = String::from_utf8(out).expect("JSON is UTF-8");
+    let value: serde_json::Value = serde_json::from_str(&body).expect("valid JSON");
+    assert_eq!(value["patterns"].as_array().expect("patterns").len(), 1);
+    assert_eq!(value["patterns"][0]["text"], "disk full");
+    assert_eq!(value["totals"]["lines"], 2);
+    assert_eq!(value["totals"]["bytes"], 23);
 }
 
 // macOS file systems (APFS, HFS+) refuse file names that are not valid UTF-8

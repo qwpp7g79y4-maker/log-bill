@@ -26,6 +26,7 @@ pub fn scan_text(stats: &Stats) -> String {
     )
     .expect("text");
     for pattern in &stats.patterns {
+        let shown = pattern::show_controls(&pattern.text);
         writeln!(
             out,
             "{}  {} {}  {} {}  {}%  {}",
@@ -35,7 +36,7 @@ pub fn scan_text(stats: &Stats) -> String {
             pattern.bytes,
             bytes_word(u128::from(pattern.bytes)),
             pattern::format_share(pattern.share_tenths),
-            pattern.text
+            shown
         )
         .expect("text");
     }
@@ -139,19 +140,17 @@ pub fn costs_text(
     explain: bool,
 ) -> Result<String, money::CalcError> {
     let mut out = String::new();
-    writeln!(
-        out,
-        "prices: {}, source {}, date {}",
-        prices.currency, prices.source, prices.date
-    )
-    .expect("text");
+    let currency = pattern::show_controls(&prices.currency);
+    let source = pattern::show_controls(&prices.source);
+    let date = pattern::show_controls(&prices.date);
+    writeln!(out, "prices: {currency}, source {source}, date {date}").expect("text");
     let mut write_line = |label: &str, bytes: u64| -> Result<(), money::CalcError> {
         let mut write_stream = |name: &str, price: money::Price| -> Result<(), money::CalcError> {
             let cost = money::cost(bytes, window, days_per_month, price, prices.gb_bytes)?;
             writeln!(
                 out,
-                "{label} {name}: {} {} per day, {} {} per month",
-                cost.per_day, prices.currency, cost.per_month, prices.currency
+                "{label} {name}: {} {currency} per day, {} {currency} per month",
+                cost.per_day, cost.per_month
             )
             .expect("text");
             if explain {
@@ -254,6 +253,7 @@ pub fn diff_text(report: &Report, line_word: Option<usize>) -> String {
         };
         let bytes = i128::from(row.new_bytes) - i128::from(row.old_bytes);
         let share = i128::from(row.new_share) - i128::from(row.old_share);
+        let shown = pattern::show_controls(&row.text);
         writeln!(
             out,
             "{label}{}  {} -> {} {}, change {} {}, share {}% -> {}%, change {} percentage points  {}",
@@ -266,7 +266,7 @@ pub fn diff_text(report: &Report, line_word: Option<usize>) -> String {
             pattern::format_share(row.old_share),
             pattern::format_share(row.new_share),
             signed_share(share),
-            row.text
+            shown
         )
         .expect("text");
     }
@@ -300,18 +300,16 @@ pub fn diff_costs(
         Ordering::Equal => "",
     };
     let mut out = String::new();
-    writeln!(
-        out,
-        "prices: {}, source {}, date {}",
-        prices.currency, prices.source, prices.date
-    )
-    .expect("text");
+    let currency = pattern::show_controls(&prices.currency);
+    let source = pattern::show_controls(&prices.source);
+    let date = pattern::show_controls(&prices.date);
+    writeln!(out, "prices: {currency}, source {source}, date {date}").expect("text");
     let mut write_line = |name: &str, price: money::Price| -> Result<(), money::CalcError> {
         let cost = money::cost(sample, window, days_per_month, price, prices.gb_bytes)?;
         writeln!(
             out,
-            "change per month {name}: {sign}{} {}",
-            cost.per_month, prices.currency
+            "change per month {name}: {sign}{} {currency}",
+            cost.per_month
         )
         .expect("text");
         Ok(())

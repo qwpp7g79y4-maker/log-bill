@@ -44,7 +44,7 @@ Prices come only from a JSON file you pass with `--prices` (together with `--win
 ## How it counts
 
 - **Bytes of a line:** the raw bytes of the line plus 1 for the newline. A `\r` before the `\n` counts as a byte. A last line without a newline also counts +1. Empty lines do not count.
-- **Encoding:** input is UTF-8. Invalid UTF-8 bytes count and are shown as U+FFFD. UTF-16 and UTF-32 are refused with exit 2, see [Exit codes and usage errors](#exit-codes-and-usage-errors). NUL bytes are removed from the message before masking; they still count as bytes.
+- **Encoding:** input is UTF-8. Invalid UTF-8 bytes count and are shown as U+FFFD. UTF-16 and UTF-32 are refused with exit 2, see [Exit codes and usage errors](#exit-codes-and-usage-errors). NUL bytes are removed from the message before masking; they still count as bytes. One UTF-8 byte order mark at the start of a text file is skipped for the line text and still counts in the bytes of the first line, so the same line with and without that mark is one pattern. Control characters in a log line and in a price file's currency, source and date are not written raw. Text output shows them as `\u00XX` (ESC is `\u001b`). JSON keeps the character and escapes it, so the file stays valid JSON. The pattern id is the hash of the masked text, control characters included.
 - **JSON lines:** the bytes are those of the whole JSON line. One UTF-8 byte order mark at the start of the file is skipped for parsing and counts in the bytes of the first line; the same BOM is skipped in a price file. The pattern comes from `--message-field`, or by default from the first of `message`, `msg` or `log` that exists. Without a message field the pattern is `<NO-MESSAGE>`.
 - **Pattern:** the masked message (see [Masking](#masking)). The pattern id is `P` plus the first 8 hex characters of the 64-bit FNV-1a hash of the pattern text, so it is stable between runs.
 - **Share:** bytes of the pattern divided by the total bytes, shown as a percentage with 1 decimal, rounded half away from zero.
@@ -87,7 +87,9 @@ With `--explain`, a `<SECRET>` count is marked `possible secret`. In `--json` su
 | 0 | OK |
 | 1 | Budget (`--budget-month`) or threshold (`--max-new-share`) exceeded |
 | 2 | Input error: log file, JSON, price file or rules file |
-| 3 | Usage error |
+| 3 | Usage error, or the output could not be written |
+
+If the output cannot be written, for example because the disk is full, the exit code is 3 and stderr is `could not write output`. `--help` and `--version` use that same code; they do not exit 0 when their text cannot be written.
 
 A log file, price file or rules file must be a regular file. A FIFO, a directory or anything else is refused with exit 2 without waiting for a writer to open it. A `gb_bytes` that is a fraction such as `0.5`, 0 or negative is exit 2; a price that is text instead of a number gives `price file has a price that is not a number`. The same key twice gives `price file has a duplicate key`. `sample 0,1` is not a valid fraction: exit 2 with `invalid rule on line 1 of the rules file`, without showing the line. The regular-file messages do not include the path, and no error message contains a raw log line.
 
@@ -103,6 +105,7 @@ Every row below was run against the binary, and a test keeps it that way. A row 
 | `--window` | diff | `--explain` is checked first. | `diff --explain --window 1m OLD NEW` | 3 | `--explain only works with scan` |
 | `--window` | scan | 0m is invalid. | `scan --window 0m file.log` | 3 | `invalid window` |
 | `--window` | scan | 5x is invalid. | `scan --window 5x file.log` | 3 | `invalid window` |
+| `--window` | scan | The unit is not one of `s`, `m`, `h`, `d`. | `scan --window 1é file.log` | 3 | `invalid window` |
 | `--window` | diff | 0m is invalid, before the diff check. | `diff --window 0m OLD NEW` | 3 | `invalid window` |
 | `--days-per-month` | scan | Without a window. | `scan --days-per-month 31 file.log` | 3 | `--days-per-month only works together with --window` |
 | `--days-per-month` | diff | Without a window. | `diff --days-per-month 31 OLD NEW` | 3 | `--days-per-month only works together with --window` |

@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- A write error, such as a full disk, is exit 3 with `could not write output` instead of a panic. `--help` and `--version` use that same code and do not exit 0.
+- `--window 1é` is a usage error (exit 3, `invalid window`) instead of a panic.
+- Control characters in a log line and in a price file's currency, source and date are not written raw. Text output shows them as `\u00XX`. JSON keeps the character.
+- A UTF-8 byte order mark at the start of a text file is skipped, and still counts in the bytes of the first line.
+
 ## [0.1.1] - 2026-10-11
 
 ### Security
