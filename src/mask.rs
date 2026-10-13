@@ -41,7 +41,7 @@ pub fn mask_detail(message: &str) -> (String, MaskCounts) {
     let (text, ts) = replace(message, timestamp_re(), "<TS>");
     let (text, uuid) = replace(&text, uuid_re(), "<UUID>");
     let (text, ip) = mask_ips(&text);
-    let (text, email) = replace(&text, email_re(), "<EMAIL>");
+    let (text, email) = mask_emails(&text);
     let (text, secret) = mask_secrets(&text);
     let (text, hex, num_hex) = mask_hex(&text);
     let (text, num, var) = mask_numbers(&text);
@@ -128,6 +128,55 @@ fn boundary_at_end(input: &str, index: usize) -> bool {
     match input[index..].chars().next() {
         None => true,
         Some(next) => !next.is_ascii_alphanumeric(),
+    }
+}
+
+/// Like `replace`, but a match must not swallow a keyword that introduces a secret.
+/// `id=a@b.co.token=hunterpass` would otherwise take `.token` as the domain and
+/// leave `hunterpass` with no key.
+fn mask_emails(input: &str) -> (String, u64) {
+    let mut out = String::with_capacity(input.len());
+    let mut last = 0;
+    let mut count = 0u64;
+    for hit in email_re().find_iter(input) {
+        if !boundary_at(input, hit.start()) || !boundary_at_end(input, hit.end()) {
+            continue;
+        }
+        let Some(end) = email_end_keeping_key(input, hit.start(), hit.end()) else {
+            continue;
+        };
+        if end <= hit.start() || !boundary_at_end(input, end) {
+            continue;
+        }
+        out.push_str(&input[last..hit.start()]);
+        out.push_str("<EMAIL>");
+        last = end;
+        count += 1;
+    }
+    out.push_str(&input[last..]);
+    (out, count)
+}
+
+/// Cut a trailing `.keyword` off an e-mail when a secret separator follows it.
+/// `None` drops the whole match so the keyword stays for secret masking.
+fn email_end_keeping_key(input: &str, start: usize, end: usize) -> Option<usize> {
+    let matched = &input[start..end];
+    let Some(dot) = matched.rfind('.') else {
+        return Some(end);
+    };
+    let segment = &matched[dot + 1..];
+    if segment.is_empty() || !contains_key(segment) || after_separator(input, end).is_none() {
+        return Some(end);
+    }
+    let cut = start + dot;
+    let prefix = &input[start..cut];
+    let still_email = email_re()
+        .find(prefix)
+        .is_some_and(|hit| hit.start() == 0 && hit.end() == prefix.len());
+    if still_email {
+        Some(cut)
+    } else {
+        None
     }
 }
 
@@ -430,10 +479,11 @@ fn mask_secrets(input: &str) -> (String, u64) {
     while i < input.len() {
         if let Some((value_start, value_end)) = secret_at(input, i) {
             let value = &input[value_start..value_end];
-            // An ordinary key whose value is itself a key (`token: Bearer ...`).
+            // `token: Bearer abc` — the value is exactly a keyword that has its own
+            // value, so masking continues there. A longer secret that only contains
+            // a keyword (`tokenHunterWordHere`, `secretPass1`) is the value itself.
             // `Authorization` does not do this: the scheme word belongs to the value.
-            let inner = key_len_at(input, value_start).is_some_and(|len| len == value.len())
-                && value_range(input, value_end).is_some();
+            let inner = is_exact_key(value) && value_range(input, value_end).is_some();
             if inner {
                 i = value_start;
                 continue;
@@ -528,8 +578,22 @@ fn fold_key_byte(byte: u8) -> u8 {
     }
 }
 
-/// Value after a key. Spaces around `=` and `:` belong to the separator.
-/// A quote between the key and `:` belongs to JSON (`"key": "value"`).
+/// The whole token is one KEYS word (`bearer`, `api_key`), not merely a
+/// longer word that contains one (`tokenHunterWordHere`).
+fn is_exact_key(token: &str) -> bool {
+    let bytes = token.as_bytes();
+    KEYS.iter().any(|key| {
+        key.len() == bytes.len()
+            && bytes
+                .iter()
+                .zip(key.as_bytes())
+                .all(|(got, want)| fold_key_byte(*got) == *want)
+    })
+}
+
+/// Value after a key. Spaces and tabs around `=` and `:` belong to the separator.
+/// A quote between the key and `:` belongs to JSON (`"key": "value"`), including
+/// a backslash-escaped quote in a message (`{\"key\":\"value\"}`).
 fn value_range(input: &str, after_key: usize) -> Option<(usize, usize)> {
     secret_span(input, after_key, token_end)
 }
@@ -553,30 +617,80 @@ fn secret_span(
     (end > start).then_some((start, end))
 }
 
+/// A `"` or `'` that opens a secret value. `escaped` means the source wrote
+/// `\"` or `\'`, which still delimits the value in escaped JSON.
+#[derive(Clone, Copy)]
+struct OpenQuote {
+    ch: char,
+    len: usize,
+    escaped: bool,
+}
+
 /// End of a secret value, from the first character of the value.
 /// If it starts quoted, the closing quote when a suitable separator
-/// follows it; `\` keeps the next character in the value.
-/// With no such close, through the end of the message. Otherwise the token.
+/// follows it; inside a real quote, `\` keeps the next character in the value.
+/// With no such close, through the end of the message. An unquoted `[` or `{`
+/// runs at least through the matching bracket. Otherwise the token.
 fn secret_value_end(
     input: &str,
     start: usize,
-    opening: Option<char>,
+    opening: Option<OpenQuote>,
     token_end_2: fn(&str, usize) -> usize,
 ) -> usize {
-    match opening {
-        Some(quote) => closing_quote(input, start, quote),
-        None => token_end_2(input, start),
+    if let Some(mark) = opening {
+        return closing_quote(input, start, mark.ch, mark.escaped);
     }
+    let token = token_end_2(input, start);
+    if opens_bracket(input, start) {
+        bracket_value_end(input, start).max(token)
+    } else {
+        token
+    }
+}
+
+fn opens_bracket(input: &str, start: usize) -> bool {
+    matches!(input[start..].chars().next(), Some('[' | '{'))
+}
+
+/// End past the `[` or `{` at `start`, including nested brackets and quoted text.
+/// No matching closer means the rest of the message: mask rather than leak.
+fn bracket_value_end(input: &str, start: usize) -> usize {
+    let mut depth = 0i32;
+    let mut i = start;
+    while i < input.len() {
+        let ch = input[i..].chars().next().expect("index on a char boundary");
+        let len = ch.len_utf8();
+        if ch == '"' || ch == '\'' {
+            let end = closing_quote(input, i + len, ch, false);
+            if end >= input.len() {
+                return input.len();
+            }
+            i = end + ch.len_utf8();
+            continue;
+        }
+        if ch == '[' || ch == '{' {
+            depth += 1;
+        } else if ch == ']' || ch == '}' {
+            depth -= 1;
+            i += len;
+            if depth == 0 {
+                return i;
+            }
+            continue;
+        }
+        i += len;
+    }
+    input.len()
 }
 
 fn token_end_of_message(input: &str, _start: usize) -> usize {
     input.len()
 }
 
-fn after_separator(input: &str, after_key: usize) -> Option<(usize, Option<char>)> {
+fn after_separator(input: &str, after_key: usize) -> Option<(usize, Option<OpenQuote>)> {
     let mut i = skip_quote_before_separator(input, after_key);
     let first = input[i..].chars().next()?;
-    if first == ' ' {
+    if is_sep_ws(first) {
         i = skip_spaces(input, i);
         if matches!(input[i..].chars().next(), Some('=' | ':')) {
             i += 1;
@@ -589,13 +703,16 @@ fn after_separator(input: &str, after_key: usize) -> Option<(usize, Option<char>
         return None;
     }
     let opening = quote_at(input, i);
-    if let Some(quote) = opening {
-        i += quote.len_utf8();
+    if let Some(mark) = opening {
+        i += mark.len;
     }
     Some((i, opening))
 }
 
-fn closing_quote(input: &str, mut i: usize, quote: char) -> usize {
+fn closing_quote(input: &str, mut i: usize, quote: char, escaped_delim: bool) -> usize {
+    if escaped_delim {
+        return closing_escaped_quote(input, i, quote);
+    }
     let mut escaped = false;
     while let Some(ch) = input[i..].chars().next() {
         let len = ch.len_utf8();
@@ -607,6 +724,28 @@ fn closing_quote(input: &str, mut i: usize, quote: char) -> usize {
             return i;
         }
         i += len;
+    }
+    input.len()
+}
+
+/// Closer for a value opened by `\"` or `\'`. The backslash is part of the
+/// delimiter, not an escape inside the value.
+fn closing_escaped_quote(input: &str, mut i: usize, quote: char) -> usize {
+    while i < input.len() {
+        let ch = input[i..].chars().next().expect("index on a char boundary");
+        if ch == '\\' {
+            let after = i + 1;
+            let Some(next) = input[after..].chars().next() else {
+                return input.len();
+            };
+            let past = after + next.len_utf8();
+            if next == quote && quote_closes(input, past) {
+                return i;
+            }
+            i = past;
+            continue;
+        }
+        i += ch.len_utf8();
     }
     input.len()
 }
@@ -644,10 +783,10 @@ fn field_after(input: &str, mut i: usize) -> bool {
 }
 
 fn skip_quote_before_separator(input: &str, i: usize) -> usize {
-    let Some(quote) = quote_at(input, i) else {
+    let Some(mark) = quote_at(input, i) else {
         return i;
     };
-    let j = skip_spaces(input, i + quote.len_utf8());
+    let j = skip_spaces(input, i + mark.len);
     if matches!(input[j..].chars().next(), Some('=' | ':')) {
         j
     } else {
@@ -655,24 +794,46 @@ fn skip_quote_before_separator(input: &str, i: usize) -> usize {
     }
 }
 
-fn quote_at(input: &str, i: usize) -> Option<char> {
-    match input[i..].chars().next() {
-        Some(ch @ ('"' | '\'')) => Some(ch),
+/// A raw quote, or `\"` / `\'` when the message holds escaped JSON.
+fn quote_at(input: &str, i: usize) -> Option<OpenQuote> {
+    let mut chars = input[i..].chars();
+    match chars.next() {
+        Some(ch @ ('"' | '\'')) => Some(OpenQuote {
+            ch,
+            len: ch.len_utf8(),
+            escaped: false,
+        }),
+        Some('\\') => match chars.next() {
+            Some(ch @ ('"' | '\'')) => Some(OpenQuote {
+                ch,
+                len: 1 + ch.len_utf8(),
+                escaped: true,
+            }),
+            _ => None,
+        },
         _ => None,
     }
 }
 
+fn is_sep_ws(ch: char) -> bool {
+    ch == ' ' || ch == '\t'
+}
+
 fn skip_spaces(input: &str, mut i: usize) -> usize {
-    while i < input.len() && input[i..].starts_with(' ') {
-        i += 1;
+    while let Some(ch) = input[i..].chars().next() {
+        if !is_sep_ws(ch) {
+            break;
+        }
+        i += ch.len_utf8();
     }
     i
 }
 
 fn token_end(input: &str, start: usize) -> usize {
     input[start..]
-        .find(' ')
-        .map_or(input.len(), |rel| start + rel)
+        .char_indices()
+        .find(|(_, ch)| is_sep_ws(*ch))
+        .map_or(input.len(), |(rel, _)| start + rel)
 }
 
 /// Hex only with a letter a-f and a digit. Digits only, even 8 or
@@ -1336,5 +1497,67 @@ mod tests {
         // No key: an apostrophe does not mask the line.
         assert_eq!(mask("user='ada' msg=ok"), "user='ada' msg=ok");
         assert_eq!(mask("it's a fine day"), "it's a fine day");
+    }
+
+    #[test]
+    fn secret_leaks_tab_json_bracket_email_and_keyword() {
+        let cases = [
+            ("login password\thunter", "login password\t<SECRET>"),
+            (
+                r#"login {\"password\":\"open sesame\"}"#,
+                r#"login {\"password\":\"<SECRET>\"}"#,
+            ),
+            (
+                r#"login password=["alpha", "beta"]"#,
+                "login password=<SECRET>",
+            ),
+            (
+                r#"login secret={"a": "hunter", "b": "two"}"#,
+                "login secret=<SECRET>",
+            ),
+            (
+                "login id=a@b.co.token=hunterpass",
+                "login id=<EMAIL>.token=<SECRET>",
+            ),
+            (
+                "api_key=tokenHunterWordHere next=ok",
+                "api_key=<SECRET> next=ok",
+            ),
+            ("password=secretPass1", "password=<SECRET>"),
+            ("password=TokenValueXyzHere", "password=<SECRET>"),
+            // A value that is exactly a keyword still hands off to that keyword.
+            ("token: Bearer abc", "token: Bearer <SECRET>"),
+            // The scheme word stays inside the Authorization value.
+            ("Authorization: Bearer x", "Authorization: <SECRET>"),
+        ];
+        let secrets = [
+            "hunter",
+            "open sesame",
+            "alpha",
+            "beta",
+            "two",
+            "hunterpass",
+            "tokenHunterWordHere",
+            "secretPass1",
+            "TokenValueXyzHere",
+        ];
+        for (input_text, expected) in cases {
+            let (text_body, n) = mask_detail(input_text);
+            assert_eq!(text_body, expected, "{input_text}");
+            assert!(n.secret >= 1, "{input_text} -> {text_body}");
+            for piece in secrets {
+                assert!(!text_body.contains(piece), "{piece} in {text_body}");
+            }
+        }
+        // `abc` is the secret after Bearer, not a leftover word.
+        assert!(!mask("token: Bearer abc").contains("abc"));
+        assert_eq!(
+            mask("password=secretPass1 next=ok"),
+            "password=<SECRET> next=ok"
+        );
+        assert_eq!(
+            mask("password=TokenValueXyzHere next=ok"),
+            "password=<SECRET> next=ok"
+        );
     }
 }

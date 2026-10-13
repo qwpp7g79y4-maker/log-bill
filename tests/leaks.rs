@@ -1,5 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::io::Write;
+use std::io::{BufWriter, Write};
 use std::path::PathBuf;
 use std::process::Command;
 use std::time::Instant;
@@ -197,6 +197,7 @@ fn json_string(s: &str) -> String {
         match ch {
             '"' => stdout_text.push_str("\\\""),
             '\\' => stdout_text.push_str("\\\\"),
+            '\t' => stdout_text.push_str("\\t"),
             _ => stdout_text.push(ch),
         }
     }
@@ -514,6 +515,89 @@ fn overview_text(
     line_list.join("\n")
 }
 
+/// Tab separator, escaped JSON, a whole array or object, and a value that
+/// itself contains a keyword. The canary is `QX` in `body` and is filled in here.
+fn append_mask_dimensions(
+    paths: &[PathBuf],
+    contexts: &[Context],
+    keys: &[String],
+    labels: &mut Vec<String>,
+    counts: &mut [usize],
+) -> (usize, usize, usize, usize) {
+    let sample = format!("note {{ \\\"{key}\\\" : \\\"QX\\\" }}", key = "password");
+    assert_eq!(sample, r#"note { \"password\" : \"QX\" }"#);
+    let mut files: Vec<BufWriter<std::fs::File>> = paths
+        .iter()
+        .map(|path| {
+            BufWriter::new(
+                std::fs::OpenOptions::new()
+                    .append(true)
+                    .open(path)
+                    .expect("append"),
+            )
+        })
+        .collect();
+    let mut tab_n = 0usize;
+    let mut escaped_n = 0usize;
+    let mut bracket_n = 0usize;
+    let mut keyword_n = 0usize;
+    for key_name in keys {
+        for (item_index, context) in contexts.iter().enumerate() {
+            let forms = [
+                (format!("{key_name}\tQX"), "tab", "tab"),
+                (format!("{key_name}\t=\tQX"), "tab-eq", "tab"),
+                (format!("{key_name}\t:\tQX"), "tab-colon", "tab"),
+                (
+                    format!("note {{ \\\"{key_name}\\\" : \\\"QX\\\" }}"),
+                    "escaped-json",
+                    "escaped-json",
+                ),
+                (
+                    format!("note {{ \\\"{key_name}\\\" : \\\"zz QX\\\" }}"),
+                    "escaped-json-space",
+                    "escaped-json",
+                ),
+                (format!("{key_name}=[\"zz\", \"QX\"]"), "array", "array"),
+                (
+                    format!("{key_name}={{\"a\": \"zz\", \"b\": \"QX\"}}"),
+                    "object",
+                    "object",
+                ),
+                (format!("{key_name}=tokenQX next=ok"), "keyword", "keyword"),
+                (format!("{key_name}=secretQX"), "keyword-end", "keyword"),
+                (
+                    format!("{key_name}=TokenQX next=ok"),
+                    "keyword-token",
+                    "keyword",
+                ),
+            ];
+            for (body, sep, value) in forms {
+                let index = labels.len();
+                let piece = canary(index);
+                assert!(body.contains("QX"), "{body}");
+                let line_body = body.replace("QX", &piece);
+                assert!(line_body.contains(&piece), "{line_body}");
+                assert!(!line_body.contains("QX"), "{line_body}");
+                let log_line = log_line(*context, &line_body);
+                labels.push(format!(
+                    "{key_name}\t{sep}\tnone\t{value}\t{}\tnone",
+                    context_name(*context)
+                ));
+                writeln!(files[item_index], "{log_line}").expect("line");
+                counts[item_index] += 1;
+                match value {
+                    "tab" => tab_n += 1,
+                    "escaped-json" => escaped_n += 1,
+                    "array" | "object" => bracket_n += 1,
+                    "keyword" => keyword_n += 1,
+                    other => panic!("unknown dimension {other}"),
+                }
+            }
+        }
+    }
+    (tab_n, escaped_n, bracket_n, keyword_n)
+}
+
 /// Every KEYS word, bare and with `_`/`-` before or after, in three case forms,
 /// plus Authorization and Proxy-Authorization. One digit-free canary per combination.
 /// Extra: an unescaped quote right before the canary, and unquoted digits stuck to it.
@@ -775,6 +859,14 @@ fn generative_leak_test() {
         }
     }
 
+    let (tab_n, escaped_n, bracket_n, keyword_n) =
+        append_mask_dimensions(&paths, &contexts, &keys, &mut labels, &mut counts);
+    let per_key = keys.len() * contexts.len();
+    assert_eq!(tab_n, per_key * 3, "tab separator");
+    assert_eq!(escaped_n, per_key * 2, "escaped JSON");
+    assert_eq!(bracket_n, per_key * 2, "array or object");
+    assert_eq!(keyword_n, per_key * 3, "keyword inside the value");
+
     let mut outcomes = Vec::new();
     for (item_index, context) in contexts.iter().enumerate() {
         let text = std::fs::read_to_string(&paths[item_index]).expect("read back");
@@ -850,7 +942,7 @@ fn generative_leak_test() {
     }
     let text = overview_text(&per_mode, &errors);
     eprintln!(
-        "generative leak test: {n} combinations, {} with an unescaped quote in the value (one apostrophe {one_apostrophe}, several apostrophes {more_apostrophes}, double quote {double_quote}), unquoted digits {} (digit before {digit_before}, digit after {digit_after}), compact lines with <SECRET>: {compact_with} of {compact_all}, {} ms",
+        "generative leak test: {n} combinations, {} with an unescaped quote in the value (one apostrophe {one_apostrophe}, several apostrophes {more_apostrophes}, double quote {double_quote}), unquoted digits {} (digit before {digit_before}, digit after {digit_after}), tab separator {tab_n}, escaped JSON {escaped_n}, array/object {bracket_n}, keyword in value {keyword_n}, compact lines with <SECRET>: {compact_with} of {compact_all}, {} ms",
         one_apostrophe + more_apostrophes + double_quote,
         digit_before + digit_after,
         clock.elapsed().as_millis()
@@ -935,6 +1027,101 @@ fn quoted_examples_fully_masked() {
             assert!(!err.contains(piece), "{mode} stderr leaks {piece}");
         }
     }
+}
+
+/// Text, `--explain`, `--json` and diff must hide `secrets`.
+fn assert_masked_line(name: &str, line: &str, secrets: &[&str]) {
+    let dir = TempDir(std::env::temp_dir().join(format!("log-bill-{name}-{}", std::process::id())));
+    std::fs::create_dir_all(&dir.0).expect("temporary directory");
+    let file_path = dir.0.join("line.log");
+    std::fs::write(&file_path, format!("{line}\n")).expect("line");
+    let arg = file_path.to_str().expect("path");
+    for (mode, args) in [
+        ("scan", vec!["scan", arg]),
+        ("scan --explain", vec!["scan", "--explain", arg]),
+        ("scan --json", vec!["scan", "--json", arg]),
+        ("diff", vec!["diff", arg, arg]),
+        ("diff --json", vec!["diff", "--json", arg, arg]),
+    ] {
+        let (code, stdout_text, err) = run_tool(&args);
+        assert_eq!(code, 0, "{name} {mode}\n{stdout_text}\n{err}");
+        assert!(err.is_empty(), "{name} {mode} stderr: {err}");
+        assert!(
+            stdout_text.contains("<SECRET>"),
+            "{name} {mode} missing <SECRET>\n{stdout_text}"
+        );
+        for piece in secrets {
+            assert!(
+                !stdout_text.contains(piece),
+                "{name} {mode} leaks {piece}\n{stdout_text}"
+            );
+            assert!(!err.contains(piece), "{name} {mode} stderr leaks {piece}");
+        }
+    }
+}
+
+#[test]
+fn tab_separator_masks_hunter() {
+    assert_masked_line("tab", "login password\thunter", &["hunter"]);
+}
+
+#[test]
+fn escaped_json_masks_open_sesame() {
+    assert_masked_line(
+        "escaped-json",
+        r#"login {\"password\":\"open sesame\"}"#,
+        &["open sesame", "sesame"],
+    );
+}
+
+#[test]
+fn array_value_masks_alpha_and_beta() {
+    assert_masked_line(
+        "array",
+        r#"login password=["alpha", "beta"]"#,
+        &["alpha", "beta"],
+    );
+}
+
+#[test]
+fn object_value_masks_hunter_and_two() {
+    assert_masked_line(
+        "object",
+        r#"login secret={"a": "hunter", "b": "two"}"#,
+        &["hunter", "two"],
+    );
+}
+
+#[test]
+fn email_does_not_swallow_the_token_key() {
+    assert_masked_line(
+        "email-key",
+        "login id=a@b.co.token=hunterpass",
+        &["hunterpass"],
+    );
+}
+
+#[test]
+fn keyword_in_value_masks_token_hunter() {
+    assert_masked_line(
+        "keyword-token",
+        "api_key=tokenHunterWordHere next=ok",
+        &["tokenHunterWordHere"],
+    );
+}
+
+#[test]
+fn keyword_in_value_masks_secret_pass() {
+    assert_masked_line("keyword-secret", "password=secretPass1", &["secretPass1"]);
+}
+
+#[test]
+fn keyword_in_value_masks_token_value() {
+    assert_masked_line(
+        "keyword-token-value",
+        "password=TokenValueXyzHere",
+        &["TokenValueXyzHere"],
+    );
 }
 
 #[test]
