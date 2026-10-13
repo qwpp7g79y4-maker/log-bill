@@ -36,10 +36,10 @@ pub fn show_controls(text: &str) -> String {
     out
 }
 
-/// `P` plus the first 8 hex digits of FNV-1a 64-bit over the pattern text.
+/// `P` plus all 16 hex digits of FNV-1a 64-bit over the pattern text.
+/// The high 32 bits alone collide: `ev brceg` and `ev czbab` share them.
 pub fn pattern_id(text: &str) -> String {
-    let high = (fnv1a64(text.as_bytes()) >> 32) as u32;
-    format!("P{high:08x}")
+    format!("P{:016x}", fnv1a64(text.as_bytes()))
 }
 
 /// Share as a percent with 1 decimal, period as separator. 667 becomes `66.7`.
@@ -75,64 +75,82 @@ struct Acc {
     masks: mask::MaskCounts,
 }
 
-/// Group lines by the masked message. Bytes stay the raw bytes.
-/// Control characters stay in the pattern text. Text output shows them
-/// as `\u00XX`; JSON keeps the character. The pattern id is the hash of
-/// the masked text.
-/// Sort: bytes descending, then pattern text ascending. `top` keeps
-/// the first N and folds the rest into `other`.
-pub fn group(lines: &[Line], top: Option<u32>) -> Stats {
-    let mut groups: BTreeMap<String, Acc> = BTreeMap::new();
-    for line in lines {
+/// Counts masked lines. The lines themselves are not kept.
+#[derive(Default)]
+pub struct Grouper {
+    groups: BTreeMap<String, Acc>,
+}
+
+impl Grouper {
+    pub fn push(&mut self, line: &Line) {
         let (masked, counts) = mask::mask_detail(&line.text);
-        let acc = groups.entry(masked).or_default();
+        let acc = self.groups.entry(masked).or_default();
         acc.lines += 1;
         acc.bytes += line.bytes;
         acc.masks.add(counts);
     }
-    let total_lines = groups.values().map(|acc| acc.lines).sum();
-    let total_bytes = groups.values().map(|acc| acc.bytes).sum();
-    let mut patterns: Vec<Pattern> = groups
-        .into_iter()
-        .map(|(text, acc)| Pattern {
-            id: pattern_id(&text),
-            share_tenths: share_tenths(acc.bytes, total_bytes),
-            text,
-            lines: acc.lines,
-            bytes: acc.bytes,
-            rest: false,
-            masks: acc.masks,
-        })
-        .collect();
-    patterns.sort_by(|a, b| b.bytes.cmp(&a.bytes).then_with(|| a.text.cmp(&b.text)));
-    if let Some(n) = top {
-        let n = n as usize;
-        if patterns.len() > n {
-            let rest = patterns.split_off(n);
-            let lines = rest.iter().map(|pattern| pattern.lines).sum();
-            let bytes = rest.iter().map(|pattern| pattern.bytes).sum();
-            let masks = rest
-                .iter()
-                .fold(mask::MaskCounts::default(), |mut acc, pattern| {
-                    acc.add(pattern.masks);
-                    acc
+
+    /// Sort: bytes descending, then pattern text ascending. `top` keeps
+    /// the first N and folds the rest into `other`.
+    pub fn finish(self, top: Option<u32>) -> Stats {
+        let total_lines = self.groups.values().map(|acc| acc.lines).sum();
+        let total_bytes = self.groups.values().map(|acc| acc.bytes).sum();
+        let mut patterns: Vec<Pattern> = self
+            .groups
+            .into_iter()
+            .map(|(text, acc)| Pattern {
+                id: pattern_id(&text),
+                share_tenths: share_tenths(acc.bytes, total_bytes),
+                text,
+                lines: acc.lines,
+                bytes: acc.bytes,
+                rest: false,
+                masks: acc.masks,
+            })
+            .collect();
+        patterns.sort_by(|a, b| b.bytes.cmp(&a.bytes).then_with(|| a.text.cmp(&b.text)));
+        if let Some(n) = top {
+            let n = n as usize;
+            if patterns.len() > n {
+                let rest = patterns.split_off(n);
+                let lines = rest.iter().map(|pattern| pattern.lines).sum();
+                let bytes = rest.iter().map(|pattern| pattern.bytes).sum();
+                let masks = rest
+                    .iter()
+                    .fold(mask::MaskCounts::default(), |mut acc, pattern| {
+                        acc.add(pattern.masks);
+                        acc
+                    });
+                patterns.push(Pattern {
+                    id: OTHER.to_owned(),
+                    text: OTHER.to_owned(),
+                    lines,
+                    bytes,
+                    share_tenths: share_tenths(bytes, total_bytes),
+                    rest: true,
+                    masks,
                 });
-            patterns.push(Pattern {
-                id: OTHER.to_owned(),
-                text: OTHER.to_owned(),
-                lines,
-                bytes,
-                share_tenths: share_tenths(bytes, total_bytes),
-                rest: true,
-                masks,
-            });
+            }
+        }
+        Stats {
+            total_lines,
+            total_bytes,
+            patterns,
         }
     }
-    Stats {
-        total_lines,
-        total_bytes,
-        patterns,
+}
+
+/// Group lines by the masked message. Bytes stay the raw bytes.
+/// Control characters stay in the pattern text. Text output shows them
+/// as `\u00XX`; JSON keeps the character. The pattern id is the hash of
+/// the masked text.
+#[cfg(test)]
+pub fn group(lines: &[Line], top: Option<u32>) -> Stats {
+    let mut grouped = Grouper::default();
+    for line in lines {
+        grouped.push(line);
     }
+    grouped.finish(top)
 }
 
 /// Tenths of a percent. A half step rounds away from zero, as with amounts.
@@ -181,9 +199,14 @@ mod tests {
     #[test]
     fn fnv1a_empty_text() {
         assert_eq!(format!("{:016x}", fnv1a64(b"")), "cbf29ce484222325");
-        assert_eq!(pattern_id(""), "Pcbf29ce4");
+        assert_eq!(pattern_id(""), "Pcbf29ce484222325");
         assert_eq!(format!("{:016x}", fnv1a64(b"a")), "af63dc4c8601ec8c");
-        assert_eq!(pattern_id("a"), "Paf63dc4c");
+        assert_eq!(pattern_id("a"), "Paf63dc4c8601ec8c");
+        // The high 32 bits match. The full hash does not.
+        assert_eq!(fnv1a64(b"ev brceg") >> 32, fnv1a64(b"ev czbab") >> 32);
+        assert_eq!(pattern_id("ev brceg"), "P6b31a22abd1e8f47");
+        assert_eq!(pattern_id("ev czbab"), "P6b31a22aba8b4370");
+        assert_ne!(pattern_id("ev brceg"), pattern_id("ev czbab"));
     }
 
     #[test]
@@ -209,7 +232,7 @@ mod tests {
 
         let high_pattern = &stats.patterns[0];
         assert_eq!(high_pattern.text, "hoog");
-        assert_eq!(high_pattern.id, "P4033e9cc");
+        assert_eq!(high_pattern.id, "P4033e9cc7e756726");
         assert!(!high_pattern.rest);
         assert_eq!(high_pattern.lines, 2);
         assert_eq!(high_pattern.bytes, 2000);
@@ -218,7 +241,7 @@ mod tests {
 
         let low = &stats.patterns[1];
         assert_eq!(low.text, "laag");
-        assert_eq!(low.id, "P0493cfad");
+        assert_eq!(low.id, "P0493cfad908bf0de");
         assert_eq!(low.lines, 1);
         assert_eq!(low.bytes, 500);
         assert_eq!(low.share_tenths, 167);
@@ -226,7 +249,7 @@ mod tests {
 
         let middle = &stats.patterns[2];
         assert_eq!(middle.text, "midden");
-        assert_eq!(middle.id, "P5be0d38d");
+        assert_eq!(middle.id, "P5be0d38d7d307304");
         assert_eq!(middle.lines, 1);
         assert_eq!(middle.bytes, 500);
         assert_eq!(middle.share_tenths, 167);

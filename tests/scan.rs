@@ -715,7 +715,7 @@ fn rules_exit_2_without_content() {
 fn explain_example_1m() {
     // 999_999 times 'q' plus `\n` = 1_000_000 bytes.
     // One token of 32 or more characters becomes one `<VAR>`.
-    // FNV-1a 64 of `<VAR>` is 5a76f64fc19b374a, pattern id P5a76f64f.
+    // FNV-1a 64 of `<VAR>` is 5a76f64fc19b374a, pattern id P5a76f64fc19b374a.
     // Window 1m, factor 1440, gb_bytes 1_000_000_000, ingest 1/10.
     // 1_000_000 × 1440 / 1_000_000_000 × 1/10 = 0.144 -> shown 0.14 per day.
     // 0.144 × 30 = 4.32 -> shown 4.32 per month.
@@ -791,10 +791,10 @@ fn explain_masks_and_line_number() {
     }
 
     let block = "\
-masks P5a76f64f: <VAR> 1
-rule line P5a76f64f: 1
-masks P062a7bab: none
-rule line P062a7bab: none
+masks P5a76f64fc19b374a: <VAR> 1
+rule line P5a76f64fc19b374a: 1
+masks P062a7bab95453d06: none
+rule line P062a7bab95453d06: none
 ";
     assert!(text.contains(block), "{text}");
     assert!(
@@ -805,7 +805,7 @@ rule line P062a7bab: none
     );
     assert!(
         text.contains(
-            "calculation P5a76f64f ingest: 6 × 1 / 6 × 1 = 1 → 1.00 per day, × 30 = 30 → 30.00 per month\n"
+            "calculation P5a76f64fc19b374a ingest: 6 × 1 / 6 × 1 = 1 → 1.00 per day, × 30 = 30 → 30.00 per month\n"
         ),
         "{text}"
     );
@@ -817,7 +817,7 @@ rule line P062a7bab: none
     );
     assert!(
         text.contains(
-            "calculation savings P062a7bab ingest: 0 × 1 / 6 × 1 = 0 → 0.00 per day, × 30 = 0 → 0.00 per month\n"
+            "calculation savings P062a7bab95453d06 ingest: 0 × 1 / 6 × 1 = 0 → 0.00 per day, × 30 = 0 → 0.00 per month\n"
         ),
         "{text}"
     );

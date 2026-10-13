@@ -49,8 +49,8 @@ Een logbestand groeperen tot patronen:
 ```console
 $ log-bill scan tests/fixtures/scan-text.log
 total: 3 lines, 118 bytes
-Pe19dc70d  2 lines  108 bytes  91.5%  user <NUM> failed at <TS> from <IP>
-P46ab1618  1 line  10 bytes  8.5%  disk full
+Pe19dc70d8299c276  2 lines  108 bytes  91.5%  user <NUM> failed at <TS> from <IP>
+P46ab161881a7d411  1 line  10 bytes  8.5%  disk full
 ```
 
 Een steekproef van één minuut omrekenen naar een dag en een maand:
@@ -58,8 +58,8 @@ Een steekproef van één minuut omrekenen naar een dag en een maand:
 ```console
 $ log-bill scan --window 1m tests/fixtures/scan-text.log
 total: 3 lines, 118 bytes
-Pe19dc70d  2 lines  108 bytes  91.5%  user <NUM> failed at <TS> from <IP>
-P46ab1618  1 line  10 bytes  8.5%  disk full
+Pe19dc70d8299c276  2 lines  108 bytes  91.5%  user <NUM> failed at <TS> from <IP>
+P46ab161881a7d411  1 line  10 bytes  8.5%  disk full
 factor: 1440
 per day: 169920 bytes, 0.000 GB
 per month: 5097600 bytes, 0.005 GB
@@ -72,9 +72,9 @@ Een sample-regel simuleren:
 ```console
 $ log-bill scan --rules tests/fixtures/sample-0.1.txt tests/fixtures/sample-zero.log
 total: 1 line, 10 bytes
-P139ac555  1 line  10 bytes  100.0%  xxxxxxxxx
+P139ac555f8a88ea7  1 line  10 bytes  100.0%  xxxxxxxxx
 after rules: 1 line, 10 bytes -> 0 lines, 1 byte, savings 1 line, 9 bytes
-P139ac555  1 line, 10 bytes -> 0 lines, 1 byte, savings 1 line, 9 bytes, rule 1
+P139ac555f8a88ea7  1 line, 10 bytes -> 0 lines, 1 byte, savings 1 line, 9 bytes, rule 1
 ```
 
 `sample-zero.log` is negen letters x en een regeleinde: 1 regel, 10 bytes. `sample 0.1` houdt `floor(1 × 0.1) = 0` regels en `floor(10 × 0.1) = 1` byte over.
@@ -84,9 +84,9 @@ Twee steekproeven vergelijken:
 ```console
 $ log-bill diff tests/fixtures/diff-old.log tests/fixtures/diff-new.log
 total: 3 lines, 17 bytes -> 2 lines, 12 bytes, change -1 line, -5 bytes
-new P229176bd  0 -> 6 bytes, change +6 bytes, share 0.0% -> 50.0%, change +50.0 percentage points  gamma
-gone P7627619b  5 -> 0 bytes, change -5 bytes, share 29.4% -> 0.0%, change -29.4 percentage points  beta
-P8ac625bb  12 -> 6 bytes, change -6 bytes, share 70.6% -> 50.0%, change -20.6 percentage points  alpha
+new P229176bd1f6ba96a  0 -> 6 bytes, change +6 bytes, share 0.0% -> 50.0%, change +50.0 percentage points  gamma
+gone P7627619b954620a7  5 -> 0 bytes, change -5 bytes, share 29.4% -> 0.0%, change -29.4 percentage points  beta
+P8ac625bb85ed202b  12 -> 6 bytes, change -6 bytes, share 70.6% -> 50.0%, change -20.6 percentage points  alpha
 new patterns: 6 of 12 bytes, 50.0%
 ```
 
@@ -99,11 +99,11 @@ Prijzen komen alleen uit een JSON-bestand dat je meegeeft met `--prices` (samen 
 Elk getal is terug te voeren op deze regels. De volledige maskerregels staan in de [referentie](docs/reference.nl.md#maskering).
 
 - **Bytes:** de ruwe bytes van een regel plus 1 voor het regeleinde. Lege regels tellen niet. Bij JSON lines de bytes van de hele regel.
-- **Patroon:** het bericht met de variabele delen gemaskeerd (`<TS>`, `<UUID>`, `<IP>`, `<EMAIL>`, `<SECRET>`, `<HEX>`, `<NUM>`, `<VAR>`). Het id is `P` plus de eerste 8 hextekens van de 64-bit FNV-1a-hash van de patroontekst.
+- **Patroon:** het bericht met de variabele delen gemaskeerd (`<TS>`, `<UUID>`, `<IP>`, `<EMAIL>`, `<SECRET>`, `<HEX>`, `<NUM>`, `<VAR>`). Het id is `P` plus de 16 hextekens van de 64-bit FNV-1a-hash van de patroontekst.
 - **Aandeel:** bytes van het patroon gedeeld door de totale bytes, als procent met 1 decimaal, half van nul af afgerond.
 - **Venster:** de factor per dag is 86400 gedeeld door het venster in seconden. Een maand is `--days-per-month` dagen, standaard 30.
 - **Kosten:** per dag = bytes in de steekproef × factor / bytes per GB × prijs per GB, apart voor ingest en index. Per maand = per dag × dagen per maand. Er wordt gerekend met gehele getallen en breuken; afronden gebeurt pas bij het tonen: bedragen op 2 decimalen, GB op 3 decimalen, half van nul af.
-- **Regels:** `drop <regex>` of `sample <fractie> <regex>`, getoetst op de ruwe regel, de eerste die past wint. Een gesampled patroon houdt de verwachte waarde, één keer naar beneden afgerond voor de regels en één keer voor de bytes, onafhankelijk van elkaar. Daardoor kan een patroon op 0 regels en toch nog wat bytes uitkomen. De regex en de ruwe regel worden nooit getoond.
+- **Regels:** `drop <regex>` of `sample <fractie> <regex>`, getoetst op de ruwe regel, de eerste die past wint. Een fractie langer dan 80 tekens is ongeldig. Een gesampled patroon houdt de verwachte waarde, één keer naar beneden afgerond voor de regels en één keer voor de bytes, onafhankelijk van elkaar. Daardoor kan een patroon op 0 regels en toch nog wat bytes uitkomen. De regex en de ruwe regel worden nooit getoond.
 - **Budget:** `--budget-month` toetst op de bytes na `--rules`. De regel `total` en de kosten daarvan tonen de bytes vóór de regels; de besparing staat apart.
 
 Uitgewerkt voorbeeld (met een unit test): een steekproef van 1000000 bytes met `--window 1m` geeft factor 1440, dus 1440000000 bytes = 1.440 GB per dag. Met een ingest-prijs van 0.10 per GB is dat 0.144, getoond als 0.14 per dag, en 4.32 per maand (30 dagen).
@@ -135,7 +135,7 @@ Een eerlijke vergelijking met vijf producten. De pagina's zijn nagelezen op 8 ok
 - Geen gzip-invoer in deze versie.
 - Na een sleutelwoord (`secret`, `token`, `password`, `bearer` enzovoort) gevolgd door een spatie wordt het volgende woord altijd gemaskeerd, ook in gewone zinnen: `This is a secret mission report` → `This is a secret <SECRET> report`. Dat is bewust: liever maskeren dan lekken.
 - Een tab is ook een scheiding. Geëscapete aanhalingstekens in een bericht verbergen de waarde nog steeds (`{\"password\":\"open sesame\"}`). Een waarde die met `[` of `{` begint wordt gemaskeerd tot het bijpassende haakje (`password=["alpha", "beta"]`). Een waarde die een sleutelwoord bevat (`password=secretPass1`) wordt helemaal gemaskeerd. Een e-mailadres slikt geen sleutelwoord op dat een geheim inleidt (`id=a@b.co.token=hunterpass`).
-- Alleen gewone bestanden worden gelezen. Een FIFO, een map of een apparaat wordt geweigerd met exit 2.
+- Alleen gewone bestanden worden gelezen. Een FIFO, een symlink naar een FIFO, een map of een apparaat wordt geweigerd met exit 2, zonder op een schrijver te wachten.
 - Invoer moet UTF-8 zijn. UTF-16 en UTF-32 (bijvoorbeeld van `Out-File` of `>` in Windows PowerShell 5.1), met of zonder byte order mark, worden geweigerd met exit 2 en een melding die zegt hoe je ze omzet: `iconv -f UTF-16LE -t UTF-8 in.log > out.log`, of in PowerShell `Get-Content in.log | Out-File -Encoding utf8 out.log`. Hun NUL-bytes zouden anders een sleutel als `password` zo opknippen dat de maskering hem mist. Zonder byte order mark wordt de codering herkend aan de NUL-bytes in de eerste 4096 bytes; UTF-16-tekst die grotendeels geen ASCII is, wordt mogelijk niet herkend. NUL-bytes in UTF-8-tekst worden vóór het maskeren weggehaald, zodat ook die geen sleutel kunnen verbergen; de bytes tellen wel mee. Een UTF-8-byte order mark aan het begin van een tekstbestand wordt overgeslagen en telt mee in de bytes van de eerste regel, zodat dezelfde regel met en zonder dat teken één patroon is. Stuurtekens in een logregel en in de valuta, de bron en de datum van een prijsbestand worden niet ruw geschreven. Tekstuitvoer toont ze als `\u00XX` (ESC is `\u001b`). JSON houdt het teken en escaped het, zodat de uitvoer geldige JSON blijft.
 - Als het resultaat niet geschreven kan worden, is de exitcode 3 en de melding `could not write output`. `--help` en `--version` gebruiken diezelfde code als hun tekst niet weg kan.
 - In `--json` toont `inputs.paths` elk pad als tekst. Een bestandsnaam die geen geldige UTF-8 is (kan op Linux) wordt wel gelezen, maar getoond met U+FFFD voor de ongeldige bytes.

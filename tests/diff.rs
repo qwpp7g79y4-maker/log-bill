@@ -33,9 +33,9 @@ const ESTIMATE: &str =
 /// beta 5000/17 = 294 rem 2 -> 29.4%. New, each 6/12 = 50.0%.
 const BASIS: &str = "\
 total: 3 lines, 17 bytes -> 2 lines, 12 bytes, change -1 line, -5 bytes
-new P229176bd  0 -> 6 bytes, change +6 bytes, share 0.0% -> 50.0%, change +50.0 percentage points  gamma
-gone P7627619b  5 -> 0 bytes, change -5 bytes, share 29.4% -> 0.0%, change -29.4 percentage points  beta
-P8ac625bb  12 -> 6 bytes, change -6 bytes, share 70.6% -> 50.0%, change -20.6 percentage points  alpha
+new P229176bd1f6ba96a  0 -> 6 bytes, change +6 bytes, share 0.0% -> 50.0%, change +50.0 percentage points  gamma
+gone P7627619b954620a7  5 -> 0 bytes, change -5 bytes, share 29.4% -> 0.0%, change -29.4 percentage points  beta
+P8ac625bb85ed202b  12 -> 6 bytes, change -6 bytes, share 70.6% -> 50.0%, change -20.6 percentage points  alpha
 new patterns: 6 of 12 bytes, 50.0%
 ";
 
@@ -353,7 +353,7 @@ fn crlf_rounds_the_byte_difference() {
         "{out}"
     );
     assert!(
-        out.contains("Pe71fa219  5 -> 4 bytes, change -1 byte"),
+        out.contains("Pe71fa2190541574b  5 -> 4 bytes, change -1 byte"),
         "{out}"
     );
     assert!(
@@ -392,7 +392,7 @@ fn more_bytes_gives_plus() {
         out.contains("total: 1 line, 3 bytes -> 2 lines, 6 bytes, change +1 line, +3 bytes\n"),
         "{out}"
     );
-    assert!(out.contains("new P08a63607  0 -> 3 bytes"), "{out}");
+    assert!(out.contains("new P08a63607b54dd525  0 -> 3 bytes"), "{out}");
     assert!(out.contains("new patterns: 3 of 6 bytes, 50.0%\n"), "{out}");
     assert!(
         out.contains("change per month ingest: +0.09 EUR\n"),
@@ -430,9 +430,9 @@ fn jsonl_compares_the_message() {
         out,
         "\
 total: 2 lines, 45 bytes -> 2 lines, 46 bytes, change 0 lines, +1 byte
-new P229176bd  0 -> 20 bytes, change +20 bytes, share 0.0% -> 43.5%, change +43.5 percentage points  gamma
-gone P7627619b  19 -> 0 bytes, change -19 bytes, share 42.2% -> 0.0%, change -42.2 percentage points  beta
-P8ac625bb  26 -> 26 bytes, change 0 bytes, share 57.8% -> 56.5%, change -1.3 percentage points  alpha
+new P229176bd1f6ba96a  0 -> 20 bytes, change +20 bytes, share 0.0% -> 43.5%, change +43.5 percentage points  gamma
+gone P7627619b954620a7  19 -> 0 bytes, change -19 bytes, share 42.2% -> 0.0%, change -42.2 percentage points  beta
+P8ac625bb85ed202b  26 -> 26 bytes, change 0 bytes, share 57.8% -> 56.5%, change -1.3 percentage points  alpha
 new patterns: 20 of 46 bytes, 43.5%
 "
     );
@@ -486,7 +486,7 @@ fn diff_applies_drop_and_sample() {
         "{without}"
     );
     assert!(
-        without.contains("gone P08a63607  3 -> 0 bytes, change -3 bytes, share 14.3% -> 0.0%, change -14.3 percentage points  bb\n"),
+        without.contains("gone P08a63607b54dd525  3 -> 0 bytes, change -3 bytes, share 14.3% -> 0.0%, change -14.3 percentage points  bb\n"),
         "{without}"
     );
     assert!(!without.contains("rules applied"), "{without}");
@@ -513,9 +513,9 @@ fn diff_applies_drop_and_sample() {
         "\
 total: 4 lines, 12 bytes -> 3 lines, 9 bytes, change -1 line, -3 bytes
 rules applied: 2
-new P08915407  0 -> 3 bytes, change +3 bytes, share 0.0% -> 33.3%, change +33.3 percentage points  dd
-P089c4307  6 -> 3 bytes, change -3 bytes, share 50.0% -> 33.3%, change -16.7 percentage points  aa
-P08a24d07  6 -> 3 bytes, change -3 bytes, share 50.0% -> 33.3%, change -16.7 percentage points  cc
+new P08915407b53bac15  0 -> 3 bytes, change +3 bytes, share 0.0% -> 33.3%, change +33.3 percentage points  dd
+P089c4307b54596b7  6 -> 3 bytes, change -3 bytes, share 50.0% -> 33.3%, change -16.7 percentage points  aa
+P08a24d07b54a1363  6 -> 3 bytes, change -3 bytes, share 50.0% -> 33.3%, change -16.7 percentage points  cc
 new patterns: 3 of 9 bytes, 33.3%
 prices: EUR, source scratchpad, date 1999-01-02
 change per month ingest: -0.09 EUR

@@ -47,8 +47,8 @@ Group a log file into patterns:
 ```console
 $ log-bill scan tests/fixtures/scan-text.log
 total: 3 lines, 118 bytes
-Pe19dc70d  2 lines  108 bytes  91.5%  user <NUM> failed at <TS> from <IP>
-P46ab1618  1 line  10 bytes  8.5%  disk full
+Pe19dc70d8299c276  2 lines  108 bytes  91.5%  user <NUM> failed at <TS> from <IP>
+P46ab161881a7d411  1 line  10 bytes  8.5%  disk full
 ```
 
 Extrapolate a one-minute sample to a day and a month:
@@ -56,8 +56,8 @@ Extrapolate a one-minute sample to a day and a month:
 ```console
 $ log-bill scan --window 1m tests/fixtures/scan-text.log
 total: 3 lines, 118 bytes
-Pe19dc70d  2 lines  108 bytes  91.5%  user <NUM> failed at <TS> from <IP>
-P46ab1618  1 line  10 bytes  8.5%  disk full
+Pe19dc70d8299c276  2 lines  108 bytes  91.5%  user <NUM> failed at <TS> from <IP>
+P46ab161881a7d411  1 line  10 bytes  8.5%  disk full
 factor: 1440
 per day: 169920 bytes, 0.000 GB
 per month: 5097600 bytes, 0.005 GB
@@ -70,9 +70,9 @@ Simulate a sample rule:
 ```console
 $ log-bill scan --rules tests/fixtures/sample-0.1.txt tests/fixtures/sample-zero.log
 total: 1 line, 10 bytes
-P139ac555  1 line  10 bytes  100.0%  xxxxxxxxx
+P139ac555f8a88ea7  1 line  10 bytes  100.0%  xxxxxxxxx
 after rules: 1 line, 10 bytes -> 0 lines, 1 byte, savings 1 line, 9 bytes
-P139ac555  1 line, 10 bytes -> 0 lines, 1 byte, savings 1 line, 9 bytes, rule 1
+P139ac555f8a88ea7  1 line, 10 bytes -> 0 lines, 1 byte, savings 1 line, 9 bytes, rule 1
 ```
 
 `sample-zero.log` is nine letters x plus a newline: 1 line, 10 bytes. `sample 0.1` keeps `floor(1 × 0.1) = 0` lines and `floor(10 × 0.1) = 1` byte.
@@ -82,9 +82,9 @@ Compare two samples:
 ```console
 $ log-bill diff tests/fixtures/diff-old.log tests/fixtures/diff-new.log
 total: 3 lines, 17 bytes -> 2 lines, 12 bytes, change -1 line, -5 bytes
-new P229176bd  0 -> 6 bytes, change +6 bytes, share 0.0% -> 50.0%, change +50.0 percentage points  gamma
-gone P7627619b  5 -> 0 bytes, change -5 bytes, share 29.4% -> 0.0%, change -29.4 percentage points  beta
-P8ac625bb  12 -> 6 bytes, change -6 bytes, share 70.6% -> 50.0%, change -20.6 percentage points  alpha
+new P229176bd1f6ba96a  0 -> 6 bytes, change +6 bytes, share 0.0% -> 50.0%, change +50.0 percentage points  gamma
+gone P7627619b954620a7  5 -> 0 bytes, change -5 bytes, share 29.4% -> 0.0%, change -29.4 percentage points  beta
+P8ac625bb85ed202b  12 -> 6 bytes, change -6 bytes, share 70.6% -> 50.0%, change -20.6 percentage points  alpha
 new patterns: 6 of 12 bytes, 50.0%
 ```
 
@@ -97,11 +97,11 @@ Prices come only from a JSON file you pass with `--prices` (together with `--win
 Every number can be traced back to these rules. The full masking rules are in the [reference](docs/reference.md#masking).
 
 - **Bytes:** the raw bytes of a line plus 1 for the newline. Empty lines do not count. For JSON lines, the bytes of the whole line.
-- **Pattern:** the message with variable parts masked (`<TS>`, `<UUID>`, `<IP>`, `<EMAIL>`, `<SECRET>`, `<HEX>`, `<NUM>`, `<VAR>`). The id is `P` plus the first 8 hex characters of the 64-bit FNV-1a hash of the pattern text.
+- **Pattern:** the message with variable parts masked (`<TS>`, `<UUID>`, `<IP>`, `<EMAIL>`, `<SECRET>`, `<HEX>`, `<NUM>`, `<VAR>`). The id is `P` plus the 16 hex characters of the 64-bit FNV-1a hash of the pattern text.
 - **Share:** bytes of the pattern divided by the total bytes, shown as a percentage with 1 decimal, rounded half away from zero.
 - **Window:** the daily factor is 86400 divided by the window in seconds. A month is `--days-per-month` days, 30 by default.
 - **Cost:** per day = bytes in the sample × factor / bytes per GB × price per GB, separately for ingest and index. Per month = per day × days per month. All arithmetic uses whole numbers and fractions; rounding only happens on display: amounts to 2 decimals, GB to 3 decimals, half away from zero.
-- **Rules:** `drop <regex>` or `sample <fraction> <regex>`, tested against the raw line, first match wins. A sampled pattern keeps the expected value, rounded down once for lines and once for bytes, independently. That is why a pattern can end up with 0 lines and still some bytes. The regex and the raw line are never shown.
+- **Rules:** `drop <regex>` or `sample <fraction> <regex>`, tested against the raw line, first match wins. A fraction longer than 80 characters is invalid. A sampled pattern keeps the expected value, rounded down once for lines and once for bytes, independently. That is why a pattern can end up with 0 lines and still some bytes. The regex and the raw line are never shown.
 - **Budget:** `--budget-month` is checked against the bytes after `--rules`. The `total` line and its cost show the bytes before the rules; the savings are shown separately.
 
 Worked example (covered by a unit test): a sample of 1000000 bytes with `--window 1m` gives factor 1440, so 1440000000 bytes = 1.440 GB per day. At an ingest price of 0.10 per GB that is 0.144, shown as 0.14 per day, and 4.32 per month (30 days).
@@ -133,7 +133,7 @@ An honest comparison with five products. The pages were checked on 8 October 202
 - No gzip input in this version.
 - After a keyword (`secret`, `token`, `password`, `bearer` and so on) followed by a space, the next word is always masked, even in ordinary sentences: `This is a secret mission report` → `This is a secret <SECRET> report`. This is deliberate: better to mask than to leak.
 - A tab is a separator too. Escaped quotes in a message still hide the value (`{\"password\":\"open sesame\"}`). A value that starts with `[` or `{` is masked through the matching bracket (`password=["alpha", "beta"]`). A value that contains a keyword (`password=secretPass1`) is masked in full. An e-mail does not swallow a keyword that introduces a secret (`id=a@b.co.token=hunterpass`).
-- Only regular files are read. A FIFO, a directory or a device is refused with exit 2.
+- Only regular files are read. A FIFO, a symlink to a FIFO, a directory or a device is refused with exit 2, without waiting for a writer.
 - Input must be UTF-8. UTF-16 and UTF-32 (for example from Windows PowerShell 5.1 `Out-File` or `>`), with or without a byte order mark, are refused with exit 2 and a message that says how to convert them: `iconv -f UTF-16LE -t UTF-8 in.log > out.log`, or in PowerShell `Get-Content in.log | Out-File -Encoding utf8 out.log`. Their NUL bytes would otherwise split a key such as `password` so that masking misses it. Without a byte order mark the encoding is recognised by the NUL bytes in the first 4096 bytes; UTF-16 text that is mostly not ASCII may not be recognised. NUL bytes inside UTF-8 text are removed before masking, so they cannot hide a key either; the bytes still count. A UTF-8 byte order mark at the start of a text file is skipped and still counts in the bytes of the first line, so the same line with and without that mark is one pattern. Control characters in a log line and in the currency, source and date of a price file are not written raw. Text output shows them as `\u00XX` (ESC is `\u001b`). JSON keeps the character and escapes it, so the output stays valid JSON.
 - If the result cannot be written, the exit code is 3 and the message is `could not write output`. `--help` and `--version` use that same code when their text cannot be written.
 - In `--json`, `inputs.paths` shows each path as text. A file name that is not valid UTF-8 (possible on Linux) is still read, but shown with U+FFFD for the invalid bytes.

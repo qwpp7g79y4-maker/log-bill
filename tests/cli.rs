@@ -347,7 +347,106 @@ fn fifo_exit_2_within_two_seconds() {
     assert!(output_2.is_empty());
     assert_eq!(err, "file is not a regular file\n");
 
+    // A symlink to the FIFO. Opening must not wait for a writer.
+    let link = dir.join("link-to-fifo");
+    std::os::unix::fs::symlink("CANARY-FIFO-0001", &link).expect("symlink");
+    let link_path = link.to_str().expect("path");
+    let (code, output_2, err) = within(&["scan", link_path]);
+    assert_eq!(code, 2, "{err}");
+    assert!(output_2.is_empty());
+    assert_eq!(err, "file is not a regular file\n");
+    assert!(!err.contains("CANARY"));
+
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn sample_fraction_longer_than_80_characters_exits_2() {
+    // `0.` plus 79 zeros is 81 characters. Shorter, the same zeros are a valid
+    // fraction of 0 and the scan exits 0.
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("long-fraction");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("directory");
+    let log = dir.join("x.log");
+    let rules = dir.join("rules.txt");
+    std::fs::write(&log, "x\n").expect("log");
+    let mut fraction = String::from("0.");
+    fraction.extend(std::iter::repeat_n('0', 79));
+    assert_eq!(fraction.len(), 81);
+    std::fs::write(&rules, format!("sample {fraction} ^x$\n")).expect("rules");
+    let output = bin()
+        .args([
+            "scan",
+            "--rules",
+            rules.to_str().expect("rules path"),
+            log.to_str().expect("log path"),
+        ])
+        .output()
+        .expect("start binary");
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+    let err = String::from_utf8(output.stderr).expect("stderr");
+    assert_eq!(err, "invalid rule on line 1 of the rules file\n");
+    assert!(!err.contains(&fraction));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn ev_brceg_and_ev_czbab_get_different_ids() {
+    let path = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("id-collision.log");
+    std::fs::write(&path, "ev brceg\nev czbab\n").expect("log");
+    let output = bin().arg("scan").arg(&path).output().expect("start binary");
+    assert_eq!(output.status.code(), Some(0));
+    let out = String::from_utf8(output.stdout).expect("stdout");
+    let id = |text: &str| {
+        out.lines()
+            .find(|line| line.contains(text))
+            .expect("pattern line")
+            .split_whitespace()
+            .next()
+            .expect("id")
+            .to_owned()
+    };
+    let brceg = id("ev brceg");
+    let czbab = id("ev czbab");
+    assert_ne!(brceg, czbab);
+    assert_eq!(brceg, "P6b31a22abd1e8f47");
+    assert_eq!(czbab, "P6b31a22aba8b4370");
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn extreme_json_fields_count_both_lines() {
+    // `1e400` does not fit in a binary float. The second line nests 200 arrays.
+    let mut deep = String::from("{\"msg\":\"ok\",\"x\":");
+    deep.push_str(&"[".repeat(200));
+    deep.push('1');
+    deep.push_str(&"]".repeat(200));
+    deep.push('}');
+    let body = format!("{{\"msg\":\"ok\",\"x\":1e400}}\n{deep}\n");
+    let path = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("extreme.jsonl");
+    std::fs::write(&path, &body).expect("log");
+    let output = bin()
+        .args(["scan", "--format", "jsonl", path.to_str().expect("path")])
+        .output()
+        .expect("start binary");
+    let err = String::from_utf8(output.stderr).expect("stderr");
+    assert_eq!(output.status.code(), Some(0), "{err}");
+    let out = String::from_utf8(output.stdout).expect("stdout");
+    assert!(out.contains("total: 2 lines,"), "{out}");
+    assert!(out.contains(" 2 lines "), "{out}");
+    assert!(out.contains(" ok"), "{out}");
+    assert!(!out.contains("1e400"), "{out}");
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn ci_runs_release_tests() {
+    let yml = include_str!("../.github/workflows/ci.yml");
+    assert!(
+        yml.contains("cargo test --release"),
+        "ci.yml does not run release tests"
+    );
 }
 
 #[test]

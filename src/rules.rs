@@ -160,9 +160,13 @@ fn parse_sample(rest: &str, line_no: u64) -> Result<Option<Compiled>, RulesError
     }))
 }
 
+/// A sample fraction is at most 80 characters, the same limit as a budget.
+const MAX_FRACTION_CHARS: usize = 80;
+
 /// Decimal fraction in `0..1`: 0 counts, 1 does not. No comma, no exponent.
+/// Longer than 80 characters is invalid.
 fn parse_fraction(token: &str) -> Result<Fraction, ()> {
-    if token.starts_with('-') {
+    if token.is_empty() || token.len() > MAX_FRACTION_CHARS || token.starts_with('-') {
         return Err(());
     }
     let token = token.strip_prefix('+').unwrap_or(token);
@@ -390,10 +394,15 @@ impl Tallied {
     }
 }
 
-pub fn effect(lines: &[Line], rules: &RuleSet, stats: &Stats) -> Effect {
-    let mut groups: BTreeMap<String, Acc> = BTreeMap::new();
-    for line in lines {
-        let acc = groups.entry(mask::mask(&line.text)).or_default();
+/// Applies rules while lines are read. The lines themselves are not kept.
+#[derive(Default)]
+pub struct Folder {
+    groups: BTreeMap<String, Acc>,
+}
+
+impl Folder {
+    pub fn push(&mut self, line: &Line, rules: &RuleSet) {
+        let acc = self.groups.entry(mask::mask(&line.text)).or_default();
         acc.old_lines += 1;
         acc.old_bytes += line.bytes;
         match rules.hit(&line.raw) {
@@ -411,6 +420,22 @@ pub fn effect(lines: &[Line], rules: &RuleSet, stats: &Stats) -> Effect {
             }
         }
     }
+
+    pub fn finish(self, stats: &Stats) -> Effect {
+        finish_groups(self.groups, stats)
+    }
+}
+
+#[cfg(test)]
+pub fn effect(lines: &[Line], rules: &RuleSet, stats: &Stats) -> Effect {
+    let mut folded = Folder::default();
+    for line in lines {
+        folded.push(line, rules);
+    }
+    folded.finish(stats)
+}
+
+fn finish_groups(groups: BTreeMap<String, Acc>, stats: &Stats) -> Effect {
     // Round each real pattern first, then add the other bucket.
     let groups: BTreeMap<String, Tallied> = groups
         .into_iter()

@@ -1,4 +1,6 @@
 use std::fmt;
+use std::fs::File;
+use std::io::{BufRead, Read, Seek, SeekFrom};
 use std::path::Path;
 
 /// One line. `bytes` is the raw count, not the length of `text`.
@@ -68,30 +70,32 @@ impl fmt::Display for ReadError {
 
 impl std::error::Error for ReadError {}
 
-/// Reads a text file. Each line weighs its raw bytes plus 1 for the
-/// newline; without `\n` that +1 still counts. A `\r` just before `\n` counts.
-/// Empty lines are dropped. Invalid UTF-8 counts and is read lossily.
+/// Reads a text file one line at a time. Each line weighs its raw bytes plus 1
+/// for the newline; without `\n` that +1 still counts. A `\r` just before `\n`
+/// counts. Empty lines are dropped. Invalid UTF-8 counts and is read lossily.
 /// One UTF-8 byte order mark at the start is skipped for the line text and
 /// still counts in the bytes of the first line. UTF-16 and UTF-32 are
-/// refused, see [`detect_wide`].
-pub fn read_text(path: &Path) -> Result<Vec<Line>, ReadError> {
-    let data = read_bytes(path)?;
-    refuse_wide(&data)?;
-    Ok(text_lines(&data))
+/// refused, see [`detect_wide`]. The whole file is not held in memory.
+pub fn visit_text(path: &Path, visit: impl FnMut(Line)) -> Result<(), ReadError> {
+    visit_file(path, false, None, visit)
 }
 
 const NO_MESSAGE: &str = "<NO-MESSAGE>";
 
-/// Reads JSON lines. Bytes are those of the whole line. The message comes
-/// from `message_field` (`--message-field`), else the first present
-/// field of `message`, `msg`, and `log`. With no message text it is
-/// `<NO-MESSAGE>`. Invalid JSON stops with the line number, without the line.
-/// One UTF-8 byte order mark at the start is skipped for parsing but still
-/// counts in the bytes of the first line. UTF-16 and UTF-32 are refused.
-pub fn read_jsonl(path: &Path, message_field: Option<&str>) -> Result<Vec<Line>, ReadError> {
-    let data = read_bytes(path)?;
-    refuse_wide(&data)?;
-    json_lines(&data, message_field)
+/// Reads JSON lines one at a time. Bytes are those of the whole line. The
+/// message comes from `message_field` (`--message-field`), else the first
+/// present field of `message`, `msg`, and `log`. With no message text it is
+/// `<NO-MESSAGE>`. Unknown fields are ignored, including a number that does
+/// not fit in a binary float and a value nested hundreds of times. Invalid
+/// JSON stops with the line number, without the line. One UTF-8 byte order
+/// mark at the start is skipped for parsing but still counts in the bytes of
+/// the first line. UTF-16 and UTF-32 are refused.
+pub fn visit_jsonl(
+    path: &Path,
+    message_field: Option<&str>,
+    visit: impl FnMut(Line),
+) -> Result<(), ReadError> {
+    visit_file(path, true, message_field, visit)
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -100,23 +104,153 @@ pub enum OpenError {
     NotRegular,
 }
 
-/// Reads bytes of a regular file. `metadata` runs before `read`, so a
-/// FIFO with no writer does not hang. A symlink to a regular
-/// file counts; a symlink to a FIFO does not.
+/// Reads bytes of a regular file. The open does not block, and the file type
+/// comes from the opened file, so a path that turns into a FIFO between the
+/// name and the read does not hang. A symlink to a regular file counts; a
+/// symlink to a FIFO does not.
 pub fn read_regular(path: &Path) -> Result<Vec<u8>, OpenError> {
-    match std::fs::metadata(path) {
-        Ok(meta) if meta.is_file() => std::fs::read(path).map_err(|_| OpenError::Unreadable),
+    let mut file = open_regular(path)?;
+    let mut data = Vec::new();
+    file.read_to_end(&mut data)
+        .map_err(|_| OpenError::Unreadable)?;
+    Ok(data)
+}
+
+/// Open for reading without blocking, then keep the file only when `fstat`
+/// says it is a regular file. The type is taken from the opened descriptor,
+/// not from a second look at the path.
+fn open_regular(path: &Path) -> Result<File, OpenError> {
+    let file = open_read(path)?;
+    match file.metadata() {
+        Ok(meta) if meta.is_file() => Ok(file),
         Ok(_) => Err(OpenError::NotRegular),
         Err(_) => Err(OpenError::Unreadable),
     }
 }
 
-fn read_bytes(path: &Path) -> Result<Vec<u8>, ReadError> {
-    match read_regular(path) {
-        Ok(data) => Ok(data),
-        Err(OpenError::Unreadable) => Err(ReadError::Unreadable),
-        Err(OpenError::NotRegular) => Err(ReadError::NotRegular),
+#[cfg(unix)]
+fn open_read(path: &Path) -> Result<File, OpenError> {
+    use std::os::unix::fs::OpenOptionsExt;
+    std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(o_nonblock())
+        .open(path)
+        .map_err(|_| OpenError::Unreadable)
+}
+
+/// `O_NONBLOCK`. Linux and Android use 0x800. The BSDs, including macOS, use 0x4.
+#[cfg(unix)]
+fn o_nonblock() -> i32 {
+    if cfg!(any(
+        target_os = "macos",
+        target_os = "ios",
+        target_os = "tvos",
+        target_os = "watchos",
+        target_os = "visionos",
+        target_os = "freebsd",
+        target_os = "dragonfly",
+        target_os = "netbsd",
+        target_os = "openbsd",
+        target_os = "fuchsia",
+    )) {
+        0x4
+    } else {
+        0x800
     }
+}
+
+#[cfg(not(unix))]
+fn open_read(path: &Path) -> Result<File, OpenError> {
+    File::open(path).map_err(|_| OpenError::Unreadable)
+}
+
+fn visit_file(
+    path: &Path,
+    jsonl: bool,
+    message_field: Option<&str>,
+    visit: impl FnMut(Line),
+) -> Result<(), ReadError> {
+    let mut file = match open_regular(path) {
+        Ok(file) => file,
+        Err(OpenError::Unreadable) => return Err(ReadError::Unreadable),
+        Err(OpenError::NotRegular) => return Err(ReadError::NotRegular),
+    };
+    let prefix = read_prefix(&mut file)?;
+    refuse_wide(&prefix)?;
+    file.seek(SeekFrom::Start(0))
+        .map_err(|_| ReadError::Unreadable)?;
+    if jsonl {
+        stream_json(file, message_field, visit)
+    } else {
+        stream_text(file, visit)
+    }
+}
+
+fn read_prefix(file: &mut File) -> Result<Vec<u8>, ReadError> {
+    let mut buf = vec![0u8; SNIFF_BYTES];
+    let mut filled = 0;
+    while filled < buf.len() {
+        match file.read(&mut buf[filled..]) {
+            Ok(0) => break,
+            Ok(n) => filled += n,
+            Err(err) if err.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(_) => return Err(ReadError::Unreadable),
+        }
+    }
+    buf.truncate(filled);
+    Ok(buf)
+}
+
+fn stream_text(file: File, mut visit: impl FnMut(Line)) -> Result<(), ReadError> {
+    let mut reader = std::io::BufReader::new(file);
+    let mut buf = Vec::new();
+    let mut line_no = 0u64;
+    loop {
+        buf.clear();
+        let n = reader
+            .read_until(b'\n', &mut buf)
+            .map_err(|_| ReadError::Unreadable)?;
+        if n == 0 {
+            break;
+        }
+        line_no += 1;
+        let had_newline = buf.last() == Some(&b'\n');
+        if had_newline {
+            buf.pop();
+        }
+        if let Some(line) = text_line(&buf, had_newline, line_no) {
+            visit(line);
+        }
+    }
+    Ok(())
+}
+
+fn stream_json(
+    file: File,
+    message_field: Option<&str>,
+    mut visit: impl FnMut(Line),
+) -> Result<(), ReadError> {
+    let mut reader = std::io::BufReader::new(file);
+    let mut buf = Vec::new();
+    let mut line_no = 0u64;
+    loop {
+        buf.clear();
+        let n = reader
+            .read_until(b'\n', &mut buf)
+            .map_err(|_| ReadError::Unreadable)?;
+        if n == 0 {
+            break;
+        }
+        line_no += 1;
+        let had_newline = buf.last() == Some(&b'\n');
+        if had_newline {
+            buf.pop();
+        }
+        if let Some(line) = json_line(&buf, had_newline, line_no, message_field)? {
+            visit(line);
+        }
+    }
+    Ok(())
 }
 
 /// The UTF-8 byte order mark.
@@ -196,6 +330,7 @@ fn without_nul(text: String) -> String {
     }
 }
 
+#[cfg(test)]
 fn json_lines(data: &[u8], message_field: Option<&str>) -> Result<Vec<Line>, ReadError> {
     let mut lines = Vec::new();
     let mut start = 0;
@@ -221,6 +356,7 @@ fn json_lines(data: &[u8], message_field: Option<&str>) -> Result<Vec<Line>, Rea
     Ok(lines)
 }
 
+#[cfg(test)]
 fn push_json_line(
     lines: &mut Vec<Line>,
     raw: &[u8],
@@ -228,24 +364,35 @@ fn push_json_line(
     line_no: u64,
     message_field: Option<&str>,
 ) -> Result<(), ReadError> {
+    if let Some(line) = json_line(raw, had_newline, line_no, message_field)? {
+        lines.push(line);
+    }
+    Ok(())
+}
+
+fn json_line(
+    raw: &[u8],
+    had_newline: bool,
+    line_no: u64,
+    message_field: Option<&str>,
+) -> Result<Option<Line>, ReadError> {
     let mut content = line_body(raw, had_newline);
     if line_no == 1 {
         // The BOM is skipped for parsing; `raw.len()` below still counts it.
         content = content.strip_prefix(UTF8_BOM).unwrap_or(content);
     }
     if content.is_empty() {
-        return Ok(());
+        return Ok(None);
     }
     let raw_text =
         std::str::from_utf8(content).map_err(|_| ReadError::InvalidJson { line: line_no })?;
-    let value: serde_json::Value =
-        serde_json::from_str(raw_text).map_err(|_| ReadError::InvalidJson { line: line_no })?;
-    lines.push(Line {
-        text: without_nul(message_text(&value, message_field)),
+    let text = json_message(raw_text, message_field)
+        .map_err(|_| ReadError::InvalidJson { line: line_no })?;
+    Ok(Some(Line {
+        text: without_nul(text),
         raw: raw_text.to_owned(),
         bytes: (raw.len() + 1) as u64,
-    });
-    Ok(())
+    }))
 }
 
 fn line_body(raw: &[u8], had_newline: bool) -> &[u8] {
@@ -256,28 +403,31 @@ fn line_body(raw: &[u8], had_newline: bool) -> &[u8] {
     }
 }
 
-/// The first present key wins. A key with no text is `<NO-MESSAGE>`
-/// and does not fall through to a later field.
-fn message_text(value: &serde_json::Value, message_field: Option<&str>) -> String {
-    if let Some(name) = message_field {
-        return text_at(value, name);
+#[cfg(test)]
+fn push_line(lines: &mut Vec<Line>, raw: &[u8], had_newline: bool, line_no: u64) {
+    if let Some(line) = text_line(raw, had_newline, line_no) {
+        lines.push(line);
     }
-    for name in ["message", "msg", "log"] {
-        if value.get(name).is_some() {
-            return text_at(value, name);
-        }
-    }
-    NO_MESSAGE.to_owned()
 }
 
-fn text_at(value: &serde_json::Value, name: &str) -> String {
-    value
-        .get(name)
-        .and_then(serde_json::Value::as_str)
-        .unwrap_or(NO_MESSAGE)
-        .to_owned()
+fn text_line(raw: &[u8], had_newline: bool, line_no: u64) -> Option<Line> {
+    let mut content = line_body(raw, had_newline);
+    if line_no == 1 {
+        // Skipped for the text; `raw.len()` below still counts the mark.
+        content = content.strip_prefix(UTF8_BOM).unwrap_or(content);
+    }
+    if content.is_empty() {
+        return None;
+    }
+    let raw_text = String::from_utf8_lossy(content).into_owned();
+    Some(Line {
+        text: without_nul(raw_text.clone()),
+        raw: raw_text,
+        bytes: (raw.len() + 1) as u64,
+    })
 }
 
+#[cfg(test)]
 fn text_lines(data: &[u8]) -> Vec<Line> {
     let mut lines = Vec::new();
     let mut start = 0;
@@ -299,21 +449,363 @@ fn text_lines(data: &[u8]) -> Vec<Line> {
     lines
 }
 
-fn push_line(lines: &mut Vec<Line>, raw: &[u8], had_newline: bool, line_no: u64) {
-    let mut content = line_body(raw, had_newline);
-    if line_no == 1 {
-        // Skipped for the text; `raw.len()` below still counts the mark.
-        content = content.strip_prefix(UTF8_BOM).unwrap_or(content);
+/// Message text of one JSON value. `Err` is invalid JSON.
+/// The first present key wins. A key with no text is `<NO-MESSAGE>`
+/// and does not fall through to a later field. Unknown fields are skipped
+/// without building them, so a huge number or a deep value does not fail
+/// the line.
+fn json_message(text: &str, message_field: Option<&str>) -> Result<String, ()> {
+    let mut parser = Json::new(text.as_bytes());
+    parser.message(message_field)
+}
+
+struct Json<'a> {
+    bytes: &'a [u8],
+    index: usize,
+}
+
+impl<'a> Json<'a> {
+    fn new(bytes: &'a [u8]) -> Self {
+        Self { bytes, index: 0 }
     }
-    if content.is_empty() {
-        return;
+
+    fn message(&mut self, message_field: Option<&str>) -> Result<String, ()> {
+        self.skip_ws();
+        let found = if self.peek() == Some(b'{') {
+            self.bump();
+            self.object_message(message_field)?
+        } else {
+            self.skip_value()?;
+            None
+        };
+        self.skip_ws();
+        if self.index != self.bytes.len() {
+            return Err(());
+        }
+        Ok(found.unwrap_or_else(|| NO_MESSAGE.to_owned()))
     }
-    let raw_text = String::from_utf8_lossy(content).into_owned();
-    lines.push(Line {
-        text: without_nul(raw_text.clone()),
-        raw: raw_text,
-        bytes: (raw.len() + 1) as u64,
-    });
+
+    /// `None` when no chosen key is present. `Some(None)` when the key is
+    /// present but its value is not a string. `Some(Some(text))` for a string.
+    /// A later duplicate key replaces the earlier one.
+    fn object_message(&mut self, message_field: Option<&str>) -> Result<Option<String>, ()> {
+        let mut message = None;
+        let mut msg = None;
+        let mut log = None;
+        let mut custom = None;
+        self.skip_ws();
+        if self.peek() == Some(b'}') {
+            self.bump();
+            return Ok(pick(message_field, message, msg, log, custom));
+        }
+        loop {
+            let key = self.parse_string()?;
+            self.skip_ws();
+            self.expect(b':')?;
+            self.skip_ws();
+            let value = self.string_or_skip()?;
+            if let Some(name) = message_field {
+                if key == name {
+                    custom = Some(value);
+                }
+            } else if key == "message" {
+                message = Some(value);
+            } else if key == "msg" {
+                msg = Some(value);
+            } else if key == "log" {
+                log = Some(value);
+            }
+            self.skip_ws();
+            match self.bump() {
+                Some(b'}') => return Ok(pick(message_field, message, msg, log, custom)),
+                Some(b',') => {
+                    self.skip_ws();
+                    if self.peek() == Some(b'}') {
+                        return Err(());
+                    }
+                }
+                _ => return Err(()),
+            }
+        }
+    }
+
+    fn string_or_skip(&mut self) -> Result<Option<String>, ()> {
+        if self.peek() == Some(b'"') {
+            Ok(Some(self.parse_string()?))
+        } else {
+            self.skip_value()?;
+            Ok(None)
+        }
+    }
+
+    fn skip_value(&mut self) -> Result<(), ()> {
+        self.skip_ws();
+        match self.peek() {
+            Some(b'n') => self.literal(b"null"),
+            Some(b't') => self.literal(b"true"),
+            Some(b'f') => self.literal(b"false"),
+            Some(b'"') => {
+                self.parse_string()?;
+                Ok(())
+            }
+            Some(b'-' | b'0'..=b'9') => self.skip_number(),
+            Some(b'{' | b'[') => self.skip_nested(),
+            _ => Err(()),
+        }
+    }
+
+    fn skip_nested(&mut self) -> Result<(), ()> {
+        let mut frames = Vec::new();
+        self.push_frame(&mut frames)?;
+        while !frames.is_empty() {
+            self.skip_ws();
+            let byte = self.peek().ok_or(())?;
+            let frame = frames.last().ok_or(())?;
+            let object = frame.object;
+            let phase = frame.phase;
+            let allow_empty = frame.allow_empty;
+            let close = if object { b'}' } else { b']' };
+            if byte == close {
+                let trailing = (phase == Phase::Value || phase == Phase::Key) && !allow_empty;
+                if trailing || phase == Phase::Colon {
+                    return Err(());
+                }
+                self.bump();
+                frames.pop();
+                if let Some(parent) = frames.last_mut() {
+                    parent.phase = Phase::After;
+                    parent.allow_empty = false;
+                }
+                continue;
+            }
+            match phase {
+                Phase::Key => {
+                    if byte != b'"' {
+                        return Err(());
+                    }
+                    self.parse_string()?;
+                    frames.last_mut().ok_or(())?.phase = Phase::Colon;
+                }
+                Phase::Colon => {
+                    self.skip_ws();
+                    self.expect(b':')?;
+                    let frame = frames.last_mut().ok_or(())?;
+                    frame.phase = Phase::Value;
+                    frame.allow_empty = false;
+                }
+                Phase::Value => {
+                    if byte == b'{' || byte == b'[' {
+                        self.push_frame(&mut frames)?;
+                    } else {
+                        self.skip_value()?;
+                        let frame = frames.last_mut().ok_or(())?;
+                        frame.phase = Phase::After;
+                        frame.allow_empty = false;
+                    }
+                }
+                Phase::After => {
+                    if byte != b',' {
+                        return Err(());
+                    }
+                    self.bump();
+                    let frame = frames.last_mut().ok_or(())?;
+                    frame.allow_empty = false;
+                    frame.phase = if object { Phase::Key } else { Phase::Value };
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn push_frame(&mut self, frames: &mut Vec<Frame>) -> Result<(), ()> {
+        let object = match self.bump() {
+            Some(b'{') => true,
+            Some(b'[') => false,
+            _ => return Err(()),
+        };
+        frames.push(Frame {
+            object,
+            phase: if object { Phase::Key } else { Phase::Value },
+            allow_empty: true,
+        });
+        Ok(())
+    }
+
+    fn skip_number(&mut self) -> Result<(), ()> {
+        if self.peek() == Some(b'-') {
+            self.bump();
+        }
+        match self.bump() {
+            Some(b'0') => {}
+            Some(b'1'..=b'9') => {
+                while matches!(self.peek(), Some(b'0'..=b'9')) {
+                    self.bump();
+                }
+            }
+            _ => return Err(()),
+        }
+        if self.peek() == Some(b'.') {
+            self.bump();
+            if !matches!(self.peek(), Some(b'0'..=b'9')) {
+                return Err(());
+            }
+            while matches!(self.peek(), Some(b'0'..=b'9')) {
+                self.bump();
+            }
+        }
+        if matches!(self.peek(), Some(b'e' | b'E')) {
+            self.bump();
+            if matches!(self.peek(), Some(b'+' | b'-')) {
+                self.bump();
+            }
+            if !matches!(self.peek(), Some(b'0'..=b'9')) {
+                return Err(());
+            }
+            while matches!(self.peek(), Some(b'0'..=b'9')) {
+                self.bump();
+            }
+        }
+        Ok(())
+    }
+
+    fn literal(&mut self, word: &[u8]) -> Result<(), ()> {
+        if !self.bytes[self.index..].starts_with(word) {
+            return Err(());
+        }
+        self.index += word.len();
+        if matches!(
+            self.peek(),
+            Some(b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'_')
+        ) {
+            return Err(());
+        }
+        Ok(())
+    }
+
+    fn parse_string(&mut self) -> Result<String, ()> {
+        self.expect(b'"')?;
+        let mut out = String::new();
+        loop {
+            let ch = self.bump_char()?;
+            match ch {
+                '"' => return Ok(out),
+                '\\' => out.push(self.escape()?),
+                c if (c as u32) < 0x20 => return Err(()),
+                c => out.push(c),
+            }
+        }
+    }
+
+    fn escape(&mut self) -> Result<char, ()> {
+        match self.bump_char()? {
+            '"' => Ok('"'),
+            '\\' => Ok('\\'),
+            '/' => Ok('/'),
+            'b' => Ok('\u{0008}'),
+            'f' => Ok('\u{000c}'),
+            'n' => Ok('\n'),
+            'r' => Ok('\r'),
+            't' => Ok('\t'),
+            'u' => self.unicode_escape(),
+            _ => Err(()),
+        }
+    }
+
+    fn unicode_escape(&mut self) -> Result<char, ()> {
+        let unit = self.hex4()?;
+        if (0xD800..=0xDBFF).contains(&unit) {
+            if self.bump_char()? != '\\' || self.bump_char()? != 'u' {
+                return Err(());
+            }
+            let low = self.hex4()?;
+            if !(0xDC00..=0xDFFF).contains(&low) {
+                return Err(());
+            }
+            let cp = 0x10000 + (((unit - 0xD800) << 10) | (low - 0xDC00));
+            return char::from_u32(cp).ok_or(());
+        }
+        if (0xDC00..=0xDFFF).contains(&unit) {
+            return Err(());
+        }
+        char::from_u32(unit).ok_or(())
+    }
+
+    fn hex4(&mut self) -> Result<u32, ()> {
+        let mut value = 0u32;
+        for _ in 0..4 {
+            let ch = self.bump_char()?;
+            let digit = match ch {
+                '0'..='9' => ch as u32 - '0' as u32,
+                'a'..='f' => ch as u32 - 'a' as u32 + 10,
+                'A'..='F' => ch as u32 - 'A' as u32 + 10,
+                _ => return Err(()),
+            };
+            value = (value << 4) | digit;
+        }
+        Ok(value)
+    }
+
+    fn bump_char(&mut self) -> Result<char, ()> {
+        let rest = &self.bytes[self.index..];
+        let text = std::str::from_utf8(rest).map_err(|_| ())?;
+        let mut chars = text.chars();
+        let ch = chars.next().ok_or(())?;
+        self.index += ch.len_utf8();
+        Ok(ch)
+    }
+
+    fn expect(&mut self, byte: u8) -> Result<(), ()> {
+        if self.bump() == Some(byte) {
+            Ok(())
+        } else {
+            Err(())
+        }
+    }
+
+    fn bump(&mut self) -> Option<u8> {
+        let byte = self.peek()?;
+        self.index += 1;
+        Some(byte)
+    }
+
+    fn peek(&self) -> Option<u8> {
+        self.bytes.get(self.index).copied()
+    }
+
+    fn skip_ws(&mut self) {
+        while matches!(self.peek(), Some(b' ' | b'\t' | b'\n' | b'\r')) {
+            self.index += 1;
+        }
+    }
+}
+
+fn pick(
+    message_field: Option<&str>,
+    message: Option<Option<String>>,
+    msg: Option<Option<String>>,
+    log: Option<Option<String>>,
+    custom: Option<Option<String>>,
+) -> Option<String> {
+    let found = if message_field.is_some() {
+        custom
+    } else {
+        message.or(msg).or(log)
+    };
+    found.map(|text| text.unwrap_or_else(|| NO_MESSAGE.to_owned()))
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Phase {
+    Key,
+    Colon,
+    Value,
+    After,
+}
+
+struct Frame {
+    object: bool,
+    phase: Phase,
+    allow_empty: bool,
 }
 
 #[cfg(test)]
@@ -563,5 +1055,81 @@ mod tests {
         let err = json_lines(raw, None).unwrap_err();
         assert_eq!(err.to_string(), "invalid JSON on line 3");
         assert!(!err.to_string().contains("DO-NOT-SHOW"));
+    }
+
+    #[test]
+    fn extreme_unknown_json_fields_still_count() {
+        // A number past f64, and 200 nested arrays, sit in a field that is not
+        // the message. Both lines still count.
+        let huge = "{\"msg\":\"ok\",\"x\":1e400}\n";
+        let mut deep = String::from("{\"msg\":\"ok\",\"x\":");
+        deep.push_str(&"[".repeat(200));
+        deep.push('1');
+        deep.push_str(&"]".repeat(200));
+        deep.push_str("}\n");
+        let mut raw = huge.as_bytes().to_vec();
+        raw.extend(deep.as_bytes());
+        let lines = json_lines(&raw, None).unwrap();
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0].text, "ok");
+        assert_eq!(lines[1].text, "ok");
+        assert!(!lines[0].raw.contains("not a number"));
+    }
+
+    #[test]
+    fn message_matches_ordinary_json() {
+        let samples = [
+            r#"{"message":"hallo","msg":"nee","log":"ook"}"#,
+            r#"{"msg":"hallo","log":"nee"}"#,
+            r#"{"log":"xy"}"#,
+            r#"{"note":"eigen","message":"ander"}"#,
+            r#"{"level":"info","host":"a"}"#,
+            r#"{"message":{"raw":"x"},"user":"y"}"#,
+            r#"["x"]"#,
+            r#"{"message":""}"#,
+            r#"{"message":null}"#,
+            r#"{"message":"a\nb\t\"c"}"#,
+            r#"{"message":"\u0041\u00e9"}"#,
+            r#"{"message":"\uD83D\uDE00"}"#,
+            "  { \"msg\" : \"ok\" }  ",
+            r#"{"message":"a","message":"b"}"#,
+            r#"{"log":"first","message":"wins"}"#,
+            "1",
+            "true",
+            "null",
+            r#"{"msg":"ok","x":[1,{"a":true},null]}"#,
+            r#"{"message":"a\/b"}"#,
+        ];
+        for sample in samples {
+            let value: serde_json::Value = serde_json::from_str(sample).unwrap();
+            for field in [None, Some("note"), Some("message")] {
+                let expected = serde_message(&value, field);
+                let got = super::json_message(sample, field).unwrap();
+                assert_eq!(got, expected, "{field:?} {sample}");
+            }
+        }
+        assert!(super::json_message(r#"{"message":"\uD800"}"#, None).is_err());
+        assert!(super::json_message(r#"{"a":1,}"#, None).is_err());
+        assert!(super::json_message("01", None).is_err());
+    }
+
+    fn serde_message(value: &serde_json::Value, message_field: Option<&str>) -> String {
+        if let Some(name) = message_field {
+            return value
+                .get(name)
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("<NO-MESSAGE>")
+                .to_owned();
+        }
+        for name in ["message", "msg", "log"] {
+            if value.get(name).is_some() {
+                return value
+                    .get(name)
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("<NO-MESSAGE>")
+                    .to_owned();
+            }
+        }
+        "<NO-MESSAGE>".to_owned()
     }
 }

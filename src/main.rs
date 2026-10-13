@@ -203,10 +203,8 @@ fn execute(cli: &Cli, days_explicit: bool) -> i32 {
             if let Some(message) = ignored_option(cli, days_explicit) {
                 return fail(message, 3);
             }
-            match read_input(cli, file) {
-                Ok(lines) => {
-                    let stats = pattern::group(&lines, cli.top);
-                    let effect = rules.as_ref().map(|set| rules::effect(&lines, set, &stats));
+            match fold_file(cli, file, rules.as_ref(), cli.top) {
+                Ok((stats, effect)) => {
                     let text = if cli.json {
                         let file_text = path_text(file);
                         let paths = [file_text.as_str()];
@@ -328,21 +326,18 @@ fn execute(cli: &Cli, days_explicit: bool) -> i32 {
             }
             let old_path = path_text(old);
             let new_path = path_text(new);
-            let old = match read_input(cli, old) {
-                Ok(lines) => lines,
+            let old = match fold_file(cli, old, rules.as_ref(), None) {
+                Ok((stats, effect)) => sampled_from(stats, effect),
                 Err(error) => return fail(&error.to_string(), 2),
             };
-            let new = match read_input(cli, new) {
-                Ok(lines) => lines,
+            let new = match fold_file(cli, new, rules.as_ref(), None) {
+                Ok((stats, effect)) => sampled_from(stats, effect),
                 Err(error) => return fail(&error.to_string(), 2),
             };
             // Match is on the pattern text. `--top` would give the rest one id, `other`.
             // Counting matches scan: the diff is taken after the rules.
             let applied = rules.as_ref().map(|set| set.len());
-            let report = diff::compare(
-                &sampled_stats(&old, rules.as_ref()),
-                &sampled_stats(&new, rules.as_ref()),
-            );
+            let report = diff::compare(&old, &new);
             if let Some(window) = window {
                 let gb_bytes = prices
                     .as_ref()
@@ -411,14 +406,38 @@ fn execute(cli: &Cli, days_explicit: bool) -> i32 {
     }
 }
 
+/// One pass over the file. Lines are counted and dropped, not stored.
+fn fold_file(
+    cli: &Cli,
+    path: &Path,
+    rules: Option<&rules::RuleSet>,
+    top: Option<u32>,
+) -> Result<(pattern::Stats, Option<rules::Effect>), read::ReadError> {
+    let mut grouped = pattern::Grouper::default();
+    let mut folded = rules.map(|_| rules::Folder::default());
+    let mut visit = |line: read::Line| {
+        grouped.push(&line);
+        if let (Some(folder), Some(set)) = (folded.as_mut(), rules) {
+            folder.push(&line, set);
+        }
+    };
+    match cli.format {
+        InputFormat::Text => read::visit_text(path, &mut visit)?,
+        InputFormat::Jsonl => {
+            read::visit_jsonl(path, cli.message_field.as_deref(), &mut visit)?;
+        }
+    }
+    let stats = grouped.finish(top);
+    let effect = folded.map(|folder| folder.finish(&stats));
+    Ok((stats, effect))
+}
+
 /// Patterns as scan counts them after `--rules`. Without rules this is `group` itself.
 /// A pattern that drops out entirely (0 lines and 0 bytes) no longer counts.
-fn sampled_stats(lines: &[read::Line], rules: Option<&rules::RuleSet>) -> pattern::Stats {
-    let stats = pattern::group(lines, None);
-    let Some(set) = rules else {
+fn sampled_from(stats: pattern::Stats, effect: Option<rules::Effect>) -> pattern::Stats {
+    let Some(effect) = effect else {
         return stats;
     };
-    let effect = rules::effect(lines, set, &stats);
     let mut patterns: Vec<pattern::Pattern> = effect
         .patterns
         .iter()
@@ -481,11 +500,4 @@ fn format_name(format: InputFormat) -> &'static str {
 /// UTF-8 is shown with U+FFFD for the bytes that are not; it is read as is.
 fn path_text(path: &Path) -> String {
     path.to_string_lossy().into_owned()
-}
-
-fn read_input(cli: &Cli, path: &Path) -> Result<Vec<read::Line>, read::ReadError> {
-    match cli.format {
-        InputFormat::Text => read::read_text(path),
-        InputFormat::Jsonl => read::read_jsonl(path, cli.message_field.as_deref()),
-    }
 }

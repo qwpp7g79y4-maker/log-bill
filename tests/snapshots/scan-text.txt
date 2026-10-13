@@ -1,3 +1,3 @@
 total: 3 lines, 118 bytes
-Pe19dc70d  2 lines  108 bytes  91.5%  user <NUM> failed at <TS> from <IP>
-P46ab1618  1 line  10 bytes  8.5%  disk full
+Pe19dc70d8299c276  2 lines  108 bytes  91.5%  user <NUM> failed at <TS> from <IP>
+P46ab161881a7d411  1 line  10 bytes  8.5%  disk full
