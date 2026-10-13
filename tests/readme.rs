@@ -545,6 +545,10 @@ const SHARE_SENTENCE: &str = "bytes of the pattern divided by the total bytes, s
 
 const EXPLAIN_SENTENCE: &str = "With `--explain`, a `<SECRET>` count is marked `possible secret`. In `--json` such a pattern gets an extra `note` key with that text, and the `secret` key in `masks` holds the count.";
 
+const PRIVACY_SENTENCE: &str = "Patterns keep the static words of a line and replace timestamps, UUIDs, IP addresses, e-mail addresses (an ordinary address, a quoted local part such as `\"john.doe\"@example.com`, and letters outside ASCII such as `jöhn@exämple.de`), secrets, hex, numbers (digits, also with a leading `+` or `-` or a decimal fraction, such as `-12.5`, `3.14` and `+31612345678`, and digits outside ASCII such as `١٢٣٤٥`) and other variable words. A line with nothing to replace, such as `disk full`, is shown in full, with its pattern id, line count, byte count and share. With `--prices`, the currency, source and date from the price file are shown too. An error about a log file, a price file or a rules file does not include the path, the raw log line, the rules line or the price-file contents.";
+
+const PRIVACY_SENTENCE_NL: &str = "Patronen houden de vaste woorden van een regel en vervangen tijdstempels, UUID's, IP-adressen, e-mailadressen (een gewoon adres, een gequote lokaal deel zoals `\"john.doe\"@example.com`, en letters buiten ASCII zoals `jöhn@exämple.de`), geheimen, hex, getallen (cijfers, ook met een `+` of `-` ervoor of een decimale breuk, zoals `-12.5`, `3.14` en `+31612345678`, en cijfers buiten ASCII zoals `١٢٣٤٥`) en andere variabele woorden. Een regel waar niets te vervangen is, zoals `disk full`, wordt helemaal getoond, met het patroon-id, het aantal regels, het aantal bytes en het aandeel. Met `--prices` worden ook de valuta, de bron en de datum uit het prijsbestand getoond. Een fout over een logbestand, een prijsbestand of een regelsbestand bevat het pad niet, noch de ruwe logregel, de regel uit het regelsbestand of de inhoud van het prijsbestand.";
+
 #[test]
 fn key_sentences_appear_once() {
     let readme = read(README);
@@ -563,6 +567,45 @@ fn key_sentences_appear_once() {
         1,
         "explain sentence"
     );
+}
+
+#[test]
+fn privacy_sentence_matches_what_the_tool_shows() {
+    let readme = read(README);
+    let readme_nl = read(README_NL);
+    assert_eq!(
+        section(&readme, "## Privacy")
+            .matches(PRIVACY_SENTENCE)
+            .count(),
+        1,
+        "privacy sentence"
+    );
+    assert_eq!(
+        section(&readme_nl, "## Privacy")
+            .matches(PRIVACY_SENTENCE_NL)
+            .count(),
+        1,
+        "Dutch privacy sentence"
+    );
+    for rel in [README, README_NL, REF, REF_NL] {
+        let text = read(rel);
+        assert!(
+            !text.contains("No output or error message contains a complete raw log line"),
+            "{rel} still overclaims a raw log line"
+        );
+        assert!(
+            !text.contains("Geen uitvoer of foutmelding bevat een volledige ruwe logregel"),
+            "{rel} still overclaims a raw log line"
+        );
+        assert!(
+            !text.contains("only masked patterns, counts and line numbers"),
+            "{rel} still overclaims what the output contains"
+        );
+        assert!(
+            !text.contains("alleen gemaskeerde patronen, aantallen en regelnummers"),
+            "{rel} still overclaims what the output contains"
+        );
+    }
 }
 
 #[test]

@@ -61,10 +61,10 @@ De maskers worden in deze volgorde op het bericht toegepast:
 1. Tijdstempel → `<TS>` (ISO 8601 / RFC 3339 met een komma-fractie zoals `2026-10-08T13:55:36,123Z`, `10/Oct/2026:13:55:36 +0200`, `2026-10-08 11:07:44`).
 2. UUID → `<UUID>`.
 3. IPv4 en IPv6 → `<IP>`.
-4. E-mailadres → `<EMAIL>`.
+4. E-mailadres → `<EMAIL>`, ook een gewoon adres, een gequote lokaal deel (`"john.doe"@example.com`) en letters buiten ASCII (`jöhn@exämple.de`).
 5. Geheim na een sleutel → `<SECRET>`.
 6. Een woord van 8 of meer hextekens → `<HEX>`, maar alleen als er minstens één letter a-f (of A-F) en minstens één cijfer in staat. Een woord van alleen cijfers, zoals `1699482000`, wordt `<NUM>`.
-7. Elk ander getal → `<NUM>`; elk ander woord met een cijfer erin, en elk woord van 32 of meer tekens → `<VAR>`.
+7. Elk ander getal → `<NUM>`, ook cijfers met een `+` of `-` ervoor of een decimale breuk (`-12.5`, `3.14`, `+31612345678`) en cijfers buiten ASCII (`١٢٣٤٥`); elk ander woord met een cijfer erin, en elk woord van 32 of meer tekens → `<VAR>`.
 
 Meerdere spaties worden één spatie.
 
@@ -138,7 +138,7 @@ Elke rij hieronder is op de binary gedraaid, en een test houdt dat zo. Een rij m
 ## Privacy en veiligheid
 
 - Volledig offline: geen netwerk, geen API-key, geen telemetrie. De dependencies zijn beperkt tot clap, regex en serde_json.
-- Geen uitvoer of foutmelding bevat een volledige ruwe logregel; alleen gemaskeerde patronen, aantallen en regelnummers.
+- Patronen houden de vaste woorden van een regel. Tijdstempels, UUID's, IP-adressen, e-mailadressen, geheimen, hex, getallen en andere variabele woorden worden vervangen. Een regel waar niets te vervangen is, zoals `disk full`, wordt helemaal getoond. De uitvoer bevat ook patroon-id's, aantallen, bytegroottes en aandelen, en met `--prices` de valuta, de bron en de datum uit het prijsbestand. Een fout over een logbestand, een prijsbestand of een regelsbestand bevat het pad niet, noch de ruwe logregel, de regel uit het regelsbestand of de inhoud van het prijsbestand.
 - Tests stoppen een nepgeheim (een canary) in platte tekst, in JSON-velden, achter `password=` en `Authorization: Bearer`, in een kapotte regel en in een regelsbestand, en controleren dat geen enkele uitvoer (tekst, JSON, `--explain`, diff, stderr) het bevat.
 - Een privacytest codeert canaries achter `password=`, `token=` en `Authorization: Bearer` als UTF-16LE, UTF-16BE, UTF-32LE en UTF-32BE, elk met en zonder byte order mark, en controleert dat geen uitvoer ze bevat, ook niet na het weghalen van NUL-bytes.
 - Het veld `inputs.paths` van `--json` toont een bestandsnaam die geen geldige UTF-8 is met U+FFFD voor de ongeldige bytes.

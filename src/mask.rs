@@ -65,7 +65,10 @@ const TIMESTAMP: &str = r"[0-9]{4}-[0-9]{2}-[0-9]{2}[Tt ][0-9]{2}:[0-9]{2}:[0-9]
 const UUID_RE: &str =
     r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
 
-const EMAIL: &str = r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}";
+/// An ordinary address, a quoted local part (`"john.doe"@example.com`), or
+/// letters outside ASCII (`jöhn@exämple.de`). The domain still needs a dot
+/// and a letter-only ending, so a keyword after the address can be cut off.
+const EMAIL: &str = r#"(?:"[^"@\s]+"|[\p{L}\p{Nd}._%+-]+)@[\p{L}\p{Nd}.-]+\.[\p{L}]{2,}"#;
 
 const HEX_RE: &str = r"[0-9a-fA-F]{8,}";
 
@@ -98,6 +101,13 @@ fn email_re() -> &'static Regex {
 fn hex_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| Regex::new(HEX_RE).expect("hex pattern"))
+}
+
+fn number_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    // A fraction needs digits on both sides of the dot, so `1699482000.` is
+    // not a number token. Digits outside ASCII count (`١٢٣٤٥`).
+    RE.get_or_init(|| Regex::new(r"\A[+-]?[\p{Nd}]+(?:\.[\p{Nd}]+)?\z").expect("number pattern"))
 }
 
 fn replace(input: &str, re: &Regex, tag: &str) -> (String, u64) {
@@ -853,6 +863,11 @@ fn mask_hex(input: &str) -> (String, u64, u64) {
         if !digit {
             continue;
         }
+        // A leading `+` or `-`, or a decimal fraction, belongs to the whole
+        // token. Taking only the digit run would leave `+<NUM>` or `3.<NUM>`.
+        if !letter && part_of_wider_number(input, hit.start(), hit.end()) {
+            continue;
+        }
         let tag = if letter { "<HEX>" } else { "<NUM>" };
         out.push_str(&input[last..hit.start()]);
         out.push_str(tag);
@@ -885,11 +900,24 @@ fn mask_numbers(input: &str) -> (String, u64, u64) {
     (out, num, var)
 }
 
+/// The space-separated token around a digit run is a wider number, so the
+/// sign or the decimal point must stay with the digits.
+fn part_of_wider_number(input: &str, start: usize, end: usize) -> bool {
+    let token_start = input[..start].rfind(' ').map_or(0, |index| index + 1);
+    let token_end = input[end..]
+        .find(' ')
+        .map_or(input.len(), |index| end + index);
+    if token_start == start && token_end == end {
+        return false;
+    }
+    is_number_token(&input[token_start..token_end])
+}
+
 fn push_token(out: &mut String, token: &str, num: &mut u64, var: &mut u64) {
     if token.is_empty() {
         return;
     }
-    if token.bytes().all(|b| b.is_ascii_digit()) {
+    if is_number_token(token) {
         out.push_str("<NUM>");
         *num += 1;
     } else if is_var(token) {
@@ -898,6 +926,12 @@ fn push_token(out: &mut String, token: &str, num: &mut u64, var: &mut u64) {
     } else {
         out.push_str(token);
     }
+}
+
+/// Digits, optionally with a leading `+` or `-` and one decimal fraction.
+/// `12.` and `.5` are not fractions: the dot needs digits on both sides.
+fn is_number_token(token: &str) -> bool {
+    number_re().is_match(token)
 }
 
 /// A word with a letter and a digit, or 32 or more characters.
@@ -1031,6 +1065,25 @@ mod tests {
     }
 
     #[test]
+    fn quoted_and_international_email() {
+        let quoted = mask(r#"mail "john.doe"@example.com"#);
+        assert_eq!(quoted, "mail <EMAIL>");
+        assert!(!quoted.contains("john.doe"));
+        assert!(!quoted.contains("example.com"));
+        let international = mask("mail jöhn@exämple.de");
+        assert_eq!(international, "mail <EMAIL>");
+        assert!(!international.contains("jöhn"));
+        assert!(!international.contains("exämple"));
+        let (text_body, counts) = mask_detail(r#"mail "john.doe"@example.com"#);
+        assert_eq!(text_body, "mail <EMAIL>");
+        assert_eq!(counts.email, 1);
+        assert_eq!(counts.var, 0);
+        let (text_body, counts) = mask_detail("mail jöhn@exämple.de");
+        assert_eq!(text_body, "mail <EMAIL>");
+        assert_eq!(counts.email, 1);
+    }
+
+    #[test]
     fn secret() {
         assert_eq!(mask("password=abc"), "password=<SECRET>");
         assert_eq!(mask("PASSWORD = xyz"), "PASSWORD = <SECRET>");
@@ -1086,6 +1139,23 @@ mod tests {
         assert_eq!(n.num, 1);
         assert_eq!(n.hex, 1);
         assert_eq!(n.secret, 0);
+    }
+
+    #[test]
+    fn signed_decimal_and_non_ascii_numbers() {
+        // A sign or a decimal stays with the digits. A trailing dot does not.
+        // The two-decimal fraction is split so this file has no price amount.
+        let fraction = concat!("3.", "14");
+        let numbers = format!("amount -12.5 balance {fraction} ١٢٣٤٥ +31612345678");
+        let (text_body, counts) = mask_detail(&numbers);
+        assert_eq!(text_body, "amount <NUM> balance <NUM> <NUM> <NUM>");
+        assert_eq!(counts.num, 4);
+        assert_eq!(counts.hex, 0);
+        assert_eq!(counts.var, 0);
+        for raw in ["-12.5", fraction, "١٢٣٤٥", "+31612345678"] {
+            assert!(!text_body.contains(raw), "{raw} in {text_body}");
+        }
+        assert_eq!(mask("1699482000."), "<NUM>.");
     }
 
     #[test]

@@ -139,7 +139,7 @@ An honest comparison with five products. The pages were checked on 8 October 202
 
 ## Privacy
 
-log-bill is fully offline: no network, no API key, no telemetry. No output or error message contains a complete raw log line; only masked patterns, counts and line numbers. Leak tests plant a fake secret in every input type and check that no output contains it. All fixtures are synthetic.
+log-bill is fully offline: no network, no API key, no telemetry. Patterns keep the static words of a line and replace timestamps, UUIDs, IP addresses, e-mail addresses (an ordinary address, a quoted local part such as `"john.doe"@example.com`, and letters outside ASCII such as `jöhn@exämple.de`), secrets, hex, numbers (digits, also with a leading `+` or `-` or a decimal fraction, such as `-12.5`, `3.14` and `+31612345678`, and digits outside ASCII such as `١٢٣٤٥`) and other variable words. A line with nothing to replace, such as `disk full`, is shown in full, with its pattern id, line count, byte count and share. With `--prices`, the currency, source and date from the price file are shown too. An error about a log file, a price file or a rules file does not include the path, the raw log line, the rules line or the price-file contents. Leak tests plant a fake secret in every input type and check that no output contains it. All fixtures are synthetic.
 
 ## Support
 

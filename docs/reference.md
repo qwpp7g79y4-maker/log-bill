@@ -61,10 +61,10 @@ Masks are applied to the message in this order:
 1. Timestamp → `<TS>` (ISO 8601 / RFC 3339 including a comma fraction like `2026-10-08T13:55:36,123Z`, `10/Oct/2026:13:55:36 +0200`, `2026-10-08 11:07:44`).
 2. UUID → `<UUID>`.
 3. IPv4 and IPv6 → `<IP>`.
-4. E-mail address → `<EMAIL>`.
+4. E-mail address → `<EMAIL>`, including an ordinary address, a quoted local part (`"john.doe"@example.com`) and letters outside ASCII (`jöhn@exämple.de`).
 5. Secret after a key → `<SECRET>`.
 6. A word of 8 or more hex characters → `<HEX>`, but only if it contains at least one letter a-f (or A-F) and at least one digit. A word of only digits, such as `1699482000`, becomes `<NUM>`.
-7. Any other number → `<NUM>`; any other word containing a digit, and any word of 32 or more characters → `<VAR>`.
+7. Any other number → `<NUM>`, including digits with a leading `+` or `-` or a decimal fraction (`-12.5`, `3.14`, `+31612345678`) and digits outside ASCII (`١٢٣٤٥`); any other word containing a digit, and any word of 32 or more characters → `<VAR>`.
 
 Multiple spaces become one space.
 
@@ -138,7 +138,7 @@ Every row below was run against the binary, and a test keeps it that way. A row 
 ## Privacy and safety
 
 - Fully offline: no network, no API key, no telemetry. Dependencies are limited to clap, regex and serde_json.
-- No output or error message contains a complete raw log line; only masked patterns, counts and line numbers.
+- Patterns keep the static words of a line. Timestamps, UUIDs, IP addresses, e-mail addresses, secrets, hex, numbers and other variable words are replaced. A line with nothing to replace, such as `disk full`, is shown in full. Output also includes pattern ids, counts, byte sizes and shares, and with `--prices` the currency, source and date from the price file. An error about a log file, a price file or a rules file does not include the path, the raw log line, the rules line or the price-file contents.
 - Tests plant a fake secret (a canary) in plain text, JSON fields, after `password=` and `Authorization: Bearer`, in a broken line and in a rules file, and check that no output (text, JSON, `--explain`, diff, stderr) contains it.
 - A privacy test encodes `password=`, `token=` and `Authorization: Bearer` canaries as UTF-16LE, UTF-16BE, UTF-32LE and UTF-32BE, each with and without a byte order mark, and checks that no output contains them, also not after removing NUL bytes.
 - The `inputs.paths` field of `--json` shows a file name that is not valid UTF-8 with U+FFFD for the invalid bytes.

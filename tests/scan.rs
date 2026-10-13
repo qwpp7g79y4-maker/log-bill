@@ -1273,6 +1273,79 @@ token=1699482000
 }
 
 #[test]
+fn quoted_international_email_and_signed_numbers() {
+    // The two addresses become one pattern. The third line keeps four numbers.
+    let body = "\
+mail \"john.doe\"@example.com
+mail jöhn@exämple.de
+amount -12.5 balance 3.14 ١٢٣٤٥ +31612345678
+";
+    let log = write_tmp("scan-email-num.log", body.as_bytes());
+    let file_path = log.to_str().expect("path");
+    let email = "mail <EMAIL>";
+    let numbers = "amount <NUM> balance <NUM> <NUM> <NUM>";
+    let forbidden = [
+        "john.doe",
+        "example.com",
+        "jöhn",
+        "exämple",
+        "-12.5",
+        "3.14",
+        "١٢٣٤٥",
+        "+31612345678",
+    ];
+
+    let text = scan(&["scan", file_path]);
+    assert!(
+        text.contains(&format!("total: 3 lines, {} bytes\n", body.len())),
+        "{text}"
+    );
+    assert!(text.contains(email), "{text}");
+    assert!(text.contains(numbers), "{text}");
+    for raw_text in forbidden {
+        assert!(!text.contains(raw_text), "{raw_text} in {text}");
+    }
+
+    let explanation = scan(&["scan", "--explain", file_path]);
+    assert!(explanation.contains(email), "{explanation}");
+    assert!(explanation.contains(numbers), "{explanation}");
+    assert!(explanation.contains("<EMAIL> 2"), "{explanation}");
+    assert!(explanation.contains("<NUM> 4"), "{explanation}");
+    for raw_text in forbidden {
+        assert!(
+            !explanation.contains(raw_text),
+            "{raw_text} in {explanation}"
+        );
+    }
+
+    let json = scan(&["scan", "--json", file_path]);
+    assert!(json.contains(&format!("\"text\": \"{email}\"")), "{json}");
+    assert!(json.contains(&format!("\"text\": \"{numbers}\"")), "{json}");
+    for raw_text in forbidden {
+        assert!(!json.contains(raw_text), "{raw_text} in {json}");
+    }
+
+    let json_explain = scan(&["scan", "--json", "--explain", file_path]);
+    assert!(json_explain.contains("\"email\": 2"), "{json_explain}");
+    assert!(json_explain.contains("\"num\": 4"), "{json_explain}");
+    for raw_text in forbidden {
+        assert!(
+            !json_explain.contains(raw_text),
+            "{raw_text} in {json_explain}"
+        );
+    }
+
+    let diff = scan(&["diff", file_path, file_path]);
+    assert!(diff.contains(email), "{diff}");
+    assert!(diff.contains(numbers), "{diff}");
+    for raw_text in forbidden {
+        assert!(!diff.contains(raw_text), "{raw_text} in {diff}");
+    }
+
+    let _ = std::fs::remove_file(&log);
+}
+
+#[test]
 fn snapshot_jsonl() {
     let path = manifest("tests/fixtures/scan-jsonl.jsonl");
     let actual = scan(&["scan", "--format", "jsonl", path.to_str().expect("path")]);
