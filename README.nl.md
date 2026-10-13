@@ -92,7 +92,7 @@ new patterns: 6 of 12 bytes, 50.0%
 
 De oude steekproef is twee keer `alpha` (12 bytes) en één keer `beta` (5 bytes): 17 bytes. De nieuwe is `alpha` (6) en `gamma` (6): 12 bytes. Het nieuwe patroon `gamma` is 6 van 12 bytes, 50.0%.
 
-Prijzen komen alleen uit een JSON-bestand dat je meegeeft met `--prices` (samen met `--window`); zie [het prijsbestand](docs/reference.nl.md#prijsbestand). Elke tekstuitvoer met bedragen eindigt met `estimate: extrapolation of one sample with your own prices; not an official rate` ("schatting: extrapolatie van één steekproef met je eigen prijzen; geen officieel tarief"). Alle opties, exitcodes en foutmeldingen staan in de [referentie](docs/reference.nl.md) en in `log-bill --help`.
+Prijzen komen alleen uit een JSON-bestand dat je meegeeft met `--prices` (samen met `--window`); zie [het prijsbestand](docs/reference.nl.md#prijsbestand). Elke prijs wordt als exact decimaal getal gelezen, en een sleutel die twee keer voorkomt wordt geweigerd. Elke tekstuitvoer met bedragen eindigt met `estimate: extrapolation of one sample with your own prices; not an official rate` ("schatting: extrapolatie van één steekproef met je eigen prijzen; geen officieel tarief"). Alle opties, exitcodes en foutmeldingen staan in de [referentie](docs/reference.nl.md) en in `log-bill --help`.
 
 ## Hoe het rekent
 

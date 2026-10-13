@@ -521,6 +521,7 @@ fn reference_describes_masks_and_input_errors() {
         "`<NO-MESSAGE>`",
         "gb_bytes must be a whole number greater than 0",
         "price file has a price that is not a number",
+        "price file has a duplicate key",
         "invalid rule on line 1 of the rules file",
         "`file is not a regular file`",
         "`price file is not a regular file`",

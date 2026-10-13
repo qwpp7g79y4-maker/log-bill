@@ -173,6 +173,7 @@ pub enum PriceError {
     Negative,
     NotNumeric,
     UnknownField,
+    DuplicateKey,
     GbBytes,
     NotRegular,
 }
@@ -187,6 +188,7 @@ impl fmt::Display for PriceError {
             PriceError::Negative => "price file has a negative price",
             PriceError::NotNumeric => "price file has a price that is not a number",
             PriceError::UnknownField => "price file has an unknown field",
+            PriceError::DuplicateKey => "price file has a duplicate key",
             PriceError::GbBytes => "gb_bytes must be a whole number greater than 0",
             PriceError::NotRegular => "price file is not a regular file",
         };
@@ -208,12 +210,22 @@ pub fn load_prices(path: &std::path::Path) -> Result<Prices, PriceError> {
 
 /// `currency`, `source`, `date`, and `ingest_per_gb` are required.
 /// `index_per_gb` and `gb_bytes` may be absent. An unknown field, an empty
-/// string, a negative price, or a price that is not a number is invalid.
-/// The error text does not contain the file contents. One UTF-8 byte order
-/// mark at the start is skipped.
+/// string, a negative price, a price that is not a number, or a key that
+/// appears twice is invalid. A price is the exact decimal text, not a
+/// binary float. The error text does not contain the file contents. One
+/// UTF-8 byte order mark at the start is skipped.
 pub fn parse_prices(data: &[u8]) -> Result<Prices, PriceError> {
     let data = data.strip_prefix(crate::read::UTF8_BOM).unwrap_or(data);
     let text = std::str::from_utf8(data).map_err(|_| PriceError::NotJson)?;
+    let numbers = match scan_numbers(text) {
+        Ok(numbers) => numbers,
+        Err(ScanError::Duplicate) => return Err(PriceError::DuplicateKey),
+        Err(ScanError::Invalid) => {
+            let _: serde_json::Value =
+                serde_json::from_str(text).map_err(|_| PriceError::NotJson)?;
+            return Err(PriceError::NotJson);
+        }
+    };
     let value: serde_json::Value = serde_json::from_str(text).map_err(|_| PriceError::NotJson)?;
     let Some(object) = value.as_object() else {
         return Err(PriceError::NotJson);
@@ -224,12 +236,16 @@ pub fn parse_prices(data: &[u8]) -> Result<Prices, PriceError> {
         }
     }
     let gb_bytes = if object.contains_key("gb_bytes") {
-        gb_field(object, "gb_bytes")?
+        gb_field(object, "gb_bytes", number_text(&numbers, "gb_bytes"))?
     } else {
         GB_BYTES
     };
     let index_per_gb = if object.contains_key("index_per_gb") {
-        Some(price_field(object, "index_per_gb")?)
+        Some(price_field(
+            object,
+            "index_per_gb",
+            number_text(&numbers, "index_per_gb"),
+        )?)
     } else {
         None
     };
@@ -237,7 +253,11 @@ pub fn parse_prices(data: &[u8]) -> Result<Prices, PriceError> {
         currency: text_field(object, "currency")?,
         source: text_field(object, "source")?,
         date: text_field(object, "date")?,
-        ingest_per_gb: price_field(object, "ingest_per_gb")?,
+        ingest_per_gb: price_field(
+            object,
+            "ingest_per_gb",
+            number_text(&numbers, "ingest_per_gb"),
+        )?,
         index_per_gb,
         gb_bytes,
     })
@@ -261,6 +281,7 @@ fn text_field(
 fn price_field(
     object: &serde_json::Map<String, serde_json::Value>,
     key: &str,
+    lexeme: Option<&str>,
 ) -> Result<Price, PriceError> {
     match object.get(key) {
         None => Err(PriceError::MissingField),
@@ -268,7 +289,9 @@ fn price_field(
         Some(serde_json::Value::String(text)) if text.trim().is_empty() => {
             Err(PriceError::EmptyField)
         }
-        Some(serde_json::Value::Number(number)) => price_from_number(number),
+        Some(serde_json::Value::Number(_)) => {
+            price_from_lexeme(lexeme.ok_or(PriceError::NotNumeric)?)
+        }
         Some(_) => Err(PriceError::NotNumeric),
     }
 }
@@ -276,6 +299,7 @@ fn price_field(
 fn gb_field(
     object: &serde_json::Map<String, serde_json::Value>,
     key: &str,
+    lexeme: Option<&str>,
 ) -> Result<u128, PriceError> {
     match object.get(key) {
         None => return Err(PriceError::MissingField),
@@ -286,7 +310,7 @@ fn gb_field(
         Some(serde_json::Value::Number(_)) => {}
         Some(_) => return Err(PriceError::NotNumeric),
     }
-    let price = price_field(object, key).map_err(|err| match err {
+    let price = price_field(object, key, lexeme).map_err(|err| match err {
         PriceError::Negative => PriceError::GbBytes,
         other => other,
     })?;
@@ -296,26 +320,282 @@ fn gb_field(
     Ok(price.numer)
 }
 
-fn price_from_number(number: &serde_json::Number) -> Result<Price, PriceError> {
-    if let Some(value) = number.as_u64() {
-        return Ok(Price {
-            numer: u128::from(value),
-            denom: 1,
-        });
-    }
-    if let Some(value) = number.as_i64() {
-        if value < 0 {
-            return Err(PriceError::Negative);
-        }
-    }
-    let float = number.as_f64().ok_or(PriceError::NotNumeric)?;
-    if !float.is_finite() {
-        return Err(PriceError::NotNumeric);
-    }
-    if float.is_sign_negative() {
+/// The JSON number as written. A binary float would turn
+/// `1000.0000000000000001` into `1000` and `0.10000000000000000001` into `1/10`.
+fn price_from_lexeme(text: &str) -> Result<Price, PriceError> {
+    if let Some(rest) = text.strip_prefix('-') {
+        rate_from_decimal(rest)?;
         return Err(PriceError::Negative);
     }
-    rate_from_decimal(&number.to_string())
+    rate_from_decimal(text)
+}
+
+fn number_text<'a>(numbers: &'a [(String, String)], key: &str) -> Option<&'a str> {
+    numbers
+        .iter()
+        .find(|(name, _)| name == key)
+        .map(|(_, text)| text.as_str())
+}
+
+enum ScanError {
+    Invalid,
+    Duplicate,
+}
+
+struct Cursor<'a> {
+    text: &'a str,
+    i: usize,
+}
+
+impl<'a> Cursor<'a> {
+    fn rest(&self) -> &'a str {
+        &self.text[self.i..]
+    }
+
+    fn peek(&self) -> Option<char> {
+        self.rest().chars().next()
+    }
+
+    fn bump(&mut self) -> Option<char> {
+        let ch = self.peek()?;
+        self.i += ch.len_utf8();
+        Some(ch)
+    }
+
+    fn eat(&mut self, expected: char) -> bool {
+        if self.peek() == Some(expected) {
+            self.bump();
+            true
+        } else {
+            false
+        }
+    }
+
+    fn skip_ws(&mut self) {
+        while matches!(self.peek(), Some(' ' | '\t' | '\n' | '\r')) {
+            self.bump();
+        }
+    }
+
+    fn string(&mut self) -> Result<String, ScanError> {
+        if !self.eat('"') {
+            return Err(ScanError::Invalid);
+        }
+        let mut out = String::new();
+        loop {
+            let Some(ch) = self.bump() else {
+                return Err(ScanError::Invalid);
+            };
+            match ch {
+                '"' => return Ok(out),
+                '\\' => out.push(self.escape()?),
+                c if (c as u32) < 0x20 => return Err(ScanError::Invalid),
+                c => out.push(c),
+            }
+        }
+    }
+
+    fn escape(&mut self) -> Result<char, ScanError> {
+        let Some(ch) = self.bump() else {
+            return Err(ScanError::Invalid);
+        };
+        match ch {
+            '"' | '\\' | '/' => Ok(ch),
+            'b' => Ok('\u{0008}'),
+            'f' => Ok('\u{000c}'),
+            'n' => Ok('\n'),
+            'r' => Ok('\r'),
+            't' => Ok('\t'),
+            'u' => self.unicode_escape(),
+            _ => Err(ScanError::Invalid),
+        }
+    }
+
+    fn unicode_escape(&mut self) -> Result<char, ScanError> {
+        let unit = self.hex4()?;
+        if (0xD800..=0xDBFF).contains(&unit) {
+            if self.bump() != Some('\\') || self.bump() != Some('u') {
+                return Err(ScanError::Invalid);
+            }
+            let low = self.hex4()?;
+            if !(0xDC00..=0xDFFF).contains(&low) {
+                return Err(ScanError::Invalid);
+            }
+            let cp = 0x10000 + (((unit - 0xD800) << 10) | (low - 0xDC00));
+            return char::from_u32(cp).ok_or(ScanError::Invalid);
+        }
+        if (0xDC00..=0xDFFF).contains(&unit) {
+            return Err(ScanError::Invalid);
+        }
+        char::from_u32(unit).ok_or(ScanError::Invalid)
+    }
+
+    fn hex4(&mut self) -> Result<u32, ScanError> {
+        let mut value = 0u32;
+        for _ in 0..4 {
+            let ch = self.bump().ok_or(ScanError::Invalid)?;
+            let digit = ch.to_digit(16).ok_or(ScanError::Invalid)?;
+            value = (value << 4) | digit;
+        }
+        Ok(value)
+    }
+
+    fn number(&mut self) -> Result<String, ScanError> {
+        let start = self.i;
+        if self.peek() == Some('-') {
+            self.bump();
+        }
+        match self.peek() {
+            Some('0') => {
+                self.bump();
+            }
+            Some('1'..='9') => {
+                while matches!(self.peek(), Some('0'..='9')) {
+                    self.bump();
+                }
+            }
+            _ => return Err(ScanError::Invalid),
+        }
+        if self.peek() == Some('.') {
+            self.bump();
+            if !matches!(self.peek(), Some('0'..='9')) {
+                return Err(ScanError::Invalid);
+            }
+            while matches!(self.peek(), Some('0'..='9')) {
+                self.bump();
+            }
+        }
+        if matches!(self.peek(), Some('e' | 'E')) {
+            self.bump();
+            if matches!(self.peek(), Some('+' | '-')) {
+                self.bump();
+            }
+            if !matches!(self.peek(), Some('0'..='9')) {
+                return Err(ScanError::Invalid);
+            }
+            while matches!(self.peek(), Some('0'..='9')) {
+                self.bump();
+            }
+        }
+        Ok(self.text[start..self.i].to_owned())
+    }
+
+    fn literal(&mut self, word: &str) -> Result<(), ScanError> {
+        if !self.rest().starts_with(word) {
+            return Err(ScanError::Invalid);
+        }
+        self.i += word.len();
+        if self.peek().is_some_and(|ch| ch.is_ascii_alphanumeric()) {
+            return Err(ScanError::Invalid);
+        }
+        Ok(())
+    }
+
+    fn value(&mut self) -> Result<Option<String>, ScanError> {
+        self.skip_ws();
+        match self.peek() {
+            Some('"') => {
+                self.string()?;
+                Ok(None)
+            }
+            Some('{') => {
+                self.object(false, &mut Vec::new())?;
+                Ok(None)
+            }
+            Some('[') => {
+                self.array()?;
+                Ok(None)
+            }
+            Some('t') => {
+                self.literal("true")?;
+                Ok(None)
+            }
+            Some('f') => {
+                self.literal("false")?;
+                Ok(None)
+            }
+            Some('n') => {
+                self.literal("null")?;
+                Ok(None)
+            }
+            Some('-' | '0'..='9') => Ok(Some(self.number()?)),
+            _ => Err(ScanError::Invalid),
+        }
+    }
+
+    fn array(&mut self) -> Result<(), ScanError> {
+        if !self.eat('[') {
+            return Err(ScanError::Invalid);
+        }
+        self.skip_ws();
+        if self.eat(']') {
+            return Ok(());
+        }
+        loop {
+            self.value()?;
+            self.skip_ws();
+            if self.eat(']') {
+                return Ok(());
+            }
+            if !self.eat(',') {
+                return Err(ScanError::Invalid);
+            }
+        }
+    }
+
+    fn object(
+        &mut self,
+        record: bool,
+        numbers: &mut Vec<(String, String)>,
+    ) -> Result<(), ScanError> {
+        if !self.eat('{') {
+            return Err(ScanError::Invalid);
+        }
+        self.skip_ws();
+        if self.eat('}') {
+            return Ok(());
+        }
+        let mut seen = Vec::new();
+        loop {
+            self.skip_ws();
+            let key = self.string()?;
+            self.skip_ws();
+            if !self.eat(':') {
+                return Err(ScanError::Invalid);
+            }
+            let lexeme = self.value()?;
+            if seen.iter().any(|item| item == &key) {
+                return Err(ScanError::Duplicate);
+            }
+            seen.push(key.clone());
+            if record {
+                if let Some(lexeme) = lexeme {
+                    numbers.push((key, lexeme));
+                }
+            }
+            self.skip_ws();
+            if self.eat('}') {
+                return Ok(());
+            }
+            if !self.eat(',') {
+                return Err(ScanError::Invalid);
+            }
+        }
+    }
+}
+
+/// Top-level numeric values, as written. A repeated key is an error even when
+/// the second value would otherwise replace the first.
+fn scan_numbers(text: &str) -> Result<Vec<(String, String)>, ScanError> {
+    let mut cursor = Cursor { text, i: 0 };
+    let mut numbers = Vec::new();
+    cursor.skip_ws();
+    cursor.object(true, &mut numbers)?;
+    cursor.skip_ws();
+    if cursor.i != text.len() {
+        return Err(ScanError::Invalid);
+    }
+    Ok(numbers)
 }
 
 /// Decimal text, optionally with an `e` exponent, to a reduced fraction.
@@ -1326,6 +1606,45 @@ mod tests {
         assert_eq!((half.numer, half.denom), (5, 2));
         let whole_number = super::rate_from_decimal("1e2").expect("fraction");
         assert_eq!((whole_number.numer, whole_number.denom), (100, 1));
+    }
+
+    #[test]
+    fn price_keeps_digits_past_a_binary_float() {
+        let prices = parse_prices(
+            br#"{"currency":"EUR","source":"s","date":"2026-10-08","ingest_per_gb":1000.0000000000000001}"#,
+        )
+        .expect("exact decimal");
+        assert_eq!(
+            (prices.ingest_per_gb.numer, prices.ingest_per_gb.denom),
+            (10_000_000_000_000_000_001, 10_000_000_000_000_000)
+        );
+        let window = parse_window("1m").unwrap();
+        let budget = parse_budget("4.320").expect("budget");
+        assert!(month_above_budget(100, window, 30, &prices, budget).unwrap());
+        let line = explain_steps(100, window, 30, prices.ingest_per_gb, prices.gb_bytes).unwrap();
+        assert!(line.contains("0.1440000000000000000144"), "{line}");
+        assert!(line.contains("4.320000000000000000432"), "{line}");
+        assert!(!line.contains("(1/10)"), "{line}");
+
+        let tenth = parse_prices(
+            br#"{"currency":"EUR","source":"s","date":"2026-10-08","ingest_per_gb":0.10000000000000000001,"gb_bytes":100}"#,
+        )
+        .expect("exact tenth");
+        let day = parse_window("1d").unwrap();
+        let shown = explain_steps(100, day, 30, tenth.ingest_per_gb, tenth.gb_bytes).unwrap();
+        assert!(shown.contains("0.10000000000000000001"), "{shown}");
+        assert!(!shown.contains("(1/10)"), "{shown}");
+    }
+
+    #[test]
+    fn duplicate_price_key_is_rejected() {
+        let body = concat!(r#"{"ingest_per_gb":99,"ingest_per_gb":0."#, r#"01}"#);
+        let cents = concat!("0.", "01");
+        let err = parse_prices(body.as_bytes()).expect_err("duplicate");
+        assert_eq!(err, PriceError::DuplicateKey);
+        assert_eq!(err.to_string(), "price file has a duplicate key");
+        assert!(!err.to_string().contains("99"));
+        assert!(!err.to_string().contains(cents));
     }
 
     #[test]

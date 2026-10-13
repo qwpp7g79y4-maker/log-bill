@@ -39,7 +39,7 @@ Prijzen komen alleen uit een JSON-bestand dat je meegeeft met `--prices` (samen 
 }
 ```
 
-`index_per_gb` en `gb_bytes` zijn optioneel. Zonder `gb_bytes` is een GB 1000000000 bytes. `gb_bytes` moet een geheel getal groter dan 0 zijn.
+`index_per_gb` en `gb_bytes` zijn optioneel. Zonder `gb_bytes` is een GB 1000000000 bytes. `gb_bytes` moet een geheel getal groter dan 0 zijn. Een prijs is dat exacte decimale getal, niet een binaire drijvende-kommawaarde. Dezelfde sleutel twee keer is exit 2: `price file has a duplicate key`.
 
 ## Hoe het rekent
 
@@ -89,7 +89,7 @@ Met `--explain` krijgt een telling van `<SECRET>` de tekst `possible secret` ("m
 | 2 | Invoerfout: logbestand, JSON, prijsbestand of regelsbestand |
 | 3 | Gebruiksfout |
 
-Een logbestand, prijsbestand of regelsbestand moet een gewoon bestand zijn. Een FIFO, een map of iets anders wordt geweigerd met exit 2, zonder te wachten tot een schrijver opent. Een `gb_bytes` die een breuk is zoals `0.5`, 0 of negatief is exit 2; een prijs die tekst is in plaats van een getal geeft `price file has a price that is not a number`. `sample 0,1` is geen geldige fractie: exit 2 met `invalid rule on line 1 of the rules file`, zonder de regel te tonen. De meldingen over gewone bestanden noemen het pad niet, en geen foutmelding bevat een ruwe logregel.
+Een logbestand, prijsbestand of regelsbestand moet een gewoon bestand zijn. Een FIFO, een map of iets anders wordt geweigerd met exit 2, zonder te wachten tot een schrijver opent. Een `gb_bytes` die een breuk is zoals `0.5`, 0 of negatief is exit 2; een prijs die tekst is in plaats van een getal geeft `price file has a price that is not a number`. Dezelfde sleutel twee keer geeft `price file has a duplicate key`. `sample 0,1` is geen geldige fractie: exit 2 met `invalid rule on line 1 of the rules file`, zonder de regel te tonen. De meldingen over gewone bestanden noemen het pad niet, en geen foutmelding bevat een ruwe logregel.
 
 Elke rij hieronder is op de binary gedraaid, en een test houdt dat zo. Een rij met exit 3 heeft een lege stdout. De melding is de hele stderr; de binary zet er een regeleinde achter. `\n` in de laatste kolom is een regeleinde in die melding. `--json` verandert een melding niet. Bij `diff` wordt `--explain` eerder getoetst dan `--top`, `--window` en `--days-per-month`, en die melding wint dan. Een ongeldig bedrag, een ongeldig percentage en `--prices` zonder venster worden eerder getoetst dan `--explain`.
 
@@ -134,6 +134,7 @@ Elke rij hieronder is op de binary gedraaid, en een test houdt dat zo. Een rij m
 | `--prices` | scan en diff | Prijsbestand is geen gewoon bestand. |  | 2 | `price file is not a regular file` |
 | `--rules` | scan en diff | Regelsbestand is geen gewoon bestand. |  | 2 | `rules file is not a regular file` |
 | `--prices` | scan en diff | `gb_bytes` is geen geheel getal groter dan 0 (een breuk, 0 of negatief). |  | 2 | `gb_bytes must be a whole number greater than 0` |
+| `--prices` | scan en diff | Dezelfde sleutel komt twee keer voor. |  | 2 | `price file has a duplicate key` |
 
 ## Privacy en veiligheid
 

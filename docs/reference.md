@@ -39,7 +39,7 @@ Prices come only from a JSON file you pass with `--prices` (together with `--win
 }
 ```
 
-`index_per_gb` and `gb_bytes` are optional. Without `gb_bytes` a GB is 1000000000 bytes. `gb_bytes` must be a whole number greater than 0.
+`index_per_gb` and `gb_bytes` are optional. Without `gb_bytes` a GB is 1000000000 bytes. `gb_bytes` must be a whole number greater than 0. A price is that exact decimal, not a binary floating-point value. The same key twice is exit 2: `price file has a duplicate key`.
 
 ## How it counts
 
@@ -89,7 +89,7 @@ With `--explain`, a `<SECRET>` count is marked `possible secret`. In `--json` su
 | 2 | Input error: log file, JSON, price file or rules file |
 | 3 | Usage error |
 
-A log file, price file or rules file must be a regular file. A FIFO, a directory or anything else is refused with exit 2 without waiting for a writer to open it. A `gb_bytes` that is a fraction such as `0.5`, 0 or negative is exit 2; a price that is text instead of a number gives `price file has a price that is not a number`. `sample 0,1` is not a valid fraction: exit 2 with `invalid rule on line 1 of the rules file`, without showing the line. The regular-file messages do not include the path, and no error message contains a raw log line.
+A log file, price file or rules file must be a regular file. A FIFO, a directory or anything else is refused with exit 2 without waiting for a writer to open it. A `gb_bytes` that is a fraction such as `0.5`, 0 or negative is exit 2; a price that is text instead of a number gives `price file has a price that is not a number`. The same key twice gives `price file has a duplicate key`. `sample 0,1` is not a valid fraction: exit 2 with `invalid rule on line 1 of the rules file`, without showing the line. The regular-file messages do not include the path, and no error message contains a raw log line.
 
 Every row below was run against the binary, and a test keeps it that way. A row with exit 3 has empty stdout. The message is the complete stderr; the binary adds a newline. `\n` in the last column is a newline inside the message. `--json` does not change a message. For `diff`, `--explain` is checked before `--top`, `--window` and `--days-per-month`, so its message wins. An invalid amount, an invalid percentage and `--prices` without a window are checked before `--explain`.
 
@@ -134,6 +134,7 @@ Every row below was run against the binary, and a test keeps it that way. A row 
 | `--prices` | scan and diff | Price file is not a regular file. |  | 2 | `price file is not a regular file` |
 | `--rules` | scan and diff | Rules file is not a regular file. |  | 2 | `rules file is not a regular file` |
 | `--prices` | scan and diff | `gb_bytes` is not a whole number greater than 0 (a fraction, 0 or negative). |  | 2 | `gb_bytes must be a whole number greater than 0` |
+| `--prices` | scan and diff | The same key appears twice. |  | 2 | `price file has a duplicate key` |
 
 ## Privacy and safety
 

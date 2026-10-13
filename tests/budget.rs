@@ -455,3 +455,92 @@ fn missing_file_and_broken_rules_stay_exit_2() {
     let _ = std::fs::remove_file(&log);
     let _ = std::fs::remove_file(&lines);
 }
+
+/// 99 bytes of `x` plus the newline is 100 bytes.
+/// `1000.0000000000000001` per GB is just above the 4.32 that a price of 1000 would hit.
+#[test]
+fn exact_ingest_price_is_above_4_32() {
+    let mut raw = vec![b'x'; 99];
+    raw.push(b'\n');
+    let log = tmp("budget-exact-100.log", &raw);
+    let prices = prices(
+        "budget-exact-100.json",
+        r#"{"currency":"EUR","source":"s","date":"2026-10-08","ingest_per_gb":1000.0000000000000001}"#,
+    );
+    let (code, out, err) = run(&[
+        "scan",
+        "--window",
+        "1m",
+        "--prices",
+        file_path(&prices),
+        "--budget-month",
+        "4.32",
+        "--explain",
+        file_path(&log),
+    ]);
+    assert_eq!(code, 1, "stdout: {out} stderr: {err}");
+    assert_eq!(err, "monthly cost above budget\n");
+    assert!(out.contains("100 bytes"), "{out}");
+    assert!(out.contains("0.1440000000000000000144"), "{out}");
+    assert!(out.contains("4.320000000000000000432"), "{out}");
+    assert!(!out.contains("(1/10)"), "{out}");
+    assert!(!out.contains("× 1000 ="), "{out}");
+    assert!(
+        out.contains("0.14 EUR per day, 4.32 EUR per month"),
+        "{out}"
+    );
+    let _ = std::fs::remove_file(&log);
+    let _ = std::fs::remove_file(&prices);
+}
+
+/// A tenth plus one digit past what a binary float keeps is not the fraction 1/10.
+#[test]
+fn exact_tenth_is_not_shown_as_one_tenth() {
+    let mut raw = vec![b'x'; 99];
+    raw.push(b'\n');
+    let log = tmp("budget-exact-tenth.log", &raw);
+    let prices = prices(
+        "budget-exact-tenth.json",
+        r#"{"currency":"EUR","source":"s","date":"2026-10-08","ingest_per_gb":0.10000000000000000001,"gb_bytes":100}"#,
+    );
+    let (code, out, err) = run(&[
+        "scan",
+        "--window",
+        "1d",
+        "--prices",
+        file_path(&prices),
+        "--explain",
+        file_path(&log),
+    ]);
+    assert_eq!(code, 0, "stdout: {out} stderr: {err}");
+    assert!(err.is_empty(), "{err}");
+    assert!(out.contains("0.10000000000000000001"), "{out}");
+    assert!(!out.contains("(1/10)"), "{out}");
+    let _ = std::fs::remove_file(&log);
+    let _ = std::fs::remove_file(&prices);
+}
+
+#[test]
+fn duplicate_price_key_is_exit_2() {
+    let log = tmp("budget-duplicate.log", b"disk full\n");
+    let prices = prices(
+        "budget-duplicate.json",
+        r#"{"ingest_per_gb":99,"ingest_per_gb":0.01}"#,
+    );
+    let (code, out, err) = run(&[
+        "scan",
+        "--window",
+        "1m",
+        "--prices",
+        file_path(&prices),
+        "--explain",
+        file_path(&log),
+    ]);
+    assert_eq!(code, 2, "stdout: {out} stderr: {err}");
+    assert!(out.is_empty(), "{out}");
+    assert_eq!(err, "price file has a duplicate key\n");
+    assert!(!err.contains("99"), "{err}");
+    assert!(!err.contains("0.01"), "{err}");
+    let _ = std::fs::remove_file(&log);
+    let _ = std::fs::remove_file(&prices);
+}
