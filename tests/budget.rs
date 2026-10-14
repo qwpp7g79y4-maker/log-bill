@@ -544,3 +544,79 @@ fn duplicate_price_key_is_exit_2() {
     let _ = std::fs::remove_file(&log);
     let _ = std::fs::remove_file(&prices);
 }
+
+/// Adding the next fraction digit does not fit in u128. Exit 2, in debug and
+/// in release: not a wrap to 0 and not a panic.
+#[test]
+fn fraction_that_does_not_fit_exits_2() {
+    let numer = u128::MAX / 10;
+    let digit = u128::MAX % 10 + 1;
+    let price = format!("{numer}.{digit}");
+    let log = tmp("budget-fraction-overflow.log", b"disk full\n");
+    let prices = prices(
+        "budget-fraction-overflow.json",
+        &format!(
+            r#"{{"currency":"EUR","source":"s","date":"2026-10-08","ingest_per_gb":{price}}}"#
+        ),
+    );
+    let (code, out, err) = run(&[
+        "scan",
+        "--window",
+        "1m",
+        "--prices",
+        file_path(&prices),
+        file_path(&log),
+    ]);
+    assert_eq!(code, 2, "stdout: {out} stderr: {err}");
+    assert!(out.is_empty(), "{out}");
+    assert_eq!(err, "price file has a price that is not a number\n");
+    assert!(!err.contains(&price), "{err}");
+    let _ = std::fs::remove_file(&log);
+    let _ = std::fs::remove_file(&prices);
+}
+
+/// Nested past the limit is exit 2, not a stack overflow.
+#[test]
+fn price_file_nested_past_128_exits_2() {
+    let log = tmp("budget-deep.log", b"disk full\n");
+    for (name, body) in [
+        ("budget-deep-object.json", nested(200, true)),
+        ("budget-deep-array.json", nested(200, false)),
+    ] {
+        let prices = prices(name, &body);
+        let (code, out, err) = run(&[
+            "scan",
+            "--window",
+            "1m",
+            "--prices",
+            file_path(&prices),
+            "--explain",
+            file_path(&log),
+        ]);
+        assert_eq!(code, 2, "{name} stdout: {out} stderr: {err}");
+        assert!(out.is_empty(), "{name}: {out}");
+        assert_eq!(err, "price file is nested too deeply\n");
+        let _ = std::fs::remove_file(&prices);
+    }
+    let _ = std::fs::remove_file(&log);
+}
+
+fn nested(depth: usize, object: bool) -> String {
+    let mut json = String::new();
+    if object {
+        for _ in 0..depth {
+            json.push_str(r#"{"a":"#);
+        }
+        json.push('1');
+        for _ in 0..depth {
+            json.push('}');
+        }
+    } else {
+        json.push_str(r#"{"currency":"EUR","source":"s","date":"2026-10-08","ingest_per_gb":"#);
+        json.push_str(&"[".repeat(depth));
+        json.push('1');
+        json.push_str(&"]".repeat(depth));
+        json.push('}');
+    }
+    json
+}

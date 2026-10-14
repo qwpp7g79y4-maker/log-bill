@@ -30,19 +30,20 @@ impl MaskCounts {
 
 /// Mask a message.
 ///
-/// Order: timestamp, UUID, IP, email, secret, hex, bare number, variable
-/// word. Then consecutive spaces become one space.
+/// Secret keys are found in the original text, before the other masks can
+/// split a key. Then timestamp, UUID, IP, email, hex, bare number, variable
+/// word. Consecutive spaces become one space.
 pub fn mask(message: &str) -> String {
     mask_detail(message).0
 }
 
 /// Same masking as `mask`, plus how many times each mask was applied.
 pub fn mask_detail(message: &str) -> (String, MaskCounts) {
-    let (text, ts) = replace(message, timestamp_re(), "<TS>");
+    let (text, secret) = mask_secrets(message);
+    let (text, ts) = replace(&text, timestamp_re(), "<TS>");
     let (text, uuid) = replace(&text, uuid_re(), "<UUID>");
     let (text, ip) = mask_ips(&text);
     let (text, email) = mask_emails(&text);
-    let (text, secret) = mask_secrets(&text);
     let (text, hex, num_hex) = mask_hex(&text);
     let (text, num, var) = mask_numbers(&text);
     (
@@ -65,10 +66,12 @@ const TIMESTAMP: &str = r"[0-9]{4}-[0-9]{2}-[0-9]{2}[Tt ][0-9]{2}:[0-9]{2}:[0-9]
 const UUID_RE: &str =
     r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
 
-/// An ordinary address, a quoted local part (`"john.doe"@example.com`), or
-/// letters outside ASCII (`jöhn@exämple.de`). The domain still needs a dot
+/// An ordinary address, a quoted local part (`"john.doe"@example.com`,
+/// `"a b"@example.com`), or letters outside ASCII (`jöhn@exämple.de`).
+/// A space inside the quotes is part of the local part. A line break is not,
+/// so one address cannot swallow the next line. The domain still needs a dot
 /// and a letter-only ending, so a keyword after the address can be cut off.
-const EMAIL: &str = r#"(?:"[^"@\s]+"|[\p{L}\p{Nd}._%+-]+)@[\p{L}\p{Nd}.-]+\.[\p{L}]{2,}"#;
+const EMAIL: &str = r#"(?:"[^"@\r\n]+"|[\p{L}\p{Nd}._%+-]+)@[\p{L}\p{Nd}.-]+\.[\p{L}]{2,}"#;
 
 const HEX_RE: &str = r"[0-9a-fA-F]{8,}";
 
@@ -175,7 +178,8 @@ fn email_end_keeping_key(input: &str, start: usize, end: usize) -> Option<usize>
         return Some(end);
     };
     let segment = &matched[dot + 1..];
-    if segment.is_empty() || !contains_key(segment) || after_separator(input, end).is_none() {
+    if segment.is_empty() || !contains_key(segment) || after_separator(input, end, false).is_none()
+    {
         return Some(end);
     }
     let cut = start + dot;
@@ -517,10 +521,19 @@ fn mask_secrets(input: &str) -> (String, u64) {
 fn secret_at(input: &str, i: usize) -> Option<(usize, usize)> {
     let key_len = key_len_at(input, i)?;
     let after = i + key_len;
-    if is_authorization_key(&input[i..after]) {
+    let decoded = decode_key_escapes(&input[i..after]);
+    if is_authorization_key(&decoded) {
         return auth_value_range(input, after);
     }
-    value_range(input, after)
+    if contains_key(&decoded) {
+        return value_range(input, after);
+    }
+    // An e-mail used as a key (`a@b.co= rosebud`) has no keyword. A bare space
+    // after an address is not that form: `mail ada@example.com einde` stays.
+    if is_whole_email(&input[i..after]) {
+        return eq_colon_value(input, after);
+    }
+    None
 }
 
 /// `authorization` is inside the word, also in `proxy-authorization` and `x-authorization`.
@@ -529,24 +542,157 @@ fn is_authorization_key(token: &str) -> bool {
 }
 
 fn key_len_at(input: &str, i: usize) -> Option<usize> {
-    // A key is ASCII. Without a char boundary a slice falls inside a
-    // multibyte char: `\xff\xfe` is lossy as two U+FFFD.
+    // Without a char boundary a slice falls inside a multibyte char:
+    // `\xff\xfe` is lossy as two U+FFFD.
     if !input.is_char_boundary(i) || !key_boundary_before(input, i) {
         return None;
     }
+    let end = sticky_end(input, i);
+    if end == i {
+        return None;
+    }
+    let token = &input[i..end];
+    let decoded = decode_key_escapes(token);
+    if contains_key(&decoded) || is_whole_email(token) {
+        Some(end - i)
+    } else {
+        None
+    }
+}
+
+/// Key characters, plus a `\uXXXX` that decodes to one, plus an IP or e-mail
+/// glued onto that run. `password-10.0.0.1` and `pass\u0077ord` stay one key.
+fn sticky_end(input: &str, start: usize) -> usize {
+    let mut end = start;
+    loop {
+        end += key_char_run(input, end);
+        match glue_mask(input, start, end) {
+            Some(next) if next > end => end = next,
+            _ => return end,
+        }
+    }
+}
+
+fn key_char_run(input: &str, i: usize) -> usize {
     let rest = &input[i..];
     let mut len = 0;
-    for ch in rest.chars() {
+    while len < rest.len() {
+        if let Some(width) = unicode_key_width(&rest[len..]) {
+            len += width;
+            continue;
+        }
+        let ch = rest[len..]
+            .chars()
+            .next()
+            .expect("index on a char boundary");
         if !is_key_char(ch) {
             break;
         }
         len += ch.len_utf8();
     }
-    if len == 0 {
+    len
+}
+
+/// `\u0077` inside a key is `w`. Four hex digits, and the character has to be
+/// a key character. A surrogate or a short escape stays outside the key.
+fn unicode_key_width(rest: &str) -> Option<usize> {
+    let tail = rest.strip_prefix("\\u")?;
+    let hex = tail.get(..4)?;
+    if !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return None;
     }
-    // Key characters are ASCII, so `len` is on a char boundary.
-    contains_key(&rest[..len]).then_some(len)
+    let unit = u32::from_str_radix(hex, 16).ok()?;
+    if (0xD800..=0xDFFF).contains(&unit) {
+        return None;
+    }
+    let ch = char::from_u32(unit)?;
+    is_key_char(ch).then_some(6)
+}
+
+/// Turn `\uXXXX` in a key back into the character, so `pass\u0077ord` contains
+/// `password`. Other bytes stay as they are.
+fn decode_key_escapes(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    let mut rest = raw;
+    while !rest.is_empty() {
+        if let Some(width) = unicode_key_width(rest) {
+            let hex = &rest[2..6];
+            let unit = u32::from_str_radix(hex, 16).expect("four hex digits");
+            out.push(char::from_u32(unit).expect("key character"));
+            rest = &rest[width..];
+            continue;
+        }
+        let ch = rest.chars().next().expect("non-empty");
+        out.push(ch);
+        rest = &rest[ch.len_utf8()..];
+    }
+    out
+}
+
+fn glue_mask(input: &str, start: usize, end: usize) -> Option<usize> {
+    let next = input[end..].chars().next()?;
+    if matches!(next, '.' | ':' | '[') {
+        if let Some(ip_end) = glue_span(input, start, end, ip_len) {
+            return Some(ip_end);
+        }
+    }
+    if next == '@' || next == '"' {
+        return glue_email(input, start, end);
+    }
+    None
+}
+
+fn glue_span(
+    input: &str,
+    start: usize,
+    end: usize,
+    len_at: fn(&str, usize) -> Option<usize>,
+) -> Option<usize> {
+    let mut i = start;
+    while i <= end {
+        if input.is_char_boundary(i) {
+            if let Some(len) = len_at(input, i) {
+                let span_end = i + len;
+                if span_end > end {
+                    return Some(span_end);
+                }
+            }
+        }
+        if i == end {
+            break;
+        }
+        let ch = input[i..].chars().next()?;
+        i += ch.len_utf8();
+    }
+    None
+}
+
+fn glue_email(input: &str, start: usize, end: usize) -> Option<usize> {
+    let mut i = start;
+    while i <= end {
+        if input.is_char_boundary(i) && boundary_at(input, i) {
+            if let Some(hit) = email_re().find(&input[i..]) {
+                if hit.start() == 0 {
+                    let email_end = i + hit.end();
+                    if email_end > end && boundary_at_end(input, email_end) {
+                        return Some(email_end);
+                    }
+                }
+            }
+        }
+        if i == end {
+            break;
+        }
+        let ch = input[i..].chars().next()?;
+        i += ch.len_utf8();
+    }
+    None
+}
+
+fn is_whole_email(token: &str) -> bool {
+    email_re()
+        .find(token)
+        .is_some_and(|hit| hit.start() == 0 && hit.end() == token.len())
 }
 
 fn key_boundary_before(input: &str, index: usize) -> bool {
@@ -601,25 +747,32 @@ fn is_exact_key(token: &str) -> bool {
     })
 }
 
-/// Value after a key. Spaces and tabs around `=` and `:` belong to the separator.
+/// Value after a key. Spaces, tabs and line breaks around `=` and `:` belong
+/// to the separator.
 /// A quote between the key and `:` belongs to JSON (`"key": "value"`), including
 /// a backslash-escaped quote in a message (`{\"key\":\"value\"}`).
 fn value_range(input: &str, after_key: usize) -> Option<(usize, usize)> {
-    secret_span(input, after_key, token_end)
+    secret_span(input, after_key, false, token_end)
+}
+
+/// An e-mail key needs `=` or `:`. A space after the address is not enough.
+fn eq_colon_value(input: &str, after_key: usize) -> Option<(usize, usize)> {
+    secret_span(input, after_key, true, token_end)
 }
 
 /// `Authorization` and `Proxy-Authorization`: the whole value, scheme word included.
 /// With no quote, the token is the rest of the message. Quoted, up to the closer.
 fn auth_value_range(input: &str, after_key: usize) -> Option<(usize, usize)> {
-    secret_span(input, after_key, token_end_of_message)
+    secret_span(input, after_key, false, token_end_of_message)
 }
 
 fn secret_span(
     input: &str,
     after_key: usize,
+    require_mark: bool,
     token_end_2: fn(&str, usize) -> usize,
 ) -> Option<(usize, usize)> {
-    let (start, opening) = after_separator(input, after_key)?;
+    let (start, opening) = after_separator(input, after_key, require_mark)?;
     if start >= input.len() {
         return None;
     }
@@ -697,7 +850,11 @@ fn token_end_of_message(input: &str, _start: usize) -> usize {
     input.len()
 }
 
-fn after_separator(input: &str, after_key: usize) -> Option<(usize, Option<OpenQuote>)> {
+fn after_separator(
+    input: &str,
+    after_key: usize,
+    require_mark: bool,
+) -> Option<(usize, Option<OpenQuote>)> {
     let mut i = skip_quote_before_separator(input, after_key);
     let first = input[i..].chars().next()?;
     if is_sep_ws(first) {
@@ -705,6 +862,8 @@ fn after_separator(input: &str, after_key: usize) -> Option<(usize, Option<OpenQ
         if matches!(input[i..].chars().next(), Some('=' | ':')) {
             i += 1;
             i = skip_spaces(input, i);
+        } else if require_mark {
+            return None;
         }
     } else if first == '=' || first == ':' {
         i += 1;
@@ -826,7 +985,7 @@ fn quote_at(input: &str, i: usize) -> Option<OpenQuote> {
 }
 
 fn is_sep_ws(ch: char) -> bool {
-    ch == ' ' || ch == '\t'
+    matches!(ch, ' ' | '\t' | '\n' | '\r')
 }
 
 fn skip_spaces(input: &str, mut i: usize) -> usize {
@@ -930,12 +1089,20 @@ fn push_token(out: &mut String, token: &str, num: &mut u64, var: &mut u64) {
 
 /// Digits, optionally with a leading `+` or `-` and one decimal fraction.
 /// `12.` and `.5` are not fractions: the dot needs digits on both sides.
+/// Trailing `!`, `?`, `,` or `;` still counts (`7!`), so the mark does not
+/// keep the digits in the pattern. A trailing dot does not (`1699482000.`).
 fn is_number_token(token: &str) -> bool {
-    number_re().is_match(token)
+    if number_re().is_match(token) {
+        return true;
+    }
+    let bare = token.trim_end_matches(['!', '?', ',', ';']);
+    bare.len() < token.len() && !bare.is_empty() && number_re().is_match(bare)
 }
 
 /// A word with a letter and a digit, or 32 or more characters.
 /// `13:55:36` has digits but no letter and stays as it is.
+/// A token with no spaces is one word, so a long masked line can become `<VAR>`
+/// after the secret has already been counted.
 fn is_var(token: &str) -> bool {
     if token.chars().count() >= 32 {
         return true;
@@ -1629,5 +1796,108 @@ mod tests {
             mask("password=TokenValueXyzHere next=ok"),
             "password=<SECRET> next=ok"
         );
+    }
+
+    #[test]
+    fn unicode_escaped_key_masks_rosebud() {
+        // The `\u0077` digits make the key token a `<VAR>`. The value stays
+        // `<SECRET>` when a space keeps it a separate word.
+        let literal = r#"{"pass\u0077ord": "rosebud"}"#;
+        let masked = mask(literal);
+        assert_eq!(masked, r#"<VAR> "<SECRET>"}"#);
+        assert!(!masked.contains("rosebud"));
+        for (ws_name, ws) in [("space", " "), ("lf", "\n"), ("cr", "\r"), ("tab", "\t")] {
+            let line = format!(r#"{{{ws}"pass\u0077ord"{ws}:{ws}"rosebud"{ws}}}"#);
+            let (masked, counts) = mask_detail(&line);
+            assert!(!masked.contains("rosebud"), "{ws_name}: {masked}");
+            assert!(counts.secret >= 1, "{ws_name}: {masked}");
+        }
+        for key in [
+            r"\u0070assword",
+            r"p\u0061ssword",
+            r"PASS\u0057ORD",
+            r"pass\u0077ord",
+        ] {
+            let line = format!(r#"{{"user":"ada","{key}":"rosebud"}}"#);
+            let (masked, counts) = mask_detail(&line);
+            assert!(!masked.contains("rosebud"), "{key} -> {masked}");
+            assert!(counts.secret >= 1, "{key} -> {masked}");
+            let flipped = format!(r#"{{"{key}":"rosebud","user":"ada"}}"#);
+            let (masked, counts) = mask_detail(&flipped);
+            assert!(!masked.contains("rosebud"), "flipped {key} -> {masked}");
+            assert!(counts.secret >= 1, "flipped {key} -> {masked}");
+        }
+        // No spaces: the line is one word, so `<VAR>` replaces it after the
+        // secret is counted. The value is still not left in the text.
+        let escaped = r#"{\"pass\u0077ord\":\"rosebud\"}"#;
+        let (masked, counts) = mask_detail(escaped);
+        assert!(!masked.contains("rosebud"), "{masked}");
+        assert!(counts.secret >= 1, "{masked}");
+    }
+
+    #[test]
+    fn secret_key_before_other_masks_hides_rosebud() {
+        let cases = [
+            (
+                "password-123e4567-e89b-12d3-a456-426614174000= rosebud",
+                "password-<UUID>= <SECRET>",
+            ),
+            (
+                "123e4567-e89b-12d3-a456-426614174000-password= rosebud",
+                "<UUID>-password= <SECRET>",
+            ),
+            ("password-10.0.0.1= rosebud", "password-<IP>= <SECRET>"),
+            ("10.0.0.1-password= rosebud", "<IP>-password= <SECRET>"),
+            ("a@b.co= rosebud", "<EMAIL>= <SECRET>"),
+            (
+                "token=ok a@b.co= rosebud",
+                "token=<SECRET> <EMAIL>= <SECRET>",
+            ),
+            ("password-user@host.com= rosebud", "<EMAIL>= <SECRET>"),
+        ];
+        for (input_text, expected) in cases {
+            let masked = mask(input_text);
+            assert_eq!(masked, expected, "{input_text}");
+            assert!(!masked.contains("rosebud"), "{input_text} -> {masked}");
+        }
+    }
+
+    #[test]
+    fn quoted_email_with_a_space() {
+        assert_eq!(mask(r#""a b"@example.com"#), "<EMAIL>");
+        assert_eq!(
+            mask(r#"mail "a b"@example.com einde"#),
+            "mail <EMAIL> einde"
+        );
+        assert!(!mask(r#""a b"@example.com"#).contains("a b"));
+        assert!(!mask(r#""a b"@example.com"#).contains("example.com"));
+    }
+
+    #[test]
+    fn number_with_trailing_punctuation() {
+        assert_eq!(mask("7!"), "<NUM>");
+        assert_eq!(mask("code 7!"), "code <NUM>");
+        assert_eq!(mask("8?"), "<NUM>");
+        assert_eq!(mask("+12;"), "<NUM>");
+        assert_eq!(mask("-12.5!"), "<NUM>");
+        assert_eq!(mask("1699482000."), "<NUM>.");
+        assert_eq!(mask("om 13:55:36 klaar"), "om 13:55:36 klaar");
+        assert_eq!(mask("!7"), "!7");
+    }
+
+    #[test]
+    fn line_break_before_secret_separator_hides_rosebud() {
+        let lf = "password\n= rosebud";
+        let cr = "password\r: rosebud";
+        assert_eq!(mask(lf), "password\n= <SECRET>");
+        assert_eq!(mask(cr), "password\r: <SECRET>");
+        assert!(!mask(lf).contains("rosebud"));
+        assert!(!mask(cr).contains("rosebud"));
+        for ws in [" ", "\n", "\r", "\t"] {
+            let line = format!("password{ws}= rosebud");
+            let masked = mask(&line);
+            assert!(!masked.contains("rosebud"), "{masked:?}");
+            assert!(masked.contains("<SECRET>"), "{masked:?}");
+        }
     }
 }

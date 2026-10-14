@@ -487,7 +487,8 @@ impl<'a> Json<'a> {
 
     /// `None` when no chosen key is present. `Some(None)` when the key is
     /// present but its value is not a string. `Some(Some(text))` for a string.
-    /// A later duplicate key replaces the earlier one.
+    /// A later duplicate key replaces the earlier one. `message`, `msg`, `log`
+    /// and a named field all work that way: the last value of that key is kept.
     fn object_message(&mut self, message_field: Option<&str>) -> Result<Option<String>, ()> {
         let mut message = None;
         let mut msg = None;
@@ -746,10 +747,27 @@ impl<'a> Json<'a> {
     }
 
     fn bump_char(&mut self) -> Result<char, ()> {
-        let rest = &self.bytes[self.index..];
-        let text = std::str::from_utf8(rest).map_err(|_| ())?;
-        let mut chars = text.chars();
-        let ch = chars.next().ok_or(())?;
+        // One character only. Validating the whole remainder on every call
+        // made skipping a long unused string quadratic.
+        let rest = self.bytes.get(self.index..).ok_or(())?;
+        if rest.is_empty() {
+            return Err(());
+        }
+        let width = match rest[0] {
+            0x00..=0x7F => 1,
+            0xC2..=0xDF => 2,
+            0xE0..=0xEF => 3,
+            0xF0..=0xF4 => 4,
+            _ => return Err(()),
+        };
+        if rest.len() < width {
+            return Err(());
+        }
+        let ch = std::str::from_utf8(&rest[..width])
+            .map_err(|_| ())?
+            .chars()
+            .next()
+            .ok_or(())?;
         self.index += ch.len_utf8();
         Ok(ch)
     }
@@ -1131,5 +1149,57 @@ mod tests {
             }
         }
         "<NO-MESSAGE>".to_owned()
+    }
+
+    #[test]
+    fn duplicate_message_key_keeps_the_later_value() {
+        // The later `message` wins, including when `msg` sits between them.
+        // A named field does the same. `message` still beats a later `msg`.
+        assert_eq!(
+            super::json_message(r#"{"message":"alpha","message":"beta"}"#, None).unwrap(),
+            "beta"
+        );
+        assert_eq!(
+            super::json_message(
+                r#"{"msg":"alpha","message":"beta","message":"gamma"}"#,
+                None
+            )
+            .unwrap(),
+            "gamma"
+        );
+        assert_eq!(
+            super::json_message(r#"{"message":"alpha","msg":"beta"}"#, None).unwrap(),
+            "alpha"
+        );
+        assert_eq!(
+            super::json_message(r#"{"note":"alpha","note":"beta"}"#, Some("note")).unwrap(),
+            "beta"
+        );
+    }
+
+    #[test]
+    fn skipping_an_unused_string_is_linear() {
+        fn once(n: usize) -> std::time::Duration {
+            let mut body = String::with_capacity(n + 32);
+            body.push_str(r#"{"message":"ok","x":""#);
+            body.extend(std::iter::repeat_n('a', n));
+            body.push_str("\"}\n");
+            let start = std::time::Instant::now();
+            let lines = json_lines(body.as_bytes(), None).unwrap();
+            let elapsed = start.elapsed();
+            assert_eq!(lines.len(), 1);
+            assert_eq!(lines[0].text, "ok");
+            elapsed
+        }
+        let _ = once(8_000);
+        let n = 40_000;
+        let small = (0..3).map(|_| once(n)).min().expect("timing");
+        let large = (0..3).map(|_| once(n * 8)).min().expect("timing");
+        let ratio = large.as_secs_f64() / small.as_secs_f64().max(1e-9);
+        // Eight times the bytes. Linear stays near 8. Quadratic is near 64.
+        assert!(
+            ratio < 40.0,
+            "skip grew {ratio:.1}× from {small:?} to {large:?}"
+        );
     }
 }

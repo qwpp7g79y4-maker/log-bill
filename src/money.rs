@@ -179,6 +179,7 @@ pub enum PriceError {
     DuplicateKey,
     GbBytes,
     NotRegular,
+    TooDeep,
 }
 
 impl fmt::Display for PriceError {
@@ -194,6 +195,7 @@ impl fmt::Display for PriceError {
             PriceError::DuplicateKey => "price file has a duplicate key",
             PriceError::GbBytes => "gb_bytes must be a whole number greater than 0",
             PriceError::NotRegular => "price file is not a regular file",
+            PriceError::TooDeep => "price file is nested too deeply",
         };
         f.write_str(text)
     }
@@ -214,15 +216,18 @@ pub fn load_prices(path: &std::path::Path) -> Result<Prices, PriceError> {
 /// `currency`, `source`, `date`, and `ingest_per_gb` are required.
 /// `index_per_gb` and `gb_bytes` may be absent. An unknown field, an empty
 /// string, a negative price, a price that is not a number, or a key that
-/// appears twice is invalid. A price is the exact decimal text, not a
-/// binary float. The error text does not contain the file contents. One
-/// UTF-8 byte order mark at the start is skipped.
+/// appears twice is invalid. A fraction that does not fit in the accumulator
+/// is not a number. Arrays and objects nested more than 128 deep are
+/// refused. A price is the exact decimal text, not a binary float. The error
+/// text does not contain the file contents. One UTF-8 byte order mark at the
+/// start is skipped.
 pub fn parse_prices(data: &[u8]) -> Result<Prices, PriceError> {
     let data = data.strip_prefix(crate::read::UTF8_BOM).unwrap_or(data);
     let text = std::str::from_utf8(data).map_err(|_| PriceError::NotJson)?;
     let numbers = match scan_numbers(text) {
         Ok(numbers) => numbers,
         Err(ScanError::Duplicate) => return Err(PriceError::DuplicateKey),
+        Err(ScanError::TooDeep) => return Err(PriceError::TooDeep),
         Err(ScanError::Invalid) => {
             let _: serde_json::Value =
                 serde_json::from_str(text).map_err(|_| PriceError::NotJson)?;
@@ -340,9 +345,14 @@ fn number_text<'a>(numbers: &'a [(String, String)], key: &str) -> Option<&'a str
         .map(|(_, text)| text.as_str())
 }
 
+/// Nested arrays and objects past this depth are refused. Deeper input would
+/// grow the call stack until it overflows.
+const MAX_PRICE_DEPTH: usize = 128;
+
 enum ScanError {
     Invalid,
     Duplicate,
+    TooDeep,
 }
 
 struct Cursor<'a> {
@@ -494,7 +504,7 @@ impl<'a> Cursor<'a> {
         Ok(())
     }
 
-    fn value(&mut self) -> Result<Option<String>, ScanError> {
+    fn value(&mut self, depth: usize) -> Result<Option<String>, ScanError> {
         self.skip_ws();
         match self.peek() {
             Some('"') => {
@@ -502,11 +512,11 @@ impl<'a> Cursor<'a> {
                 Ok(None)
             }
             Some('{') => {
-                self.object(false, &mut Vec::new())?;
+                self.object(false, &mut Vec::new(), depth + 1)?;
                 Ok(None)
             }
             Some('[') => {
-                self.array()?;
+                self.array(depth + 1)?;
                 Ok(None)
             }
             Some('t') => {
@@ -526,7 +536,10 @@ impl<'a> Cursor<'a> {
         }
     }
 
-    fn array(&mut self) -> Result<(), ScanError> {
+    fn array(&mut self, depth: usize) -> Result<(), ScanError> {
+        if depth > MAX_PRICE_DEPTH {
+            return Err(ScanError::TooDeep);
+        }
         if !self.eat('[') {
             return Err(ScanError::Invalid);
         }
@@ -535,7 +548,7 @@ impl<'a> Cursor<'a> {
             return Ok(());
         }
         loop {
-            self.value()?;
+            self.value(depth)?;
             self.skip_ws();
             if self.eat(']') {
                 return Ok(());
@@ -550,7 +563,11 @@ impl<'a> Cursor<'a> {
         &mut self,
         record: bool,
         numbers: &mut Vec<(String, String)>,
+        depth: usize,
     ) -> Result<(), ScanError> {
+        if depth > MAX_PRICE_DEPTH {
+            return Err(ScanError::TooDeep);
+        }
         if !self.eat('{') {
             return Err(ScanError::Invalid);
         }
@@ -566,7 +583,7 @@ impl<'a> Cursor<'a> {
             if !self.eat(':') {
                 return Err(ScanError::Invalid);
             }
-            let lexeme = self.value()?;
+            let lexeme = self.value(depth)?;
             if seen.iter().any(|item| item == &key) {
                 return Err(ScanError::Duplicate);
             }
@@ -593,7 +610,7 @@ fn scan_numbers(text: &str) -> Result<Vec<(String, String)>, ScanError> {
     let mut cursor = Cursor { text, i: 0 };
     let mut numbers = Vec::new();
     cursor.skip_ws();
-    cursor.object(true, &mut numbers)?;
+    cursor.object(true, &mut numbers, 1)?;
     cursor.skip_ws();
     if cursor.i != text.len() {
         return Err(ScanError::Invalid);
@@ -624,7 +641,10 @@ fn rate_from_decimal(text: &str) -> Result<Price, PriceError> {
     }
     let mut numer = digits(whole)?;
     for byte in frac.bytes() {
-        numer = numer.checked_mul(10).ok_or(PriceError::NotNumeric)? + u128::from(byte - b'0');
+        numer = numer
+            .checked_mul(10)
+            .and_then(|value| value.checked_add(u128::from(byte - b'0')))
+            .ok_or(PriceError::NotNumeric)?;
     }
     let frac_len = i32::try_from(frac.len()).map_err(|_| PriceError::NotNumeric)?;
     let scale = exp.checked_sub(frac_len).ok_or(PriceError::NotNumeric)?;
@@ -1799,6 +1819,57 @@ mod tests {
             PriceError::UnknownField,
             "price file has an unknown field",
         );
+    }
+
+    #[test]
+    fn fraction_add_overflow_is_not_a_number() {
+        // `checked_mul(10)` still fits; adding the next digit does not.
+        // Debug used to panic on that add, release used to wrap.
+        let numer = u128::MAX / 10;
+        let digit = u128::MAX % 10 + 1;
+        let price = format!("{numer}.{digit}");
+        let json = format!(
+            r#"{{"currency":"EUR","source":"s","date":"2026-10-08","ingest_per_gb":{price}}}"#
+        );
+        let err = parse_prices(json.as_bytes()).expect_err("overflow");
+        assert_eq!(err, PriceError::NotNumeric);
+        assert_eq!(
+            err.to_string(),
+            "price file has a price that is not a number"
+        );
+        assert!(!err.to_string().contains(&price));
+    }
+
+    #[test]
+    fn deeply_nested_price_file_is_refused() {
+        let err =
+            parse_prices(nested_price(super::MAX_PRICE_DEPTH + 5).as_bytes()).expect_err("deep");
+        assert_eq!(err, PriceError::TooDeep);
+        assert_eq!(err.to_string(), "price file is nested too deeply");
+        let arrays = {
+            let n = super::MAX_PRICE_DEPTH + 5;
+            let mut json = String::new();
+            json.push_str(r#"{"currency":"EUR","source":"s","date":"2026-10-08","ingest_per_gb":"#);
+            json.push_str(&"[".repeat(n));
+            json.push('1');
+            json.push_str(&"]".repeat(n));
+            json.push('}');
+            json
+        };
+        let err = parse_prices(arrays.as_bytes()).expect_err("deep array");
+        assert_eq!(err, PriceError::TooDeep);
+    }
+
+    fn nested_price(depth: usize) -> String {
+        let mut json = String::new();
+        for _ in 0..depth {
+            json.push_str(r#"{"a":"#);
+        }
+        json.push('1');
+        for _ in 0..depth {
+            json.push('}');
+        }
+        json
     }
 
     #[test]

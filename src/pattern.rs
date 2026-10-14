@@ -17,23 +17,40 @@ pub fn fnv1a64(data: &[u8]) -> u64 {
     hash
 }
 
-/// Control characters are shown as `\u00XX`, the same spelling as a JSON
-/// escape. A log line can then not move the cursor or clear the screen.
-/// Characters that are not controls are left as they are. Applying this
-/// twice does not change the text: the escape itself has no controls.
+/// Control characters and bidi controls are shown as `\uXXXX`, the same
+/// spelling as a JSON escape. A log line can then not move the cursor, clear
+/// the screen, or reverse the text that follows (U+202E and the other bidi
+/// marks). Other characters are left as they are. Applying this twice does
+/// not change the text: the escape itself has none of those characters.
 pub fn show_controls(text: &str) -> String {
-    if !text.chars().any(char::is_control) {
+    if !text.chars().any(is_shown_escaped) {
         return text.to_owned();
     }
     let mut out = String::with_capacity(text.len());
     for ch in text.chars() {
-        if ch.is_control() {
+        if is_shown_escaped(ch) {
             out.push_str(&format!("\\u{:04x}", u32::from(ch)));
         } else {
             out.push(ch);
         }
     }
     out
+}
+
+/// Controls, plus the bidi marks that can reorder text in a terminal.
+fn is_shown_escaped(ch: char) -> bool {
+    ch.is_control() || is_bidi_control(ch)
+}
+
+fn is_bidi_control(ch: char) -> bool {
+    matches!(
+        ch,
+        '\u{202A}'..='\u{202E}'
+            | '\u{2066}'..='\u{2069}'
+            | '\u{200E}'
+            | '\u{200F}'
+            | '\u{061C}'
+    )
 }
 
 /// `P` plus all 16 hex digits of FNV-1a 64-bit over the pattern text.
@@ -141,9 +158,9 @@ impl Grouper {
 }
 
 /// Group lines by the masked message. Bytes stay the raw bytes.
-/// Control characters stay in the pattern text. Text output shows them
-/// as `\u00XX`; JSON keeps the character. The pattern id is the hash of
-/// the masked text.
+/// Control characters and bidi marks stay in the pattern text. Text output
+/// shows them as `\uXXXX`; JSON keeps the character. The pattern id is the
+/// hash of the masked text.
 #[cfg(test)]
 pub fn group(lines: &[Line], top: Option<u32>) -> Stats {
     let mut grouped = Grouper::default();
@@ -194,6 +211,30 @@ mod tests {
         assert!(!show_controls(raw).chars().any(char::is_control));
         assert_eq!(show_controls("E\u{1b}[2JUR"), "E\\u001b[2JUR");
         assert_eq!(show_controls("disk full"), "disk full");
+    }
+
+    #[test]
+    fn bidi_override_is_escaped_in_text() {
+        let raw = "disk \u{202E}full";
+        let shown = show_controls(raw);
+        assert_eq!(shown, "disk \\u202efull");
+        assert!(!shown.chars().any(|ch| ch == '\u{202E}'));
+        assert_eq!(show_controls(&shown), shown);
+        let stats = group(&[sample_line(raw, 10)], None);
+        assert_eq!(stats.patterns[0].text, raw);
+        assert_eq!(stats.patterns[0].id, pattern_id(raw));
+        for ch in [
+            '\u{202A}', '\u{202B}', '\u{202C}', '\u{202D}', '\u{202E}', '\u{2066}', '\u{2067}',
+            '\u{2068}', '\u{2069}', '\u{200E}', '\u{200F}', '\u{061C}',
+        ] {
+            let text = format!("ev {ch}x");
+            let shown = show_controls(&text);
+            assert!(!shown.contains(ch), "{shown}");
+            assert!(
+                shown.contains(&format!("\\u{:04x}", u32::from(ch))),
+                "{shown}"
+            );
+        }
     }
 
     #[test]

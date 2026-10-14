@@ -1031,25 +1031,48 @@ fn quoted_examples_fully_masked() {
 
 /// Text, `--explain`, `--json` and diff must hide `secrets`.
 fn assert_masked_line(name: &str, line: &str, secrets: &[&str]) {
+    assert_masked(name, line, secrets, &[]);
+}
+
+/// Same check. `flags` are extra arguments after the subcommand, such as
+/// `--format jsonl`, so a newline can live inside one JSON message.
+fn assert_masked(name: &str, line: &str, secrets: &[&str], flags: &[&str]) {
     let dir = TempDir(std::env::temp_dir().join(format!("log-bill-{name}-{}", std::process::id())));
     std::fs::create_dir_all(&dir.0).expect("temporary directory");
     let file_path = dir.0.join("line.log");
     std::fs::write(&file_path, format!("{line}\n")).expect("line");
     let arg = file_path.to_str().expect("path");
-    for (mode, args) in [
-        ("scan", vec!["scan", arg]),
-        ("scan --explain", vec!["scan", "--explain", arg]),
-        ("scan --json", vec!["scan", "--json", arg]),
-        ("diff", vec!["diff", arg, arg]),
-        ("diff --json", vec!["diff", "--json", arg, arg]),
-    ] {
-        let (code, stdout_text, err) = run_tool(&args);
+    // A space keeps the value its own word, so `<SECRET>` is in the text.
+    // Without one, a long word can become `<VAR>` after the secret is counted.
+    // `--explain` still prints that count.
+    let tag_in_every_mode = line.contains(' ');
+    let owned = |head: &[&str], twice: bool| -> Vec<String> {
+        let mut args: Vec<String> = head.iter().map(|part| (*part).to_string()).collect();
+        args.extend(flags.iter().copied().map(str::to_string));
+        args.push(arg.to_string());
+        if twice {
+            args.push(arg.to_string());
+        }
+        args
+    };
+    let runs = [
+        ("scan", owned(&["scan"], false)),
+        ("scan --explain", owned(&["scan", "--explain"], false)),
+        ("scan --json", owned(&["scan", "--json"], false)),
+        ("diff", owned(&["diff"], true)),
+        ("diff --json", owned(&["diff", "--json"], true)),
+    ];
+    for (mode, args) in runs {
+        let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+        let (code, stdout_text, err) = run_tool(&refs);
         assert_eq!(code, 0, "{name} {mode}\n{stdout_text}\n{err}");
         assert!(err.is_empty(), "{name} {mode} stderr: {err}");
-        assert!(
-            stdout_text.contains("<SECRET>"),
-            "{name} {mode} missing <SECRET>\n{stdout_text}"
-        );
+        if tag_in_every_mode || mode.contains("explain") {
+            assert!(
+                stdout_text.contains("<SECRET>"),
+                "{name} {mode} missing <SECRET>\n{stdout_text}"
+            );
+        }
         for piece in secrets {
             assert!(
                 !stdout_text.contains(piece),
@@ -1175,4 +1198,80 @@ fn quote_in_free_text_fully_masked() {
             assert!(!err.contains(piece), "{mode} stderr leaks {piece}");
         }
     }
+}
+
+#[test]
+fn unicode_escaped_key_hides_rosebud() {
+    assert_masked_line(
+        "unicode-key",
+        r#"{"pass\u0077ord": "rosebud"}"#,
+        &["rosebud"],
+    );
+    assert_masked_line(
+        "unicode-escaped",
+        r#"{\"pass\u0077ord\":\"rosebud\"}"#,
+        &["rosebud"],
+    );
+}
+
+#[test]
+fn unicode_key_whitespace_and_order_hide_rosebud() {
+    for (name, ws) in [("space", " "), ("tab", "\t"), ("cr", "\r")] {
+        let line = format!(r#"{{{ws}"pass\u0077ord"{ws}:{ws}"rosebud"{ws}}}"#);
+        assert_masked_line(&format!("unicode-{name}"), &line, &["rosebud"]);
+    }
+    // A raw line break would split the file. JSON keeps it inside the message.
+    let message = "{\n\"pass\\u0077ord\"\n:\n\"rosebud\"\n}";
+    let line = serde_json::json!({ "message": message }).to_string();
+    assert_masked("unicode-lf", &line, &["rosebud"], &["--format", "jsonl"]);
+    for (index, key) in [
+        r"\u0070assword",
+        r"p\u0061ssword",
+        r"PASS\u0057ORD",
+        r"pass\u0077ord",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let line = format!(r#"{{"user":"ada","{key}":"rosebud"}}"#);
+        assert_masked_line(&format!("key-{index}"), &line, &["rosebud"]);
+        let flipped = format!(r#"{{"{key}":"rosebud","user":"ada"}}"#);
+        assert_masked_line(&format!("flip-{index}"), &flipped, &["rosebud"]);
+    }
+}
+
+#[test]
+fn secret_before_uuid_ip_and_email_hides_rosebud() {
+    for (name, line) in [
+        (
+            "password-uuid",
+            "password-123e4567-e89b-12d3-a456-426614174000= rosebud",
+        ),
+        (
+            "uuid-password",
+            "123e4567-e89b-12d3-a456-426614174000-password= rosebud",
+        ),
+        ("password-ip", "password-10.0.0.1= rosebud"),
+        ("ip-password", "10.0.0.1-password= rosebud"),
+        ("email-after-key", "token=ok a@b.co= rosebud"),
+        ("email-key", "a@b.co= rosebud"),
+        ("password-email", "password-user@host.com= rosebud"),
+    ] {
+        assert_masked_line(name, line, &["rosebud"]);
+    }
+}
+
+#[test]
+fn line_break_before_separator_hides_rosebud() {
+    assert_masked_line("cr-before-colon", "password\r: rosebud", &["rosebud"]);
+    for (name, ws) in [("sep-space", " "), ("sep-tab", "\t"), ("sep-cr", "\r")] {
+        assert_masked_line(name, &format!("password{ws}= rosebud"), &["rosebud"]);
+    }
+    let line = serde_json::json!({ "message": "password\n= rosebud" }).to_string();
+    assert_masked(
+        "lf-before-equals",
+        &line,
+        &["rosebud"],
+        &["--format", "jsonl"],
+    );
 }
