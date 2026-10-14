@@ -2,6 +2,34 @@
 
 This page shows how each release of log-bill was checked, what we found, and what we fixed. It describes checks we did. It is not a guarantee that the software is free of bugs or secure.
 
+## v0.1.2
+
+| | |
+|---|---|
+| Version | 0.1.2 ([release](https://github.com/qwpp7g79y4-maker/log-bill/releases/tag/v0.1.2), [crates.io](https://crates.io/crates/log-bill/0.1.2)) |
+| Commit checked | [`e626c10`](https://github.com/qwpp7g79y4-maker/log-bill/commit/e626c10) |
+| Date | 2026-10-14 |
+| Tests | 247 automated tests, run in debug and release mode |
+
+### How we checked
+
+- The same checks as for the previous version (below), on every platform.
+- A second external automated code review. Every finding we could reproduce is fixed in this version, each with a regression test that uses the exact input.
+- Automated tests in CI: [run 38539431902](https://github.com/qwpp7g79y4-maker/log-bill/actions/runs/38539431902) on Linux, Windows, macOS on Apple Silicon and Intel, and Rust 1.85, plus `cargo audit` (no known vulnerabilities).
+
+### What we found and fixed
+
+| Problem | Fix |
+|---|---|
+| Secrets could stay visible in some shapes (after a tab, in escaped JSON, in array or object values, in `\uXXXX`-escaped keys, after a line break, or when another mask touched the key) | All these shapes are masked; a generated leak test covers them |
+| Quoted and international e-mail addresses, and numbers with a sign, decimals, non-ASCII digits or trailing punctuation, were not masked | They are masked as `<EMAIL>` and `<NUM>` |
+| Prices went through binary floating point, so a budget check could pass on a rounded price; duplicate price keys were accepted | Prices are exact decimals; duplicate keys, overflowing fractions and very deep nesting are refused with exit 2 |
+| A full disk or an invalid `--window` caused a panic | Clean errors with documented exit codes |
+| Control and bidirectional characters from input reached the terminal raw | They are shown as visible escapes in text output |
+| A path swapped for a FIFO could make the tool wait; large files were read into memory at once | The opened file is checked; input is read line by line |
+
+All fixes are listed in the [changelog](https://github.com/qwpp7g79y4-maker/log-bill/blob/main/CHANGELOG.md).
+
 ## v0.1.1
 
 | | |

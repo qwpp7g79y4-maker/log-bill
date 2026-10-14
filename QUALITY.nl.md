@@ -2,6 +2,34 @@
 
 Deze pagina laat zien hoe elke release van log-bill is gecontroleerd, wat we vonden en wat we hebben opgelost. Het beschrijft onze controles. Het is geen garantie dat de software foutloos of veilig is.
 
+## v0.1.2
+
+| | |
+|---|---|
+| Versie | 0.1.2 ([release](https://github.com/qwpp7g79y4-maker/log-bill/releases/tag/v0.1.2), [crates.io](https://crates.io/crates/log-bill/0.1.2)) |
+| Gecontroleerde commit | [`e626c10`](https://github.com/qwpp7g79y4-maker/log-bill/commit/e626c10) |
+| Datum | 2026-10-14 |
+| Tests | 247 automatische tests, gedraaid in debug- en releasemodus |
+
+### Hoe we controleerden
+
+- Dezelfde controles als bij de vorige versie (hieronder), op elk platform.
+- Een tweede externe geautomatiseerde codereview. Elke bevinding die we konden reproduceren is in deze versie opgelost, elk met een regressietest met precies die invoer.
+- Geautomatiseerde tests in CI: [run 38539431902](https://github.com/qwpp7g79y4-maker/log-bill/actions/runs/38539431902) op Linux, Windows, macOS op Apple Silicon en Intel, en Rust 1.85, plus `cargo audit` (geen bekende kwetsbaarheden).
+
+### Wat we vonden en oplosten
+
+| Probleem | Oplossing |
+|---|---|
+| Geheimen konden in sommige vormen zichtbaar blijven (na een tab, in ge-escapete JSON, in array- of objectwaarden, in sleutels met `\uXXXX`, na een regeleinde, of als een ander masker de sleutel raakte) | Al deze vormen worden gemaskeerd; een gegenereerde lektest dekt ze |
+| Gequote en internationale e-mailadressen, en getallen met teken, decimalen, niet-ASCII-cijfers of leesteken erachter, werden niet gemaskeerd | Ze worden `<EMAIL>` en `<NUM>` |
+| Prijzen gingen via binaire drijvende komma, zodat een budgetcontrole kon slagen op een afgeronde prijs; dubbele prijssleutels werden geaccepteerd | Prijzen zijn exacte decimalen; dubbele sleutels, overlopende breuken en zeer diepe nesting geven exit 2 |
+| Een volle schijf of een ongeldige `--window` gaf een panic | Nette foutmeldingen met gedocumenteerde exitcodes |
+| Stuur- en richtingstekens uit de invoer kwamen rauw in de terminal | Ze worden als zichtbare escapes getoond in tekstuitvoer |
+| Een pad dat door een FIFO werd vervangen kon de tool laten wachten; grote bestanden werden in één keer ingelezen | Het geopende bestand wordt gecontroleerd; invoer wordt per regel gelezen |
+
+Alle fixes staan in de [changelog](https://github.com/qwpp7g79y4-maker/log-bill/blob/main/CHANGELOG.md).
+
 ## v0.1.1
 
 | | |
