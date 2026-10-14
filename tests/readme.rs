@@ -609,6 +609,31 @@ fn privacy_sentence_matches_what_the_tool_shows() {
     }
 }
 
+/// The `--version` example in both references is the package version.
+#[test]
+fn reference_version_example_matches_package() {
+    let version = env!("CARGO_PKG_VERSION");
+    for rel in [REF, REF_NL] {
+        let text = read(rel);
+        let mut found = Vec::new();
+        let mut rest = text.as_str();
+        let marker = "`log-bill ";
+        while let Some(start) = rest.find(marker) {
+            let after = &rest[start + marker.len()..];
+            let example: String = after
+                .chars()
+                .take_while(|ch| ch.is_ascii_digit() || *ch == '.')
+                .collect();
+            let consumed = example.len();
+            if !example.is_empty() {
+                found.push(example);
+            }
+            rest = &after[consumed..];
+        }
+        assert_eq!(found, vec![version.to_string()], "{rel}");
+    }
+}
+
 #[test]
 fn plain_sentence_matches_the_binary() {
     let path = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("readme-plain-sentence.log");

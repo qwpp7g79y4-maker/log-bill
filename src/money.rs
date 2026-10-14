@@ -217,15 +217,17 @@ pub fn load_prices(path: &std::path::Path) -> Result<Prices, PriceError> {
 /// `index_per_gb` and `gb_bytes` may be absent. An unknown field, an empty
 /// string, a negative price, a price that is not a number, or a key that
 /// appears twice is invalid. A fraction that does not fit in the accumulator
-/// is not a number. Arrays and objects nested more than 128 deep are
-/// refused. A price is the exact decimal text, not a binary float. The error
-/// text does not contain the file contents. One UTF-8 byte order mark at the
-/// start is skipped.
+/// is not a number. A number outside the f64 range (`1e400`, a `1` followed
+/// by 309 zeros) is that same error for a price, and for `gb_bytes` it is
+/// not a whole number greater than 0. It is not invalid JSON. Arrays and
+/// objects nested more than 128 deep are refused. A price is the exact
+/// decimal text, not a binary float. The error text does not contain the
+/// file contents. One UTF-8 byte order mark at the start is skipped.
 pub fn parse_prices(data: &[u8]) -> Result<Prices, PriceError> {
     let data = data.strip_prefix(crate::read::UTF8_BOM).unwrap_or(data);
     let text = std::str::from_utf8(data).map_err(|_| PriceError::NotJson)?;
-    let numbers = match scan_numbers(text) {
-        Ok(numbers) => numbers,
+    let scanned = match scan_numbers(text) {
+        Ok(scanned) => scanned,
         Err(ScanError::Duplicate) => return Err(PriceError::DuplicateKey),
         Err(ScanError::TooDeep) => return Err(PriceError::TooDeep),
         Err(ScanError::Invalid) => {
@@ -234,7 +236,17 @@ pub fn parse_prices(data: &[u8]) -> Result<Prices, PriceError> {
             return Err(PriceError::NotJson);
         }
     };
-    let value: serde_json::Value = serde_json::from_str(text).map_err(|_| PriceError::NotJson)?;
+    // serde_json stores a number as f64 and rejects one that does not fit,
+    // which would hide the price error behind "not JSON". The scan already
+    // has the decimal text. A rejected token is replaced with `0` only so
+    // the object shape can be read; the price is still that original text.
+    let value: serde_json::Value = match serde_json::from_str(text) {
+        Ok(value) => value,
+        Err(_) => {
+            let rewritten = numbers_serde_can_read(text, &scanned.spans);
+            serde_json::from_str(&rewritten).map_err(|_| PriceError::NotJson)?
+        }
+    };
     let Some(object) = value.as_object() else {
         return Err(PriceError::NotJson);
     };
@@ -244,7 +256,11 @@ pub fn parse_prices(data: &[u8]) -> Result<Prices, PriceError> {
         }
     }
     let gb_bytes = if object.contains_key("gb_bytes") {
-        gb_field(object, "gb_bytes", number_text(&numbers, "gb_bytes"))?
+        gb_field(
+            object,
+            "gb_bytes",
+            number_text(&scanned.numbers, "gb_bytes"),
+        )?
     } else {
         GB_BYTES
     };
@@ -252,7 +268,7 @@ pub fn parse_prices(data: &[u8]) -> Result<Prices, PriceError> {
         Some(price_field(
             object,
             "index_per_gb",
-            number_text(&numbers, "index_per_gb"),
+            number_text(&scanned.numbers, "index_per_gb"),
         )?)
     } else {
         None
@@ -264,7 +280,7 @@ pub fn parse_prices(data: &[u8]) -> Result<Prices, PriceError> {
         ingest_per_gb: price_field(
             object,
             "ingest_per_gb",
-            number_text(&numbers, "ingest_per_gb"),
+            number_text(&scanned.numbers, "ingest_per_gb"),
         )?,
         index_per_gb,
         gb_bytes,
@@ -318,7 +334,14 @@ fn gb_field(
         Some(serde_json::Value::Number(_)) => {}
         Some(_) => return Err(PriceError::NotNumeric),
     }
-    let price = price_field(object, key, lexeme).map_err(|err| match err {
+    let Some(lexeme) = lexeme else {
+        return Err(PriceError::NotNumeric);
+    };
+    // Outside f64 the token is not a whole number this field can store.
+    if !json_number_fits_f64(lexeme) {
+        return Err(PriceError::GbBytes);
+    }
+    let price = price_field(object, key, Some(lexeme)).map_err(|err| match err {
         PriceError::Negative => PriceError::GbBytes,
         other => other,
     })?;
@@ -358,6 +381,8 @@ enum ScanError {
 struct Cursor<'a> {
     text: &'a str,
     i: usize,
+    /// Byte ranges of every JSON number, including nested ones.
+    spans: Vec<(usize, usize)>,
 }
 
 impl<'a> Cursor<'a> {
@@ -490,6 +515,7 @@ impl<'a> Cursor<'a> {
                 self.bump();
             }
         }
+        self.spans.push((start, self.i));
         Ok(self.text[start..self.i].to_owned())
     }
 
@@ -604,10 +630,19 @@ impl<'a> Cursor<'a> {
     }
 }
 
+struct ScannedNumbers {
+    numbers: Vec<(String, String)>,
+    spans: Vec<(usize, usize)>,
+}
+
 /// Top-level numeric values, as written. A repeated key is an error even when
 /// the second value would otherwise replace the first.
-fn scan_numbers(text: &str) -> Result<Vec<(String, String)>, ScanError> {
-    let mut cursor = Cursor { text, i: 0 };
+fn scan_numbers(text: &str) -> Result<ScannedNumbers, ScanError> {
+    let mut cursor = Cursor {
+        text,
+        i: 0,
+        spans: Vec::new(),
+    };
     let mut numbers = Vec::new();
     cursor.skip_ws();
     cursor.object(true, &mut numbers, 1)?;
@@ -615,7 +650,30 @@ fn scan_numbers(text: &str) -> Result<Vec<(String, String)>, ScanError> {
     if cursor.i != text.len() {
         return Err(ScanError::Invalid);
     }
-    Ok(numbers)
+    Ok(ScannedNumbers {
+        numbers,
+        spans: cursor.spans,
+    })
+}
+
+/// A number token serde_json cannot store as f64 is replaced with `0`.
+/// The caller still parses the original decimal text.
+fn numbers_serde_can_read(text: &str, spans: &[(usize, usize)]) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut last = 0;
+    for &(start, end) in spans {
+        if !json_number_fits_f64(&text[start..end]) {
+            out.push_str(&text[last..start]);
+            out.push('0');
+            last = end;
+        }
+    }
+    out.push_str(&text[last..]);
+    out
+}
+
+fn json_number_fits_f64(lexeme: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(lexeme).is_ok()
 }
 
 /// Decimal text, optionally with an `e` exponent, to a reduced fraction.

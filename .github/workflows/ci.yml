@@ -52,6 +52,48 @@ jobs:
       - run: cargo test --locked
       - run: cargo test --release --locked
 
+  musl:
+    name: Test (ubuntu-22.04, musl and glibc)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.x"
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install the musl target
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+          rustup target add x86_64-unknown-linux-musl
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --locked --target x86_64-unknown-linux-musl
+      - name: Build the release gnu binary
+        run: cargo build --release --locked
+      - name: GLIBC is at most 2.35
+        run: |
+          python3 - << 'PY'
+          import re
+          import subprocess
+          import sys
+
+          text = subprocess.check_output(
+              ["objdump", "-T", "target/release/log-bill"], text=True
+          )
+          found = re.findall(r"GLIBC_([0-9]+(?:\.[0-9]+)*)", text)
+          if not found:
+              sys.exit("no GLIBC symbols in target/release/log-bill")
+
+          def key(version):
+              parts = [int(part) for part in version.split(".")]
+              return tuple(parts + [0] * (3 - len(parts)))
+
+          highest = max(found, key=key)
+          print(f"highest GLIBC_{highest}")
+          if key(highest) > (2, 35, 0):
+              sys.exit(f"GLIBC_{highest} is newer than 2.35")
+          PY
+
   audit:
     name: Dependency audit
     runs-on: ubuntu-latest

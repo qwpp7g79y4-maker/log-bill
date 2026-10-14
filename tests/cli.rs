@@ -264,6 +264,120 @@ fn gb_bytes_fraction_exit_2() {
     assert_eq!(err, "gb_bytes must be a whole number greater than 0\n");
 }
 
+/// A price or `gb_bytes` outside the f64 range is a price error, not invalid JSON.
+/// `1` and 309 zeros, `1e400`, `-1e400` and `1E+400` are the reported inputs.
+#[test]
+fn price_number_outside_f64_exit_2() {
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR"));
+    let log = dir.join("huge-price.log");
+    let prices = dir.join("huge-price.json");
+    std::fs::write(&log, "disk full\n").expect("log");
+    let log_path = log.to_str().expect("path");
+    let prices_path = prices.to_str().expect("path");
+    let huge = format!("1{}", "0".repeat(309));
+    let negative_huge = format!("-{huge}");
+    let not_number = "price file has a price that is not a number\n";
+    let not_json = "price file is not JSON\n";
+    let gb_bytes = "gb_bytes must be a whole number greater than 0\n";
+    // `1e-400` still fits in f64 (it becomes zero) and does not fit the
+    // accumulator, so every field says the price is not a number.
+    let numbers = [
+        huge.as_str(),
+        negative_huge.as_str(),
+        "1e400",
+        "-1e400",
+        "1E+400",
+        "-1E+400",
+        "1e-400",
+        "-1e-400",
+    ];
+    let tiny = ["1e-400", "-1e-400"];
+    for number in numbers {
+        let message = |field: &str| {
+            if field == "gb_bytes" && !tiny.contains(&number) {
+                gb_bytes
+            } else {
+                not_number
+            }
+        };
+        for field in ["ingest_per_gb", "index_per_gb", "gb_bytes"] {
+            for ws in ["", "\n", "\t", "\n\t"] {
+                for number_first in [false, true] {
+                    let body = price_object(field, number, ws, number_first);
+                    std::fs::write(&prices, &body).expect("prices");
+                    for args in [
+                        vec!["scan", "--window", "1d", "--prices", prices_path, log_path],
+                        vec![
+                            "diff",
+                            "--window",
+                            "1d",
+                            "--prices",
+                            prices_path,
+                            log_path,
+                            log_path,
+                        ],
+                    ] {
+                        let output = bin().args(&args).output().expect("start binary");
+                        let err = String::from_utf8(output.stderr).expect("stderr");
+                        assert_eq!(
+                            output.status.code(),
+                            Some(2),
+                            "{args:?} {body:?} stderr: {err}"
+                        );
+                        assert!(output.stdout.is_empty(), "{args:?} {body:?}");
+                        assert_eq!(err, message(field), "{args:?} {body:?}");
+                        assert!(!err.contains("not JSON"), "{args:?} {body:?}");
+                    }
+                }
+            }
+        }
+    }
+    // A real JSON error stays "not JSON", even when the text also has `1e400`.
+    for broken in [
+        "{",
+        "{\"currency\":\"EUR\",\"source\":\"s\",\"date\":\"2026-10-08\",\"ingest_per_gb\":1e400",
+        "{\"currency\":\"EUR\",\"source\":\"s\",\"date\":\"2026-10-08\",\"ingest_per_gb\":1e400,}",
+    ] {
+        std::fs::write(&prices, broken).expect("prices");
+        let output = bin()
+            .args(["scan", "--window", "1d", "--prices", prices_path, log_path])
+            .output()
+            .expect("start binary");
+        let err = String::from_utf8(output.stderr).expect("stderr");
+        assert_eq!(output.status.code(), Some(2), "{broken:?} {err}");
+        assert_eq!(err, not_json, "{broken:?}");
+    }
+    // A repeated key is still rejected when one value is out of range.
+    std::fs::write(
+        &prices,
+        r#"{"currency":"EUR","source":"s","date":"2026-10-08","ingest_per_gb":1e400,"ingest_per_gb":1}"#,
+    )
+    .expect("prices");
+    let output = bin()
+        .args(["scan", "--window", "1d", "--prices", prices_path, log_path])
+        .output()
+        .expect("start binary");
+    let err = String::from_utf8(output.stderr).expect("stderr");
+    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(err, "price file has a duplicate key\n");
+    let _ = std::fs::remove_file(&log);
+    let _ = std::fs::remove_file(&prices);
+}
+
+fn price_object(field: &str, number: &str, ws: &str, number_first: bool) -> String {
+    let numeric = format!(r#""{field}":{ws}{number}{ws}"#);
+    let rest = if field == "ingest_per_gb" {
+        r#""currency":"EUR","source":"s","date":"2026-10-08""#
+    } else {
+        r#""currency":"EUR","source":"s","date":"2026-10-08","ingest_per_gb":1"#
+    };
+    if number_first {
+        format!("{{{numeric},{rest}}}")
+    } else {
+        format!("{{{rest},{numeric}}}")
+    }
+}
+
 /// Metadata before opening. A FIFO with no writer must not make the tool wait.
 #[cfg(unix)]
 #[test]

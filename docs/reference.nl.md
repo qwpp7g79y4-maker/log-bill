@@ -22,7 +22,7 @@ Draai `log-bill --help` of `log-bill scan --help` voor de ingebouwde hulp. Combi
 | `--budget-month` | scan, met `--window` en `--prices` | Exit 1 als de maandkosten na de regels boven dit bedrag liggen. |
 | `--max-new-share` | diff | Exit 1 als nieuwe patronen meer dan PCT procent van de nieuwe bytes zijn. |
 | `--help` | overal | Toont de hulp en stopt met exit 0. |
-| `--version` | hoogste niveau | Toont het versienummer (`log-bill 0.1.1`) en stopt met exit 0. |
+| `--version` | hoogste niveau | Toont het versienummer (`log-bill 0.1.2`) en stopt met exit 0. |
 
 ## Prijsbestand
 
@@ -39,7 +39,7 @@ Prijzen komen alleen uit een JSON-bestand dat je meegeeft met `--prices` (samen 
 }
 ```
 
-`index_per_gb` en `gb_bytes` zijn optioneel. Zonder `gb_bytes` is een GB 1000000000 bytes. `gb_bytes` moet een geheel getal groter dan 0 zijn. Een prijs is dat exacte decimale getal, niet een binaire drijvende-kommawaarde. Een breuk die niet in de accumulator past is geen getal: exit 2, `price file has a price that is not a number`. Meer dan 128 geneste arrays of objecten is exit 2: `price file is nested too deeply`. Dezelfde sleutel twee keer is exit 2: `price file has a duplicate key`.
+`index_per_gb` en `gb_bytes` zijn optioneel. Zonder `gb_bytes` is een GB 1000000000 bytes. `gb_bytes` moet een geheel getal groter dan 0 zijn. Een prijs is dat exacte decimale getal, niet een binaire drijvende-kommawaarde. Een breuk die niet in de accumulator past is geen getal: exit 2, `price file has a price that is not a number`. Een getal buiten het bereik van een binaire float, zoals `1e400`, `-1e400`, `1E+400` of een `1` gevolgd door 309 nullen, is geen ongeldige JSON. Bij een prijs is dat dezelfde melding. Bij `gb_bytes` is het `gb_bytes must be a whole number greater than 0`. Meer dan 128 geneste arrays of objecten is exit 2: `price file is nested too deeply`. Dezelfde sleutel twee keer is exit 2: `price file has a duplicate key`.
 
 ## Hoe het rekent
 
@@ -91,7 +91,7 @@ Met `--explain` krijgt een telling van `<SECRET>` de tekst `possible secret` ("m
 
 Als de uitvoer niet geschreven kan worden, bijvoorbeeld omdat de schijf vol is, is de exitcode 3 en is stderr `could not write output`. `--help` en `--version` gebruiken diezelfde code; ze eindigen niet met 0 als hun tekst niet weg kan.
 
-Een logbestand, prijsbestand of regelsbestand moet een gewoon bestand zijn. Een FIFO, een map of iets anders wordt geweigerd met exit 2, zonder te wachten tot een schrijver opent. Een `gb_bytes` die een breuk is zoals `0.5`, 0 of negatief is exit 2; een prijs die tekst is in plaats van een getal, of een breuk die niet past, geeft `price file has a price that is not a number`. Meer dan 128 geneste arrays of objecten geeft `price file is nested too deeply`. Dezelfde sleutel twee keer geeft `price file has a duplicate key`. `sample 0,1` is geen geldige fractie: exit 2 met `invalid rule on line 1 of the rules file`, zonder de regel te tonen. De meldingen over gewone bestanden noemen het pad niet, en geen foutmelding bevat een ruwe logregel.
+Een logbestand, prijsbestand of regelsbestand moet een gewoon bestand zijn. Een FIFO, een map of iets anders wordt geweigerd met exit 2, zonder te wachten tot een schrijver opent. Een `gb_bytes` die een breuk is zoals `0.5`, 0 of negatief, of een getal buiten het bereik van een binaire float, is exit 2; een prijs die tekst is in plaats van een getal, een breuk die niet past, of een prijs buiten dat bereik, geeft `price file has a price that is not a number`. Meer dan 128 geneste arrays of objecten geeft `price file is nested too deeply`. Dezelfde sleutel twee keer geeft `price file has a duplicate key`. `sample 0,1` is geen geldige fractie: exit 2 met `invalid rule on line 1 of the rules file`, zonder de regel te tonen. De meldingen over gewone bestanden noemen het pad niet, en geen foutmelding bevat een ruwe logregel.
 
 Elke rij hieronder is op de binary gedraaid, en een test houdt dat zo. Een rij met exit 3 heeft een lege stdout. De melding is de hele stderr; de binary zet er een regeleinde achter. `\n` in de laatste kolom is een regeleinde in die melding. `--json` verandert een melding niet. Bij `diff` wordt `--explain` eerder getoetst dan `--top`, `--window` en `--days-per-month`, en die melding wint dan. Een ongeldig bedrag, een ongeldig percentage en `--prices` zonder venster worden eerder getoetst dan `--explain`.
 
@@ -136,9 +136,9 @@ Elke rij hieronder is op de binary gedraaid, en een test houdt dat zo. Een rij m
 | logbestand | scan en diff | UTF-16 of UTF-32, met of zonder byte order mark. De naam is `UTF-16LE`, `UTF-16BE`, `UTF-32LE` of `UTF-32BE`. |  | 2 | `file is UTF-16LE, not UTF-8; convert it first, for example with iconv -f UTF-16LE -t UTF-8, or in PowerShell with Out-File -Encoding utf8` |
 | `--prices` | scan en diff | Prijsbestand is geen gewoon bestand. |  | 2 | `price file is not a regular file` |
 | `--rules` | scan en diff | Regelsbestand is geen gewoon bestand. |  | 2 | `rules file is not a regular file` |
-| `--prices` | scan en diff | `gb_bytes` is geen geheel getal groter dan 0 (een breuk, 0 of negatief). |  | 2 | `gb_bytes must be a whole number greater than 0` |
+| `--prices` | scan en diff | `gb_bytes` is geen geheel getal groter dan 0 (een breuk, 0, negatief, of een getal buiten het bereik van een binaire float). |  | 2 | `gb_bytes must be a whole number greater than 0` |
 | `--prices` | scan en diff | Dezelfde sleutel komt twee keer voor. |  | 2 | `price file has a duplicate key` |
-| `--prices` | scan en diff | Een prijsbreuk past niet. |  | 2 | `price file has a price that is not a number` |
+| `--prices` | scan en diff | Een prijsbreuk past niet, of het getal ligt buiten het bereik van een binaire float. |  | 2 | `price file has a price that is not a number` |
 | `--prices` | scan en diff | Meer dan 128 geneste arrays of objecten. |  | 2 | `price file is nested too deeply` |
 
 ## Privacy en veiligheid

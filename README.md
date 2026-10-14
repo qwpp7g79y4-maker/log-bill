@@ -90,7 +90,7 @@ new patterns: 6 of 12 bytes, 50.0%
 
 The old sample is `alpha` twice (12 bytes) and `beta` once (5 bytes): 17 bytes. The new one is `alpha` (6) and `gamma` (6): 12 bytes. The new pattern `gamma` is 6 of 12 bytes, 50.0%.
 
-Prices come only from a JSON file you pass with `--prices` (together with `--window`); see [the price file format](docs/reference.md#price-file). Each price is read as an exact decimal. A fraction that does not fit, or a file nested more than 128 arrays or objects deep, is rejected, and so is a key that appears twice. Every text output with amounts ends with `estimate: extrapolation of one sample with your own prices; not an official rate`. All options, exit codes and error messages are listed in the [reference](docs/reference.md) and in `log-bill --help`.
+Prices come only from a JSON file you pass with `--prices` (together with `--window`); see [the price file format](docs/reference.md#price-file). Each price is read as an exact decimal. A fraction that does not fit, a number outside the range of a binary float, or a file nested more than 128 arrays or objects deep, is rejected, and so is a key that appears twice. Every text output with amounts ends with `estimate: extrapolation of one sample with your own prices; not an official rate`. All options, exit codes and error messages are listed in the [reference](docs/reference.md) and in `log-bill --help`.
 
 ## How it counts
 
