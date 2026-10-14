@@ -4,12 +4,35 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-14
+
+### Security
+
+- Secrets are masked in more shapes: after a tab, inside escaped JSON (`{\"password\":\"...\"}`), in whole array and object values, in keys written with `\uXXXX` escapes, with a line break before `=` or `:`, when the value itself contains a keyword such as `token`, and when another mask (e-mail, UUID, IP) touches the key.
+- Quoted and international e-mail addresses (`"john.doe"@example.com`, `"a b"@example.com`, `jöhn@exämple.de`) are masked as `<EMAIL>`.
+- Numbers with a sign, a decimal part, non-ASCII digits or trailing punctuation (`-12.5`, `3.14`, `١٢٣٤٥`, `7!`) are masked as `<NUM>`.
+- A path that is swapped for a FIFO between the check and the read no longer makes the tool wait; the opened file itself is checked.
+
 ### Fixed
 
+- Prices are read as exact decimals instead of through binary floating point, so a budget check can no longer pass on a rounded price. A duplicate key in a price file is refused with exit 2.
+- A price fraction that does not fit, or a price file nested more than 128 levels deep, is refused with exit 2 instead of a wrong result or a crash.
 - A write error, such as a full disk, is exit 3 with `could not write output` instead of a panic. `--help` and `--version` use that same code and do not exit 0.
 - `--window 1é` is a usage error (exit 3, `invalid window`) instead of a panic.
-- Control characters in a log line and in a price file's currency, source and date are not written raw. Text output shows them as `\u00XX`. JSON keeps the character.
+- Control characters and bidirectional marks in a log line and in a price file's currency, source and date are not written raw. Text output shows them as `\uXXXX`. JSON keeps the character.
 - A UTF-8 byte order mark at the start of a text file is skipped, and still counts in the bytes of the first line.
+- Unused JSON fields with extreme values or deep nesting are ignored, and the line still counts.
+- Pattern IDs are longer, so two different patterns no longer share an ID.
+- A duplicate `message` key in a JSON line uses the last value; the reference now says so.
+
+### Performance
+
+- Input is read line by line instead of all at once, which keeps memory close to the size of one line.
+- Long fractions in a rules file are bounded, and skipping unused JSON strings is linear.
+
+### Build
+
+- CI also runs the test suite in release mode.
 
 ## [0.1.1] - 2026-10-11
 
