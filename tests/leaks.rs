@@ -1633,3 +1633,104 @@ fn c1_control_inside_a_key_hides_canary() {
         &[canary],
     );
 }
+
+/// A combining mark after any letter of any keyword, and a precomposed
+/// accented letter in its place, in text and JSONL, `=` and ` = `.
+/// Regression for `p\u{301}assword = hunterSecretNoDigitsHere` leaking.
+#[test]
+fn combining_marks_and_accents_in_a_key_hide_canary() {
+    let marks = [
+        '\u{0301}',
+        '\u{0300}',
+        '\u{0308}',
+        '\u{0327}',
+        '\u{0336}',
+        '\u{1AB0}',
+        '\u{1DC0}',
+        '\u{20D7}',
+        '\u{FE0F}',
+        '\u{FE20}',
+        '\u{E0041}',
+        '\u{E0100}',
+        '\u{0483}',
+    ];
+    let accented = |ch: char| -> &'static [char] {
+        match ch {
+            'a' => &['á', 'ä', 'ą'],
+            'c' => &['ç', 'č'],
+            'd' => &['ď'],
+            'e' => &['é', 'ë', 'ě'],
+            'h' => &['ĥ'],
+            'i' => &['í', 'ï'],
+            'k' => &['ķ'],
+            'n' => &['ñ', 'ň'],
+            'o' => &['ó', 'ö', 'ø'],
+            'p' => &['ṕ'],
+            'r' => &['ř'],
+            's' => &['š', 'ș'],
+            't' => &['ť', 'ț'],
+            'u' => &['ü'],
+            'w' => &['ŵ'],
+            'y' => &['ý'],
+            'z' => &['ž'],
+            _ => &[],
+        }
+    };
+    let mut lines = Vec::new();
+    let mut jsonl = Vec::new();
+    let mut index = 0;
+    let mut push = |spoiled: String, label: String| {
+        for sep in ["=", " = "] {
+            let canary = letter_canary(index);
+            index += 1;
+            let text = format!("{spoiled}{sep}{canary} other=ok");
+            jsonl.push((
+                label.clone(),
+                serde_json::json!({ "message": text })
+                    .to_string()
+                    .into_bytes(),
+                canary.clone(),
+            ));
+            lines.push((format!("{label} sep={sep:?}"), text.into_bytes(), canary));
+        }
+    };
+    for key in keys_from_source() {
+        for (pos, ch) in key.char_indices() {
+            let after = pos + ch.len_utf8();
+            for mark in marks {
+                let spoiled = format!("{}{mark}{}", &key[..after], &key[after..]);
+                push(spoiled, format!("{key}@{pos}+{mark:?}"));
+            }
+            for &acc in accented(ch) {
+                for upper in [false, true] {
+                    let letter: String = if upper {
+                        acc.to_uppercase().collect()
+                    } else {
+                        acc.to_string()
+                    };
+                    let spoiled = format!("{}{letter}{}", &key[..pos], &key[after..]);
+                    push(spoiled, format!("{key}@{pos}={letter}"));
+                }
+            }
+        }
+    }
+    assert_batch_masked("combining-text", &lines, &[]);
+    assert_batch_masked("combining-jsonl", &jsonl, &["--format", "jsonl"]);
+}
+
+/// Accents alone do not make a keyword: `pàssage` and `ñame` stay.
+#[test]
+fn accented_ordinary_words_stay() {
+    let dir =
+        TempDir(std::env::temp_dir().join(format!("log-bill-accent-stay-{}", std::process::id())));
+    std::fs::create_dir_all(&dir.0).expect("temporary directory");
+    let file_path = dir.0.join("line.log");
+    std::fs::write(&file_path, "pàssage=ok ñame=zoë\n").expect("line");
+    let (code, out, err) = run_tool(&["scan", file_path.to_str().expect("path")]);
+    assert_eq!(code, 0, "{err}");
+    assert!(
+        out.contains("pàssage=ok") && out.contains("ñame=zoë"),
+        "{out}"
+    );
+    assert!(!out.contains("<SECRET>"), "{out}");
+}

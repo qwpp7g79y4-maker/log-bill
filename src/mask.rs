@@ -732,14 +732,58 @@ fn is_invisible_key_char(ch: char) -> bool {
             | '\u{0C}'
             | '\u{0E}'..='\u{1F}'
             | '\u{7F}'..='\u{9F}'
+    ) || is_combining_key_char(ch)
+}
+
+/// Combining marks, variation selectors and tag characters. They sit on or
+/// after a letter and change nothing a reader would take for another word,
+/// so `p\u{301}assword` (`ṕassword`) must still read as `password`.
+fn is_combining_key_char(ch: char) -> bool {
+    matches!(
+        ch,
+        '\u{0300}'..='\u{036F}'
+            | '\u{0483}'..='\u{0489}'
+            | '\u{1AB0}'..='\u{1AFF}'
+            | '\u{1DC0}'..='\u{1DFF}'
+            | '\u{20D0}'..='\u{20FF}'
+            | '\u{FE00}'..='\u{FE0F}'
+            | '\u{FE20}'..='\u{FE2F}'
+            | '\u{E0000}'..='\u{E007F}'
+            | '\u{E0100}'..='\u{E01EF}'
     )
+}
+
+/// Latin letter with an accent folded to its base letter, lowercase only
+/// (the caller lowercases first), so precomposed `sécret` reads as `secret`.
+fn fold_accent(ch: char) -> char {
+    match ch {
+        'à' | 'á' | 'â' | 'ã' | 'ä' | 'å' | 'ā' | 'ă' | 'ą' => 'a',
+        'ç' | 'ć' | 'ĉ' | 'ċ' | 'č' => 'c',
+        'ď' | 'đ' => 'd',
+        'è' | 'é' | 'ê' | 'ë' | 'ē' | 'ĕ' | 'ė' | 'ę' | 'ě' => 'e',
+        'ĥ' | 'ħ' => 'h',
+        'ì' | 'í' | 'î' | 'ï' | 'ĩ' | 'ī' | 'ĭ' | 'į' => 'i',
+        'ķ' => 'k',
+        'ñ' | 'ń' | 'ņ' | 'ň' => 'n',
+        'ò' | 'ó' | 'ô' | 'õ' | 'ö' | 'ø' | 'ō' | 'ŏ' | 'ő' => 'o',
+        'ŕ' | 'ŗ' | 'ř' => 'r',
+        'ś' | 'ŝ' | 'ş' | 'š' | 'ș' => 's',
+        'ţ' | 'ť' | 'ŧ' | 'ț' => 't',
+        'ù' | 'ú' | 'û' | 'ü' | 'ũ' | 'ū' | 'ŭ' | 'ů' | 'ű' | 'ų' => 'u',
+        'ŵ' => 'w',
+        'ý' | 'ÿ' | 'ŷ' => 'y',
+        'ź' | 'ż' | 'ž' => 'z',
+        'ṕ' => 'p',
+        other => other,
+    }
 }
 
 /// Skeleton of a key, compared with [`KEYS`].
 ///
 /// Fullwidth forms U+FF01–U+FF5E fold to ASCII by subtracting U+FEE0.
 /// Common Cyrillic and Greek lookalikes fold to the Latin letter they imitate
-/// (see [`homoglyph_latin`]). Invisible characters inside the key are dropped.
+/// (see [`homoglyph_latin`]). Invisible characters and combining marks inside
+/// the key are dropped, and accented Latin letters fold to the base letter.
 /// Then lowercase. A `-` still counts as `_` in the byte compare.
 fn key_skeleton(token: &str) -> String {
     let mut out = String::with_capacity(token.len());
@@ -750,7 +794,7 @@ fn key_skeleton(token: &str) -> String {
         let folded = fold_fullwidth(ch);
         let mapped = homoglyph_latin(folded).unwrap_or(folded);
         for lower in mapped.to_lowercase() {
-            out.push(lower);
+            out.push(fold_accent(lower));
         }
     }
     out
@@ -1547,8 +1591,10 @@ mod tests {
 
     #[test]
     fn multibyte_inside_key_does_not_panic() {
-        // `ö` (2 bytes) falls inside the length of `passwd` and `password`.
-        assert_eq!(mask("passw\u{00f6}rd=abc"), "passw\u{00f6}rd=abc");
+        // `ß` (2 bytes) falls inside the length of `passwd` and `password`.
+        assert_eq!(mask("passw\u{00df}rd=abc"), "passw\u{00df}rd=abc");
+        // `ö` folds to `o`, so this one is `password` and is masked.
+        assert_eq!(mask("passw\u{00f6}rd=abc"), "passw\u{00f6}rd=<SECRET>");
     }
 
     #[test]
