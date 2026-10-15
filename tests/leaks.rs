@@ -1275,3 +1275,188 @@ fn line_break_before_separator_hides_rosebud() {
         &["--format", "jsonl"],
     );
 }
+
+const CYRILLIC_A_LINE: &str = "p\u{0430}ssword=CANARYCYRILLICLEAK other=ok";
+const CYRILLIC_IE_LINE: &str = "s\u{0435}cret=CANARYNOKEYWORDHERE other=ok";
+
+/// Cyrillic а (U+0430) inside `password`. The value must not survive.
+#[test]
+fn cyrillic_a_in_password_hides_canary() {
+    assert_masked_line("cyr-a", CYRILLIC_A_LINE, &["CANARYCYRILLICLEAK"]);
+}
+
+/// Cyrillic е (U+0435) inside `secret`.
+#[test]
+fn cyrillic_ie_in_secret_hides_canary() {
+    assert_masked_line("cyr-ie", CYRILLIC_IE_LINE, &["CANARYNOKEYWORDHERE"]);
+}
+
+/// Fullwidth, Greek, case, invisible characters, separators, JSON keys and
+/// whitespace around the separator. Each line is the bad input on its own.
+#[test]
+fn homoglyph_key_variants_hide_canary() {
+    let canary = "CANARYCYRILLICLEAK";
+    let fullwidth = "\u{FF50}\u{FF41}\u{FF53}\u{FF53}\u{FF57}\u{FF4F}\u{FF52}\u{FF44}";
+    let mut lines = vec![
+        ("fullwidth", format!("{fullwidth}={canary} other=ok")),
+        ("greek-o", format!("t\u{03BF}ken={canary} other=ok")),
+        ("upper", format!("P\u{0410}SSWORD={canary} other=ok")),
+        ("zwsp", format!("pass\u{200B}word={canary} other=ok")),
+        ("zwnj", format!("pass\u{200C}word={canary} other=ok")),
+        ("zwj", format!("pass\u{200D}word={canary} other=ok")),
+        ("word-joiner", format!("pass\u{2060}word={canary} other=ok")),
+        ("bom", format!("pass\u{FEFF}word={canary} other=ok")),
+        ("soft-hyphen", format!("pass\u{00AD}word={canary} other=ok")),
+        // A space keeps the value out of the `\u` digits, so `<VAR>` cannot hide it.
+        (
+            "zwsp-escape",
+            format!(r#"pass\u200Bword= {canary} other=ok"#),
+        ),
+        (
+            "shy-escape",
+            format!(r#"pass\u00ADword= {canary} other=ok"#),
+        ),
+        ("sep-eq", format!("p\u{0430}ssword={canary} other=ok")),
+        ("sep-colon", format!("p\u{0430}ssword: {canary} other=ok")),
+        (
+            "sep-json",
+            format!("\"p\u{0430}ssword\": \"{canary}\" other=ok"),
+        ),
+        (
+            "sep-json-tight",
+            format!("\"p\u{0430}ssword\":\"{canary}\" other=ok"),
+        ),
+        ("ws-tab", format!("p\u{0430}ssword\t= {canary} other=ok")),
+        ("ws-cr", format!("p\u{0430}ssword\r: {canary} other=ok")),
+        ("order-last", format!("other=ok p\u{0430}ssword={canary}")),
+        ("order-first", format!("p\u{0430}ssword={canary} other=ok")),
+        (
+            "json-literal-last",
+            format!("{{\"user\": \"ada\", \"p\u{0430}ssword\": \"{canary}\"}}"),
+        ),
+        (
+            "json-literal-first",
+            format!("{{\"p\u{0430}ssword\": \"{canary}\", \"user\": \"ada\"}}"),
+        ),
+        (
+            "json-escape-last",
+            format!(r#"{{"user": "ada", "p\u0430ssword": "{canary}"}}"#),
+        ),
+        (
+            "json-escape-first",
+            format!(r#"{{"p\u0430ssword": "{canary}", "user": "ada"}}"#),
+        ),
+    ];
+    // A line break would split a text file. JSONL keeps it in the message.
+    let broken = [
+        (
+            "ws-lf",
+            serde_json::json!({ "message": format!("p\u{0430}ssword\n= {canary} other=ok") })
+                .to_string(),
+        ),
+        (
+            "jsonl-literal",
+            serde_json::json!({ "message": format!("p\u{0430}ssword={canary} other=ok") })
+                .to_string(),
+        ),
+        (
+            "jsonl-escape",
+            serde_json::json!({
+                "message": format!(r#"{{"p\u0430ssword": "{canary}"}}"#)
+            })
+            .to_string(),
+        ),
+    ];
+    for (name, line) in lines.drain(..) {
+        assert_masked_line(name, &line, &[canary]);
+    }
+    for (name, line) in broken {
+        assert_masked(name, &line, &[canary], &["--format", "jsonl"]);
+    }
+}
+
+/// One lookalike letter in every keyword. `b`, `r`, `w` and `z` have none.
+fn lookalike_letter(ch: char) -> Option<char> {
+    Some(match ch {
+        'a' => '\u{0430}',
+        'c' => '\u{0441}',
+        'd' => '\u{0501}',
+        'e' => '\u{0435}',
+        'h' => '\u{04BB}',
+        'i' => '\u{0456}',
+        'k' => '\u{03BA}',
+        'n' => '\u{039D}',
+        'o' => '\u{03BF}',
+        'p' => '\u{0440}',
+        's' => '\u{0455}',
+        't' => '\u{03C4}',
+        'u' => '\u{03C5}',
+        'y' => '\u{0443}',
+        _ => return None,
+    })
+}
+
+fn with_one_lookalike(key: &str) -> String {
+    let mut out = String::new();
+    let mut replaced = false;
+    for ch in key.chars() {
+        if !replaced {
+            if let Some(look) = lookalike_letter(ch) {
+                out.push(look);
+                replaced = true;
+                continue;
+            }
+        }
+        out.push(ch);
+    }
+    assert!(replaced, "{key} has no lookalike letter");
+    out
+}
+
+#[test]
+fn every_keyword_with_a_homoglyph_hides_canary() {
+    let canary = "CANARYCYRILLICLEAK";
+    let keys = keys_from_source();
+    assert!(keys.len() >= 8, "expected every KEYS word, got {keys:?}");
+    for key in keys {
+        let spoiled = with_one_lookalike(key);
+        assert_ne!(spoiled, key, "{key}");
+        let line = format!("{spoiled}={canary} other=ok");
+        assert_masked_line(&format!("key-{key}"), &line, &[canary]);
+    }
+}
+
+/// `passage` is not a keyword. `книга` folds one letter to `a` and still is not.
+#[test]
+fn passage_and_plain_cyrillic_word_stay() {
+    let line = "passage=ok книга=текст";
+    let kept = ["passage=ok", "книга=текст"];
+    let dir =
+        TempDir(std::env::temp_dir().join(format!("log-bill-plain-word-{}", std::process::id())));
+    std::fs::create_dir_all(&dir.0).expect("temporary directory");
+    let file_path = dir.0.join("line.log");
+    std::fs::write(&file_path, format!("{line}\n")).expect("line");
+    let arg = file_path.to_str().expect("path");
+    let runs = [
+        ("scan", vec!["scan", arg]),
+        ("scan --explain", vec!["scan", "--explain", arg]),
+        ("scan --json", vec!["scan", "--json", arg]),
+        ("diff", vec!["diff", arg, arg]),
+        ("diff --json", vec!["diff", "--json", arg, arg]),
+    ];
+    for (mode, args) in runs {
+        let (code, stdout_text, err) = run_tool(&args);
+        assert_eq!(code, 0, "{mode}\n{stdout_text}\n{err}");
+        assert!(err.is_empty(), "{mode} stderr: {err}");
+        assert!(
+            !stdout_text.contains("<SECRET>"),
+            "{mode} masked an ordinary word\n{stdout_text}"
+        );
+        for phrase in kept {
+            assert!(
+                stdout_text.contains(phrase),
+                "{mode} changed {phrase:?}\n{stdout_text}"
+            );
+        }
+    }
+}

@@ -588,6 +588,18 @@ fn privacy_sentence_matches_what_the_tool_shows() {
         1,
         "Dutch privacy sentence"
     );
+    let lookalike = "Lookalike characters in a key name are recognised too, so a key that only looks like `password` or `secret` still hides the value.";
+    let lookalike_nl = "Lookalike-tekens in een sleutelnaam worden ook herkend, zodat een sleutel die alleen op `password` of `secret` lijkt de waarde nog steeds verbergt.";
+    assert!(section(&readme, "## Privacy").contains(lookalike));
+    assert!(section(&readme, "## Limitations").contains(lookalike));
+    assert!(section(&readme_nl, "## Privacy").contains(lookalike_nl));
+    assert!(section(&readme_nl, "## Beperkingen").contains(lookalike_nl));
+    let reference = read(REF);
+    let reference_nl = read(REF_NL);
+    assert!(section(&reference, "## Privacy and safety").contains(lookalike));
+    assert!(reference.matches(lookalike).count() >= 2);
+    assert!(section(&reference_nl, "## Privacy en veiligheid").contains(lookalike_nl));
+    assert!(reference_nl.matches(lookalike_nl).count() >= 2);
     for rel in [README, README_NL, REF, REF_NL] {
         let text = read(rel);
         assert!(

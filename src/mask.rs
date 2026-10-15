@@ -537,8 +537,10 @@ fn secret_at(input: &str, i: usize) -> Option<(usize, usize)> {
 }
 
 /// `authorization` is inside the word, also in `proxy-authorization` and `x-authorization`.
+/// Lookalikes fold the same way as any other key.
 fn is_authorization_key(token: &str) -> bool {
-    key_in(token.as_bytes(), b"authorization")
+    let skeleton = key_skeleton(token);
+    key_in(skeleton.as_bytes(), b"authorization")
 }
 
 fn key_len_at(input: &str, i: usize) -> Option<usize> {
@@ -702,15 +704,94 @@ fn key_boundary_before(input: &str, index: usize) -> bool {
     }
 }
 
+/// A letter, a digit, `_` or `-`, or an invisible character that
+/// [`key_skeleton`] drops. Fullwidth `_` and `-` count; fullwidth letters
+/// and digits are already letters and digits.
 fn is_key_char(ch: char) -> bool {
-    ch.is_ascii_alphanumeric() || ch == '_' || ch == '-'
+    ch.is_alphabetic()
+        || ch.is_numeric()
+        || matches!(ch, '_' | '-' | '\u{FF3F}' | '\u{FF0D}')
+        || is_invisible_key_char(ch)
+}
+
+/// Characters inside a key that must not be shown to the keyword compare.
+/// Zero-width space, non-joiner and joiner, word joiner, BOM, soft hyphen.
+fn is_invisible_key_char(ch: char) -> bool {
+    matches!(
+        ch,
+        '\u{200B}'..='\u{200D}' | '\u{2060}' | '\u{FEFF}' | '\u{00AD}'
+    )
+}
+
+/// Skeleton of a key, compared with [`KEYS`].
+///
+/// Fullwidth forms U+FF01–U+FF5E fold to ASCII by subtracting U+FEE0.
+/// Common Cyrillic and Greek lookalikes fold to the Latin letter they imitate
+/// (see [`homoglyph_latin`]). Invisible characters inside the key are dropped.
+/// Then lowercase. A `-` still counts as `_` in the byte compare.
+fn key_skeleton(token: &str) -> String {
+    let mut out = String::with_capacity(token.len());
+    for ch in token.chars() {
+        if is_invisible_key_char(ch) {
+            continue;
+        }
+        let folded = fold_fullwidth(ch);
+        let mapped = homoglyph_latin(folded).unwrap_or(folded);
+        for lower in mapped.to_lowercase() {
+            out.push(lower);
+        }
+    }
+    out
+}
+
+/// U+FF01–U+FF5E is the fullwidth form of ASCII `!` through `~`.
+fn fold_fullwidth(ch: char) -> char {
+    let code = u32::from(ch);
+    if (0xFF01..=0xFF5E).contains(&code) {
+        char::from_u32(code - 0xFEE0).expect("fullwidth fold is ASCII")
+    } else {
+        ch
+    }
+}
+
+/// Latin letter imitated by a Cyrillic or Greek lookalike, uppercase included.
+///
+/// Cyrillic: а е о р с у х і ј ѕ ԁ һ ӏ. Greek: ο α ε ι κ ν τ ρ υ χ.
+/// Two pairs do not share one Latin letter, because the glyphs differ:
+/// capital nu `Ν` looks like `N` and small nu `ν` looks like `v`;
+/// capital upsilon `Υ` looks like `Y` and small upsilon `υ` looks like `u`;
+/// palochka `Ӏ` looks like `I` and small palochka `ӏ` looks like `l`.
+fn homoglyph_latin(ch: char) -> Option<char> {
+    Some(match ch {
+        'а' | 'А' | 'α' | 'Α' => 'a',
+        'е' | 'Е' | 'ε' | 'Ε' => 'e',
+        'о' | 'О' | 'ο' | 'Ο' => 'o',
+        'р' | 'Р' | 'ρ' | 'Ρ' => 'p',
+        'с' | 'С' => 'c',
+        'у' | 'У' | 'Υ' => 'y',
+        'х' | 'Х' | 'χ' | 'Χ' => 'x',
+        'і' | 'І' | 'ι' | 'Ι' | 'Ӏ' => 'i',
+        'ј' | 'Ј' => 'j',
+        'ѕ' | 'Ѕ' => 's',
+        'ԁ' | 'Ԁ' => 'd',
+        'һ' | 'Һ' => 'h',
+        'ӏ' => 'l',
+        'κ' | 'Κ' => 'k',
+        'ν' => 'v',
+        'Ν' => 'n',
+        'τ' | 'Τ' => 't',
+        'υ' => 'u',
+        _ => return None,
+    })
 }
 
 /// `token` contains a KEYS word. A `-` counts as `_`. Case does not matter.
-/// `key` alone is not in KEYS: `monkey` and `keyboard` stay.
+/// Lookalikes are folded first, so `pаssword` with a Cyrillic `а` contains
+/// `password`. `key` alone is not in KEYS: `monkey` and `keyboard` stay.
 /// `tokenizer` does count, otherwise `sessiontoken` leaks.
 fn contains_key(token: &str) -> bool {
-    let bytes = token.as_bytes();
+    let skeleton = key_skeleton(token);
+    let bytes = skeleton.as_bytes();
     KEYS.iter().any(|key| key_in(bytes, key.as_bytes()))
 }
 
@@ -737,7 +818,8 @@ fn fold_key_byte(byte: u8) -> u8 {
 /// The whole token is one KEYS word (`bearer`, `api_key`), not merely a
 /// longer word that contains one (`tokenHunterWordHere`).
 fn is_exact_key(token: &str) -> bool {
-    let bytes = token.as_bytes();
+    let skeleton = key_skeleton(token);
+    let bytes = skeleton.as_bytes();
     KEYS.iter().any(|key| {
         key.len() == bytes.len()
             && bytes
