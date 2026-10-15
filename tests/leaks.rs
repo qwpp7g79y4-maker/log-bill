@@ -1734,3 +1734,70 @@ fn accented_ordinary_words_stay() {
     );
     assert!(!out.contains("<SECRET>"), "{out}");
 }
+
+/// Fullwidth and small-form separators and quotes, and the ideographic space,
+/// for every keyword, in text and JSONL. Regression for `password＝hunterpass`,
+/// `token：hunterpassphrase` and `password=＂hunterpass secret＂` leaking.
+#[test]
+fn fullwidth_separators_and_quotes_hide_canary() {
+    let shapes: [(&str, &str, &str); 12] = [
+        ("fw-eq", "\u{FF1D}", ""),
+        ("fw-colon", "\u{FF1A}", ""),
+        ("fw-colon-space", "\u{FF1A} ", ""),
+        ("small-eq", "\u{FE66}", ""),
+        ("small-colon", "\u{FE55}", ""),
+        ("ideo-space", "\u{3000}", ""),
+        ("fw-eq-ideo", "\u{3000}\u{FF1D}\u{3000}", ""),
+        ("fw-dquote", "=\u{FF02}", "\u{FF02}"),
+        ("fw-squote", "=\u{FF07}", "\u{FF07}"),
+        ("fw-all", "\u{FF1D}\u{FF02}", "\u{FF02}"),
+        ("json-fw", "\u{FF02}\u{FF1A}\u{FF02}", "\u{FF02}"),
+        ("ascii-eq-fw-space", "=\u{3000}", ""),
+    ];
+    let mut lines = Vec::new();
+    let mut jsonl = Vec::new();
+    let mut index = 0;
+    for key in keys_from_source() {
+        for (name, open, close) in shapes {
+            for two_words in [false, true] {
+                let canary = letter_canary(index);
+                index += 1;
+                // A quoted value with a second word: that word must be hidden too.
+                let value = if two_words && !close.is_empty() {
+                    format!("{canary} WORDTWO{canary}")
+                } else {
+                    canary.clone()
+                };
+                let prefix = if name == "json-fw" { "\u{FF02}" } else { "" };
+                let text = format!("{prefix}{key}{open}{value}{close} next=ok");
+                let label = format!("{key} {name} two={two_words}");
+                jsonl.push((
+                    label.clone(),
+                    serde_json::json!({ "message": text })
+                        .to_string()
+                        .into_bytes(),
+                    canary.clone(),
+                ));
+                lines.push((label, text.into_bytes(), canary));
+            }
+        }
+    }
+    assert_batch_masked("fullwidth-text", &lines, &[]);
+    assert_batch_masked("fullwidth-jsonl", &jsonl, &["--format", "jsonl"]);
+}
+
+/// Fullwidth punctuation in an ordinary line still counts every raw byte.
+#[test]
+fn fullwidth_line_keeps_its_bytes() {
+    let dir =
+        TempDir(std::env::temp_dir().join(format!("log-bill-fw-bytes-{}", std::process::id())));
+    std::fs::create_dir_all(&dir.0).expect("temporary directory");
+    let file_path = dir.0.join("line.log");
+    let line = "disk\u{3000}full\u{FF01}\n";
+    std::fs::write(&file_path, line).expect("line");
+    let (code, out, err) = run_tool(&["scan", "--json", file_path.to_str().expect("path")]);
+    assert_eq!(code, 0, "{err}");
+    let value: serde_json::Value = serde_json::from_str(&out).expect("json");
+    assert_eq!(value["totals"]["bytes"].as_u64(), Some(line.len() as u64));
+    assert_eq!(value["patterns"][0]["text"].as_str(), Some("disk full!"));
+}

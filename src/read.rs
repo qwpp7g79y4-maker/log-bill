@@ -366,11 +366,54 @@ pub fn detect_wide(data: &[u8]) -> Option<WideEncoding> {
 /// NUL bytes never carry meaning in a log message, but they can split a key
 /// such as `password` so that masking misses it. They are removed from the
 /// text that is masked; the byte counts and the raw line for the rules keep them.
+/// Fullwidth ASCII (U+FF01-U+FF5E), the ideographic space U+3000 and the
+/// small form variants of ASCII punctuation (U+FE50-U+FE6B) become plain ASCII
+/// there too, so `password＝value` and `token：value` separate like `=` and `:`.
 fn without_nul(text: String) -> String {
-    if text.contains('\0') {
-        text.replace('\0', "")
+    if text
+        .chars()
+        .any(|ch| ch == '\0' || ascii_form(ch).is_some())
+    {
+        text.chars()
+            .filter(|&ch| ch != '\0')
+            .map(|ch| ascii_form(ch).unwrap_or(ch))
+            .collect()
     } else {
         text
+    }
+}
+
+/// Plain ASCII for a fullwidth, ideographic-space or small-form character.
+fn ascii_form(ch: char) -> Option<char> {
+    let code = u32::from(ch);
+    match code {
+        0xFF01..=0xFF5E => char::from_u32(code - 0xFEE0),
+        0x3000 => Some(' '),
+        _ => Some(match ch {
+            '\u{FE50}' => ',',
+            '\u{FE52}' => '.',
+            '\u{FE54}' => ';',
+            '\u{FE55}' => ':',
+            '\u{FE56}' => '?',
+            '\u{FE57}' => '!',
+            '\u{FE59}' => '(',
+            '\u{FE5A}' => ')',
+            '\u{FE5B}' => '{',
+            '\u{FE5C}' => '}',
+            '\u{FE5F}' => '#',
+            '\u{FE60}' => '&',
+            '\u{FE61}' => '*',
+            '\u{FE62}' => '+',
+            '\u{FE63}' => '-',
+            '\u{FE64}' => '<',
+            '\u{FE65}' => '>',
+            '\u{FE66}' => '=',
+            '\u{FE68}' => '\\',
+            '\u{FE69}' => '\u{24}',
+            '\u{FE6A}' => '%',
+            '\u{FE6B}' => '@',
+            _ => return None,
+        }),
     }
 }
 
