@@ -70,13 +70,16 @@ jobs:
       - run: cargo test --locked --target x86_64-unknown-linux-musl
       - name: Build the release gnu binary
         run: cargo build --release --locked
-      - name: GLIBC is at most 2.35
+      - name: GLIBC is at most the promised version
         run: |
-          python3 - << 'PY'
+          # One ceiling. tests/readme.rs compares it with the README sentence.
+          glibc_max=2.34
+          python3 - "$glibc_max" << 'PY'
           import re
           import subprocess
           import sys
 
+          limit = sys.argv[1]
           text = subprocess.check_output(
               ["objdump", "-T", "target/release/log-bill"], text=True
           )
@@ -90,8 +93,8 @@ jobs:
 
           highest = max(found, key=key)
           print(f"highest GLIBC_{highest}")
-          if key(highest) > (2, 35, 0):
-              sys.exit(f"GLIBC_{highest} is newer than 2.35")
+          if key(highest) > key(limit):
+              sys.exit(f"GLIBC_{highest} is newer than {limit}")
           PY
 
   audit:

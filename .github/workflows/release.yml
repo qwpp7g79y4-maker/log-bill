@@ -49,7 +49,7 @@ jobs:
           mkdir -p "dist/$name"
           # Everything the README links to with a relative link, so the links
           # and the quick start examples work inside the archive.
-          cp README.md README.nl.md LICENSE-MIT LICENSE-APACHE CHANGELOG.md CONTRIBUTING.md SECURITY.md "dist/$name/"
+          cp README.md README.nl.md LICENSE-MIT LICENSE-APACHE CHANGELOG.md CONTRIBUTING.md SECURITY.md QUALITY.md QUALITY.nl.md "dist/$name/"
           mkdir -p "dist/$name/docs" "dist/$name/tests"
           cp docs/*.md "dist/$name/docs/"
           cp -R tests/fixtures "dist/$name/tests/"
@@ -64,6 +64,29 @@ jobs:
             shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256"
           fi
           rm -rf "$name"
+      - name: Smoke
+        shell: bash
+        run: |
+          name="log-bill-${GITHUB_REF_NAME}-${{ matrix.target }}"
+          smoke=$(mktemp -d)
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            7z x -y "dist/$name.zip" -o"$smoke" > /dev/null
+          else
+            tar -xzf "dist/$name.tar.gz" -C "$smoke"
+          fi
+          root="$smoke/$name"
+          test -f "$root/QUALITY.md"
+          test -f "$root/QUALITY.nl.md"
+          test -f "$root/README.md"
+          test -f "$root/README.nl.md"
+          test -f "$root/LICENSE-MIT"
+          test -f "$root/LICENSE-APACHE"
+          test -f "$root/CHANGELOG.md"
+          test -f "$root/CONTRIBUTING.md"
+          test -f "$root/SECURITY.md"
+          test -f "$root/docs/reference.md"
+          test -f "$root/docs/reference.nl.md"
+          test -f "$root/tests/fixtures/README.md"
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.target }}

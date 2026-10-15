@@ -671,3 +671,72 @@ fn diff_rejects_the_index_flags() {
         "--window with diff only works together with --prices or --json",
     );
 }
+
+fn money_cents(text: &str) -> i64 {
+    let (whole, frac) = text.split_once('.').unwrap_or((text, "0"));
+    let mut frac = frac.to_string();
+    frac.truncate(2);
+    while frac.len() < 2 {
+        frac.push('0');
+    }
+    whole
+        .parse::<i64>()
+        .unwrap_or_else(|_| panic!("amount {text}"))
+        * 100
+        + frac
+            .parse::<i64>()
+            .unwrap_or_else(|_| panic!("amount {text}"))
+}
+
+/// `alpha` and `beta` are one line each. At 0.01 USD per million events each
+/// pattern rounds to 0.03 USD and the total rounds to 0.05 USD.
+#[test]
+fn per_pattern_index_costs_differ_from_the_total_by_one_cent() {
+    let log = scratch("one-cent-patterns.log", "alpha\nbeta\n");
+    let args = [
+        "scan",
+        "--window",
+        "1s",
+        "--days-per-month",
+        "30",
+        "--indexed-price",
+        "0.01",
+        log.as_str(),
+    ];
+    let (code, out, err) = run(&args);
+    assert_eq!(code, Some(0), "{err}{out}");
+    assert!(err.is_empty(), "{err}");
+    let total = out
+        .lines()
+        .find(|line| line.starts_with("indexed cost per month: "))
+        .and_then(|line| line.strip_prefix("indexed cost per month: "))
+        .and_then(|line| line.split(" USD").next())
+        .map(money_cents)
+        .expect("indexed cost line");
+    let patterns: Vec<i64> = out
+        .lines()
+        .filter(|line| line.starts_with("indexed P"))
+        .map(|line| {
+            let amount = line
+                .split("events per month, ")
+                .nth(1)
+                .and_then(|rest| rest.split(" USD").next())
+                .unwrap_or_else(|| panic!("pattern cost: {line}"));
+            money_cents(amount)
+        })
+        .collect();
+    assert_eq!(patterns, vec![3, 3], "{out}");
+    assert_eq!(total, 5, "{out}");
+    assert_eq!(patterns.iter().sum::<i64>() - total, 1, "{out}");
+
+    let mut json_args: Vec<&str> = args.to_vec();
+    json_args.insert(1, "--json");
+    let (code, body, err) = run(&json_args);
+    assert_eq!(code, Some(0), "{err}{body}");
+    assert_eq!(
+        body.matches("\"cost_before\": \"0.03\"").count(),
+        2,
+        "{body}"
+    );
+    assert!(body.contains("\"cost_before\": \"0.05\""), "{body}");
+}

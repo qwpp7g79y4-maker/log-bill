@@ -7,7 +7,7 @@
 
 use std::collections::BTreeSet;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 
 const README: &str = "README.md";
@@ -670,4 +670,266 @@ fn fixture_readme_describes_every_file_as_synthetic() {
         );
     }
     assert!(count > 0);
+}
+
+const INDEX_CENT_SENTENCE: &str = "Per-pattern index costs are rounded separately and can therefore differ by 1 cent from the total.";
+
+const INDEX_CENT_SENTENCE_NL: &str =
+    "Indexkosten per patroon worden apart afgerond en kunnen daardoor 1 cent van het totaal afwijken.";
+
+struct ArchiveList {
+    files: BTreeSet<String>,
+    trees: BTreeSet<String>,
+    shallow: BTreeSet<String>,
+}
+
+impl ArchiveList {
+    fn covers(&self, path: &str) -> bool {
+        if self.files.contains(path) {
+            return true;
+        }
+        if self
+            .trees
+            .iter()
+            .any(|dir| path == dir || path.starts_with(&format!("{dir}/")))
+        {
+            return true;
+        }
+        self.shallow.iter().any(|dir| {
+            path.strip_prefix(&format!("{dir}/"))
+                .is_some_and(|rest| !rest.is_empty() && !rest.contains('/'))
+        })
+    }
+}
+
+fn shell_words(line: &str) -> Vec<String> {
+    let mut words = Vec::new();
+    let mut word = String::new();
+    let mut quoted = false;
+    for ch in line.chars() {
+        match ch {
+            '"' => quoted = !quoted,
+            ' ' | '\t' if !quoted => {
+                if !word.is_empty() {
+                    words.push(std::mem::take(&mut word));
+                }
+            }
+            _ => word.push(ch),
+        }
+    }
+    if !word.is_empty() {
+        words.push(word);
+    }
+    words
+}
+
+/// Files and directories named on a `cp` line in the release workflow.
+fn archive_list(release_yml: &str) -> ArchiveList {
+    let mut list = ArchiveList {
+        files: BTreeSet::new(),
+        trees: BTreeSet::new(),
+        shallow: BTreeSet::new(),
+    };
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    for line in release_yml.lines() {
+        let line = line.trim();
+        if line.starts_with('#') {
+            continue;
+        }
+        let Some(command) = line.strip_prefix("cp ") else {
+            continue;
+        };
+        let mut args = shell_words(command);
+        args.retain(|arg| !arg.starts_with('-'));
+        if args.last().is_some_and(|dest| dest.contains("dist/")) {
+            args.pop();
+        }
+        for source in args {
+            if let Some(star) = source.find("/*") {
+                let dir = source[..star].trim_end_matches('/');
+                assert!(!dir.is_empty(), "cp glob has no directory: {source}");
+                list.shallow.insert(dir.to_string());
+                continue;
+            }
+            let path = source.trim_end_matches('/');
+            if root.join(path).is_dir() {
+                list.trees.insert(path.to_string());
+            } else {
+                list.files.insert(path.to_string());
+            }
+        }
+    }
+    list
+}
+
+/// Relative link targets. A `#anchor` is not part of the path. `./` stays
+/// for [`resolve_link`]. URLs and in-page anchors are skipped.
+fn markdown_link_targets(markdown: &str) -> Vec<String> {
+    let mut targets = Vec::new();
+    let mut rest = markdown;
+    while let Some(pos) = rest.find("](") {
+        rest = &rest[pos + 2..];
+        let Some(end) = rest.find(')') else {
+            break;
+        };
+        let raw = &rest[..end];
+        rest = &rest[end + 1..];
+        if let Some(target) = link_path(raw) {
+            targets.push(target);
+        }
+    }
+    targets
+}
+
+fn link_path(destination: &str) -> Option<String> {
+    let destination = destination.trim();
+    let destination = destination.split_whitespace().next().unwrap_or(destination);
+    let destination = match destination.strip_prefix('<') {
+        Some(inner) => inner.strip_suffix('>').unwrap_or(inner),
+        None => destination,
+    };
+    if destination.is_empty()
+        || destination.starts_with('#')
+        || destination.contains("://")
+        || destination.starts_with("mailto:")
+    {
+        return None;
+    }
+    let path = destination.split('#').next().unwrap_or(destination);
+    if path.is_empty() {
+        None
+    } else {
+        Some(path.to_string())
+    }
+}
+
+fn resolve_link(from_file: &str, link: &str) -> String {
+    let mut parts: Vec<String> = Path::new(from_file)
+        .parent()
+        .unwrap_or(Path::new(""))
+        .components()
+        .filter_map(|component| match component {
+            Component::Normal(text) => text.to_str().map(str::to_string),
+            _ => None,
+        })
+        .collect();
+    for part in link.split(['/', '\\']) {
+        match part {
+            "" | "." => {}
+            ".." => {
+                parts.pop();
+            }
+            other => parts.push(other.to_string()),
+        }
+    }
+    parts.join("/")
+}
+
+fn linked_docs() -> Vec<String> {
+    let mut files = vec![README.to_string(), README_NL.to_string()];
+    let docs = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("docs");
+    let mut names: Vec<String> = fs::read_dir(&docs)
+        .expect("docs")
+        .map(|entry| {
+            entry
+                .expect("docs entry")
+                .file_name()
+                .into_string()
+                .expect("utf-8 name")
+        })
+        .filter(|name| Path::new(name).extension().is_some_and(|ext| ext == "md"))
+        .collect();
+    names.sort();
+    for name in names {
+        files.push(format!("docs/{name}"));
+    }
+    files
+}
+
+/// Every relative link in the README pages and in `docs/` is copied into the
+/// release archive. A `#anchor` and a `./` prefix still name that file.
+#[test]
+fn release_archive_lists_every_relative_doc_link() {
+    let sample = "See [quality](./QUALITY.md) and [prices](docs/reference.md#price-file).";
+    let resolved: Vec<String> = markdown_link_targets(sample)
+        .iter()
+        .map(|link| resolve_link("README.md", link))
+        .collect();
+    assert_eq!(
+        resolved,
+        vec!["QUALITY.md".to_string(), "docs/reference.md".to_string()]
+    );
+
+    let packed = archive_list(&read(".github/workflows/release.yml"));
+    let mut missing = Vec::new();
+    for rel in linked_docs() {
+        for link in markdown_link_targets(&read(&rel)) {
+            let path = resolve_link(&rel, &link);
+            if !packed.covers(&path) {
+                missing.push(format!("{rel} -> {path} (from {link})"));
+            }
+        }
+    }
+    assert!(
+        missing.is_empty(),
+        "release.yml does not pack these linked paths:\n{}",
+        missing.join("\n")
+    );
+}
+
+/// The glibc ceiling is assigned once. The README and the release workflow
+/// promise that same version.
+#[test]
+fn glibc_limit_matches_the_readme_promise() {
+    let ci = read(".github/workflows/ci.yml");
+    assert_eq!(
+        ci.matches("glibc_max=").count(),
+        1,
+        "the glibc ceiling must be set in one place"
+    );
+    let limit: String = ci
+        .split("glibc_max=")
+        .nth(1)
+        .expect("glibc_max")
+        .chars()
+        .take_while(|ch| ch.is_ascii_digit() || *ch == '.')
+        .collect();
+    assert!(!limit.is_empty(), "empty glibc ceiling");
+    let step = ci.split("name: GLIBC").nth(1).expect("GLIBC step");
+    assert!(
+        step.contains("sys.argv[1]"),
+        "the GLIBC step must read the one ceiling"
+    );
+    assert!(
+        !step.contains("2.35") && !ci.contains("(2, 35"),
+        "the GLIBC step still allows 2.35"
+    );
+    assert!(
+        read(README).contains(&format!("needs glibc {limit} or newer")),
+        "README does not promise glibc {limit}"
+    );
+    assert!(
+        read(README_NL).contains(&format!("heeft glibc {limit} of nieuwer nodig")),
+        "README.nl.md does not promise glibc {limit}"
+    );
+    assert!(
+        read(".github/workflows/release.yml").contains(&format!("needs glibc {limit} or newer")),
+        "release.yml does not promise glibc {limit}"
+    );
+}
+
+#[test]
+fn reference_says_pattern_index_costs_can_differ_by_one_cent() {
+    for (rel, sentence) in [
+        (README, INDEX_CENT_SENTENCE),
+        (REF, INDEX_CENT_SENTENCE),
+        (README_NL, INDEX_CENT_SENTENCE_NL),
+        (REF_NL, INDEX_CENT_SENTENCE_NL),
+    ] {
+        assert_eq!(
+            read(rel).matches(sentence).count(),
+            1,
+            "{rel} should state the one-cent pattern rounding once"
+        );
+    }
 }
