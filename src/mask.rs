@@ -715,11 +715,23 @@ fn is_key_char(ch: char) -> bool {
 }
 
 /// Characters inside a key that must not be shown to the keyword compare.
-/// Zero-width space, non-joiner and joiner, word joiner, BOM, soft hyphen.
+/// Zero-width space, non-joiner and joiner, word joiner, BOM, soft hyphen,
+/// the replacement character U+FFFD (an invalid byte read as UTF-8 becomes
+/// U+FFFD, so `s\xFFecret` must still read as `secret`), and control
+/// characters other than tab, line feed and carriage return, which separate.
 fn is_invisible_key_char(ch: char) -> bool {
     matches!(
         ch,
-        '\u{200B}'..='\u{200D}' | '\u{2060}' | '\u{FEFF}' | '\u{00AD}'
+        '\u{200B}'..='\u{200D}'
+            | '\u{2060}'
+            | '\u{FEFF}'
+            | '\u{00AD}'
+            | '\u{FFFD}'
+            | '\u{01}'..='\u{08}'
+            | '\u{0B}'
+            | '\u{0C}'
+            | '\u{0E}'..='\u{1F}'
+            | '\u{7F}'..='\u{9F}'
     )
 }
 
@@ -754,33 +766,42 @@ fn fold_fullwidth(ch: char) -> char {
     }
 }
 
-/// Latin letter imitated by a Cyrillic or Greek lookalike, uppercase included.
+/// Latin letter imitated by a Cyrillic, Greek or Latin lookalike, uppercase included.
 ///
-/// Cyrillic: а е о р с у х і ј ѕ ԁ һ ӏ. Greek: ο α ε ι κ ν τ ρ υ χ.
+/// Cyrillic: а в е к м н о р с т у х і ј ѕ ԁ һ ӏ ԛ ԝ. Greek: ο α β ε η ι κ μ ν τ ρ υ χ ζ.
+/// Latin: dotless `ı`, small `ɑ`, `ɡ`, iota `ɩ`.
 /// Two pairs do not share one Latin letter, because the glyphs differ:
 /// capital nu `Ν` looks like `N` and small nu `ν` looks like `v`;
 /// capital upsilon `Υ` looks like `Y` and small upsilon `υ` looks like `u`;
 /// palochka `Ӏ` looks like `I` and small palochka `ӏ` looks like `l`.
+/// Cyrillic `н`/`Н` count as `n`, because `Н` is the classic stand-in for `N`
+/// in spoofed names; over-masking is preferred to a leak.
 fn homoglyph_latin(ch: char) -> Option<char> {
     Some(match ch {
-        'а' | 'А' | 'α' | 'Α' => 'a',
+        'а' | 'А' | 'α' | 'Α' | 'ɑ' => 'a',
+        'в' | 'В' | 'β' | 'Β' => 'b',
         'е' | 'Е' | 'ε' | 'Ε' => 'e',
         'о' | 'О' | 'ο' | 'Ο' => 'o',
         'р' | 'Р' | 'ρ' | 'Ρ' => 'p',
         'с' | 'С' => 'c',
         'у' | 'У' | 'Υ' => 'y',
         'х' | 'Х' | 'χ' | 'Χ' => 'x',
-        'і' | 'І' | 'ι' | 'Ι' | 'Ӏ' => 'i',
+        'і' | 'І' | 'ι' | 'Ι' | 'Ӏ' | 'ı' | 'ɩ' => 'i',
         'ј' | 'Ј' => 'j',
         'ѕ' | 'Ѕ' => 's',
         'ԁ' | 'Ԁ' => 'd',
-        'һ' | 'Һ' => 'h',
+        'һ' | 'Һ' | 'Η' => 'h',
         'ӏ' => 'l',
-        'κ' | 'Κ' => 'k',
+        'κ' | 'Κ' | 'к' | 'К' => 'k',
+        'м' | 'М' | 'Μ' => 'm',
         'ν' => 'v',
-        'Ν' => 'n',
-        'τ' | 'Τ' => 't',
+        'Ν' | 'н' | 'Н' => 'n',
+        'τ' | 'Τ' | 'т' | 'Т' => 't',
         'υ' => 'u',
+        'ԛ' | 'Ԛ' => 'q',
+        'ԝ' | 'Ԝ' => 'w',
+        'Ζ' => 'z',
+        'ɡ' => 'g',
         _ => return None,
     })
 }

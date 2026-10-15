@@ -1375,7 +1375,7 @@ fn homoglyph_key_variants_hide_canary() {
     }
 }
 
-/// One lookalike letter in every keyword. `b`, `r`, `w` and `z` have none.
+/// One lookalike letter in every keyword. `all_lookalikes` has the full table.
 fn lookalike_letter(ch: char) -> Option<char> {
     Some(match ch {
         'a' => '\u{0430}',
@@ -1459,4 +1459,177 @@ fn passage_and_plain_cyrillic_word_stay() {
             );
         }
     }
+}
+
+/// Every lookalike the masker folds, per Latin letter. Kept apart from
+/// `src/mask.rs` on purpose: a letter dropped there makes a test fail here.
+fn all_lookalikes(ch: char) -> &'static [char] {
+    match ch {
+        'a' => &['\u{0430}', '\u{0410}', '\u{03B1}', '\u{0391}', '\u{0251}'],
+        'b' => &['\u{0432}', '\u{0412}', '\u{03B2}', '\u{0392}'],
+        'c' => &['\u{0441}', '\u{0421}'],
+        'd' => &['\u{0501}', '\u{0500}'],
+        'e' => &['\u{0435}', '\u{0415}', '\u{03B5}', '\u{0395}'],
+        'h' => &['\u{04BB}', '\u{04BA}', '\u{0397}'],
+        'i' => &[
+            '\u{0456}', '\u{0406}', '\u{03B9}', '\u{0399}', '\u{04C0}', '\u{0131}', '\u{0269}',
+        ],
+        'k' => &['\u{03BA}', '\u{039A}', '\u{043A}', '\u{041A}'],
+        'n' => &['\u{039D}', '\u{043D}', '\u{041D}'],
+        'o' => &['\u{043E}', '\u{041E}', '\u{03BF}', '\u{039F}'],
+        'p' => &['\u{0440}', '\u{0420}', '\u{03C1}', '\u{03A1}'],
+        's' => &['\u{0455}', '\u{0405}'],
+        't' => &['\u{03C4}', '\u{03A4}', '\u{0442}', '\u{0422}'],
+        'u' => &['\u{03C5}'],
+        'w' => &['\u{051D}', '\u{051C}'],
+        'y' => &['\u{0443}', '\u{0423}', '\u{03A5}'],
+        'z' => &['\u{0396}'],
+        _ => &[],
+    }
+}
+
+/// Letters only, so the value stays one static word and cannot become `<VAR>`.
+fn letter_canary(index: usize) -> String {
+    let mut n = index;
+    let mut tail = String::new();
+    for _ in 0..4 {
+        tail.push(char::from(b'A' + (n % 26) as u8));
+        n /= 26;
+    }
+    format!("CANARYLEAK{tail}")
+}
+
+/// Writes `lines` (raw bytes, one per line) and checks that no canary shows
+/// up in any mode. Each line has its own canary, so a failure names the line.
+fn assert_batch_masked(name: &str, lines: &[(String, Vec<u8>, String)], flags: &[&str]) {
+    let dir =
+        TempDir(std::env::temp_dir().join(format!("log-bill-batch-{name}-{}", std::process::id())));
+    std::fs::create_dir_all(&dir.0).expect("temporary directory");
+    let file_path = dir.0.join("lines.log");
+    let mut data = Vec::new();
+    for (_, bytes, _) in lines {
+        data.extend_from_slice(bytes);
+        data.push(b'\n');
+    }
+    std::fs::write(&file_path, &data).expect("lines");
+    let arg = file_path.to_str().expect("path");
+    let modes: [(&str, &[&str], bool); 5] = [
+        ("scan", &["scan"], false),
+        ("scan --explain", &["scan", "--explain"], false),
+        ("scan --json", &["scan", "--json"], false),
+        ("diff", &["diff"], true),
+        ("diff --json", &["diff", "--json"], true),
+    ];
+    for (mode, head, twice) in modes {
+        let mut args: Vec<&str> = head.to_vec();
+        args.extend_from_slice(flags);
+        args.push(arg);
+        if twice {
+            args.push(arg);
+        }
+        let (code, stdout_text, err) = run_tool(&args);
+        assert_eq!(code, 0, "{name} {mode}\n{err}");
+        for (label, _, canary) in lines {
+            assert!(
+                !stdout_text.contains(canary.as_str()) && !err.contains(canary.as_str()),
+                "{name} {mode}: {label} leaks {canary}"
+            );
+        }
+    }
+}
+
+/// Every keyword, every letter position, every lookalike of that letter,
+/// lower and upper key, `=` and `: ` separators, text and JSONL.
+/// Regression for `authorizatioн` and `tokeн` (Cyrillic en) leaking.
+#[test]
+fn every_lookalike_at_every_position_hides_canary() {
+    let mut lines = Vec::new();
+    let mut jsonl = Vec::new();
+    let mut index = 0;
+    for key in keys_from_source() {
+        for (pos, ch) in key.char_indices() {
+            for &look in all_lookalikes(ch) {
+                for upper in [false, true] {
+                    let base = if upper {
+                        key.to_uppercase()
+                    } else {
+                        key.to_string()
+                    };
+                    let mut spoiled = String::new();
+                    spoiled.push_str(&base[..pos]);
+                    spoiled.push(look);
+                    spoiled.push_str(&base[pos + ch.len_utf8()..]);
+                    for sep in ["=", ": "] {
+                        let canary = letter_canary(index);
+                        index += 1;
+                        let text = format!("{spoiled}{sep}{canary} other=ok");
+                        let label = format!("{key}@{pos}={look:?} upper={upper} sep={sep:?}");
+                        jsonl.push((
+                            label.clone(),
+                            serde_json::json!({ "message": text })
+                                .to_string()
+                                .into_bytes(),
+                            canary.clone(),
+                        ));
+                        lines.push((label, text.into_bytes(), canary));
+                    }
+                }
+            }
+        }
+    }
+    assert!(
+        lines.len() > 400,
+        "expected a wide sweep, got {}",
+        lines.len()
+    );
+    assert_batch_masked("lookalike-text", &lines, &[]);
+    assert_batch_masked("lookalike-jsonl", &jsonl, &["--format", "jsonl"]);
+}
+
+/// An invalid byte becomes U+FFFD when read and must not split a key, just as
+/// a NUL byte must not. Regression for `s\xFFecret=` leaking. Variants: lone
+/// 0xFF and 0xFE, a stray continuation byte, an overlong two-byte form, a cut
+/// three-byte form, two bad bytes in a row, a literal U+FFFD, and control
+/// characters (SOH, ESC, DEL, a C1 control), at every position of every keyword.
+#[test]
+fn bad_bytes_and_controls_inside_a_key_hide_canary() {
+    let inserts: [(&str, &[u8]); 10] = [
+        ("ff", b"\xFF"),
+        ("fe", b"\xFE"),
+        ("cont", b"\x80"),
+        ("overlong", b"\xC1\x81"),
+        ("cut3", b"\xE2\x82"),
+        ("two", b"\xFF\xFE"),
+        ("fffd", "\u{FFFD}".as_bytes()),
+        ("soh", b"\x01"),
+        ("esc", b"\x1B"),
+        ("del", b"\x7F"),
+    ];
+    let mut lines = Vec::new();
+    let mut index = 0;
+    for key in keys_from_source() {
+        for pos in 1..key.len() {
+            for (insert_name, insert) in inserts {
+                let canary = letter_canary(index);
+                index += 1;
+                let mut bytes = key.as_bytes()[..pos].to_vec();
+                bytes.extend_from_slice(insert);
+                bytes.extend_from_slice(&key.as_bytes()[pos..]);
+                bytes.extend_from_slice(format!("={canary} other=ok").as_bytes());
+                lines.push((format!("{key}@{pos}+{insert_name}"), bytes, canary));
+            }
+        }
+    }
+    assert_batch_masked("bad-bytes", &lines, &[]);
+}
+
+/// A C1 control (U+0085, NEL) inside a key, written as a real character.
+#[test]
+fn c1_control_inside_a_key_hides_canary() {
+    let canary = "CANARYNELINKEY";
+    assert_masked_line(
+        "nel",
+        &format!("pass\u{0085}word={canary} other=ok"),
+        &[canary],
+    );
 }

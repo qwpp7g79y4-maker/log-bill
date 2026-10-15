@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Security
+
+- A key name with an invalid byte, a U+FFFD or a control character inside it (`s\xFFecret=`) is still recognised, so the value is masked.
+- More lookalike letters fold to Latin in key names, including Cyrillic `н` for `n` (`authorizatioн`, `tokeн`) and lookalikes for `b`, `k`, `m`, `q`, `t`, `w` and `z`.
+
 ## [0.1.2] - 2026-10-14
 
 ### Security
