@@ -351,6 +351,13 @@ fn gb_field(
     Ok(price.numer)
 }
 
+/// Same decimal rules as a price in the price file: exact digits, optional
+/// fraction and exponent, no binary float. A minus sign is a negative price.
+/// The text itself is not copied into the error.
+pub(crate) fn parse_rate(text: &str) -> Result<Price, PriceError> {
+    price_from_lexeme(text)
+}
+
 /// The JSON number as written. A binary float would turn
 /// `1000.0000000000000001` into `1000` and `0.10000000000000000001` into `1/10`.
 fn price_from_lexeme(text: &str) -> Result<Price, PriceError> {

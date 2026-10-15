@@ -21,7 +21,7 @@ enum Kind {
 
 /// Value = digits / 10^scale. Digits are little-endian, with no high zeros.
 #[derive(Clone, Default)]
-struct Fraction {
+pub(crate) struct Fraction {
     digs: Vec<u8>,
     scale: usize,
 }
@@ -197,8 +197,67 @@ fn parse_fraction(token: &str) -> Result<Fraction, ()> {
 }
 
 impl Fraction {
-    fn is_zero(&self) -> bool {
+    pub(crate) fn one() -> Self {
+        Self {
+            digs: vec![1],
+            scale: 0,
+        }
+    }
+
+    pub(crate) fn is_zero(&self) -> bool {
         self.digs.is_empty()
+    }
+
+    pub(crate) fn scale(&self) -> usize {
+        self.scale
+    }
+
+    pub(crate) fn digits(&self) -> &[u8] {
+        &self.digs
+    }
+
+    pub(crate) fn add_frac(&mut self, other: &Fraction) {
+        self.add_scaled(other.digs.clone(), other.scale);
+    }
+
+    pub(crate) fn mul_frac(&self, other: &Fraction) -> Fraction {
+        if self.is_zero() || other.is_zero() {
+            return Fraction::default();
+        }
+        let mut fraction = Fraction {
+            digs: mul_digit_vec(&self.digs, &other.digs),
+            scale: self.scale + other.scale,
+        };
+        fraction.normalize();
+        fraction
+    }
+
+    /// `self - other`. `None` when `other` is larger.
+    pub(crate) fn checked_sub(&self, other: &Fraction) -> Option<Fraction> {
+        let scale = self.scale.max(other.scale);
+        let mut left = align_scale(&self.digs, self.scale, scale);
+        let right = align_scale(&other.digs, other.scale, scale);
+        if left.len() < right.len() {
+            left.resize(right.len(), 0);
+        }
+        let mut borrow = 0i16;
+        for (index, digit) in left.iter_mut().enumerate() {
+            let value =
+                i16::from(*digit) - i16::from(right.get(index).copied().unwrap_or(0)) - borrow;
+            if value < 0 {
+                *digit = u8::try_from(value + 10).ok()?;
+                borrow = 1;
+            } else {
+                *digit = u8::try_from(value).ok()?;
+                borrow = 0;
+            }
+        }
+        if borrow != 0 {
+            return None;
+        }
+        let mut fraction = Fraction { digs: left, scale };
+        fraction.normalize();
+        Some(fraction)
     }
 
     /// Adds `bytes × fraction` to this sum. The sum stays an exact fraction.
@@ -255,6 +314,37 @@ fn align_scale(digs: &[u8], from: usize, to: usize) -> Vec<u8> {
     out
 }
 
+fn mul_digit_vec(left: &[u8], right: &[u8]) -> Vec<u8> {
+    if left.is_empty() || right.is_empty() {
+        return Vec::new();
+    }
+    let mut out = vec![0u8; left.len() + right.len()];
+    for (index, &left_digit) in left.iter().enumerate() {
+        let mut carry = 0u16;
+        for (offset, &right_digit) in right.iter().enumerate() {
+            let value = u16::from(out[index + offset])
+                + u16::from(left_digit) * u16::from(right_digit)
+                + carry;
+            out[index + offset] = (value % 10) as u8;
+            carry = value / 10;
+        }
+        let mut pos = index + right.len();
+        while carry > 0 {
+            if pos == out.len() {
+                out.push(0);
+            }
+            let value = u16::from(out[pos]) + carry;
+            out[pos] = (value % 10) as u8;
+            carry = value / 10;
+            pos += 1;
+        }
+    }
+    while out.last() == Some(&0) {
+        out.pop();
+    }
+    out
+}
+
 fn mul_digits(digs: &mut Vec<u8>, factor: u64) {
     let mut carry = 0u128;
     for digit in digs.iter_mut() {
@@ -296,6 +386,17 @@ impl RuleSet {
     /// Number of rules. Blank lines in the file do not count.
     pub fn len(&self) -> usize {
         self.rules.len()
+    }
+
+    /// Part of one raw line that remains. A drop is 0, no match is 1, and a
+    /// sample is that fraction. The fraction is exact: 889 lines at 0.1 stay
+    /// 88.9, not 88.
+    pub(crate) fn keep(&self, raw: &str) -> Fraction {
+        match self.hit(raw) {
+            Some(Hit::Drop(_)) => Fraction::default(),
+            Some(Hit::Sample(_, fraction)) => fraction.clone(),
+            None => Fraction::one(),
+        }
     }
 
     /// First rule that matches the raw line. `None` when none matches.

@@ -85,3 +85,7 @@ Synthetic text file. Keys with a prefix or suffix (`db_password`, `x-api-key` an
 ## scan-text.log
 
 Synthetic text file: two lines with a user, a timestamp and a test address, an empty line, and the line `disk full`.
+
+## indexed
+
+Synthetic directory. `app.log` is 6000 synthetic lines used to check an indexed-event estimate. No real secret.

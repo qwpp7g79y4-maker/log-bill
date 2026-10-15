@@ -65,6 +65,25 @@ per month: 5097600 bytes, 0.005 GB
 
 118 bytes over one minute is × 1440 = 169920 bytes per day, and × 30 = 5097600 bytes per month. At 1000000000 bytes per GB that is 0.000 GB per day and 0.005 GB per month, shown with three decimals.
 
+Indexed events use that same window. Three records over one second, kept for 7 days on the annual list price:
+
+```console
+$ log-bill scan --window 1s --days-per-month 30 --retention 7 --billing annual tests/fixtures/scan-text.log
+total: 3 lines, 118 bytes
+Pe19dc70d8299c276  2 lines  108 bytes  91.5%  user <NUM> failed at <TS> from <IP>
+P46ab161881a7d411  1 line  10 bytes  8.5%  disk full
+factor: 86400
+per day: 10195200 bytes, 0.010 GB
+per month: 305856000 bytes, 0.306 GB
+indexed: list price, estimate, retention 7d, billing annual, 1.27 USD per 1M events
+indexed events per month: 7.776M before index rules, 7.776M after
+indexed cost per month: 9.88 USD before index rules, 9.88 USD after, savings 0.00 USD
+indexed Pe19dc70d8299c276: 5.184M -> 5.184M events per month, 6.58 USD -> 6.58 USD, savings 0.00 USD
+indexed P46ab161881a7d411: 2.592M -> 2.592M events per month, 3.29 USD -> 3.29 USD, savings 0.00 USD
+```
+
+3 records × 30 × 86400 / 1000000 = 7.776 million events per month. At 1.27 USD per million that is 9.87552, shown as 9.88. The synthetic fixture `tests/fixtures/indexed/app.log` (6000 lines) with the same window, `--retention 7`, `--billing annual` and an index rule `drop DEBUG` is 15552.000M events per month before the rule and 6928.416M after. 2673/6000 × 15552 × 1.27 is 8799.08832, shown as 8799.09 USD per month. Adding `drop GET /health` and `sample 0.1 INFO order` leaves 982.109M events and 1247.28 USD. The list was read from https://www.datadoghq.com/pricing/list/ on 2026-10-14. Without `--retention`, `--billing`, `--indexed-price` or `--index-rules` this section is absent.
+
 Simulate a sample rule:
 
 ```console
@@ -90,7 +109,7 @@ new patterns: 6 of 12 bytes, 50.0%
 
 The old sample is `alpha` twice (12 bytes) and `beta` once (5 bytes): 17 bytes. The new one is `alpha` (6) and `gamma` (6): 12 bytes. The new pattern `gamma` is 6 of 12 bytes, 50.0%.
 
-Prices come only from a JSON file you pass with `--prices` (together with `--window`); see [the price file format](docs/reference.md#price-file). Each price is read as an exact decimal. A fraction that does not fit, a number outside the range of a binary float, or a file nested more than 128 arrays or objects deep, is rejected, and so is a key that appears twice. Every text output with amounts ends with `estimate: extrapolation of one sample with your own prices; not an official rate`. All options, exit codes and error messages are listed in the [reference](docs/reference.md) and in `log-bill --help`.
+Prices come only from a JSON file you pass with `--prices` (together with `--window`); see [the price file format](docs/reference.md#price-file). Each price is read as an exact decimal. A fraction that does not fit, a number outside the range of a binary float, or a file nested more than 128 arrays or objects deep, is rejected, and so is a key that appears twice. Every text output with per-GB amounts ends with `estimate: extrapolation of one sample with your own prices; not an official rate`. An indexed-event estimate is labeled `list price, estimate`, or `custom price, estimate` when you pass `--indexed-price`. All options, exit codes and error messages are listed in the [reference](docs/reference.md) and in `log-bill --help`.
 
 ## How it counts
 
@@ -102,7 +121,8 @@ Every number can be traced back to these rules. The full masking rules are in th
 - **Window:** the daily factor is 86400 divided by the window in seconds. A month is `--days-per-month` days, 30 by default.
 - **Cost:** per day = bytes in the sample × factor / bytes per GB × price per GB, separately for ingest and index. Per month = per day × days per month. All arithmetic uses whole numbers and fractions; rounding only happens on display: amounts to 2 decimals, GB to 3 decimals, half away from zero.
 - **Rules:** `drop <regex>` or `sample <fraction> <regex>`, tested against the raw line, first match wins. A fraction longer than 80 characters is invalid. A sampled pattern keeps the expected value, rounded down once for lines and once for bytes, independently. That is why a pattern can end up with 0 lines and still some bytes. The regex and the raw line are never shown.
-- **Budget:** `--budget-month` is checked against the bytes after `--rules`. The `total` line and its cost show the bytes before the rules; the savings are shown separately.
+- **Indexed events:** optional, and only with `--window` plus `--retention`, `--billing`, `--indexed-price` or `--index-rules`. Events are ingested records. They use the same month factor as the bytes and stay an exact fraction until display (millions with 3 decimals, amounts with 2 decimals, half away from zero). `--index-rules` has the same syntax as `--rules` and applies after `--rules`; a sample is not rounded down to whole events. The built-in price is USD per million events from the public list. `--budget-month` does not include that estimate.
+- **Budget:** `--budget-month` is checked against the bytes after `--rules`. The `total` line and its cost show the bytes before the rules; the savings are shown separately. The indexed-event estimate is not part of the budget.
 
 Worked example (covered by a unit test): a sample of 1000000 bytes with `--window 1m` gives factor 1440, so 1440000000 bytes = 1.440 GB per day. At an ingest price of 0.10 per GB that is 0.144, shown as 0.14 per day, and 4.32 per month (30 days).
 
@@ -125,9 +145,9 @@ An honest comparison with five products. The pages were checked on 8 October 202
 ## Limitations
 
 - No official rate from any vendor. Prices come only from your price file. With `--prices` and `--window` the text output ends with `estimate: extrapolation of one sample with your own prices; not an official rate`.
-- No contract discounts, tiered pricing, minimum commitments or retention pricing.
+- No contract discounts, tiered pricing or minimum commitments. Indexed retention uses the public list price, or the amount you pass with `--indexed-price`, not a private contract.
 - Compression and storage differ per platform. log-bill counts the raw bytes of the lines in the sample. A platform may measure after parsing, include metadata or charge per event.
-- No price per million events, only per GB; log-bill also prices indexing per GB. https://docs.datadoghq.com/account_management/billing/pricing says "Datadog charges for ingested logs based on the total number of gigabytes submitted to the Datadog Logs service." and "Datadog charges per million log events submitted for indexing at the rate designated for the retention policy you selected." The ingest price per GB fits in the price file. The index price per million events does not: the tool does not convert a number of events to GB. Leave the index price out unless you already have an amount per GB.
+- A price per million events is optional and separate from the per-GB price. https://docs.datadoghq.com/account_management/billing/pricing says "Datadog charges for ingested logs based on the total number of gigabytes submitted to the Datadog Logs service." and "Datadog charges per million log events submitted for indexing at the rate designated for the retention policy you selected." The ingest price per GB stays in the price file. `--retention`, `--billing`, `--indexed-price` or `--index-rules` adds the indexed-event estimate from https://www.datadoghq.com/pricing/list/ (read 2026-10-14). Without those options the output does not change. The tool does not convert a number of events to GB. `--budget-month` does not include the indexed-event estimate. Flex Logs are not priced.
 - A sample is one window. Daily and monthly figures are an extrapolation.
 - It does not know whether a line is needed for security or compliance. A drop simulation is not advice to drop.
 - No gzip input in this version.
@@ -141,7 +161,7 @@ An honest comparison with five products. The pages were checked on 8 October 202
 
 ## Privacy
 
-log-bill is fully offline: no network, no API key, no telemetry. Patterns keep the static words of a line and replace timestamps, UUIDs, IP addresses, e-mail addresses (an ordinary address, a quoted local part such as `"john.doe"@example.com`, and letters outside ASCII such as `jöhn@exämple.de`), secrets, hex, numbers (digits, also with a leading `+` or `-` or a decimal fraction, such as `-12.5`, `3.14` and `+31612345678`, and digits outside ASCII such as `١٢٣٤٥`) and other variable words. A line with nothing to replace, such as `disk full`, is shown in full, with its pattern id, line count, byte count and share. With `--prices`, the currency, source and date from the price file are shown too. An error about a log file, a price file or a rules file does not include the path, the raw log line, the rules line or the price-file contents. Leak tests plant a fake secret in every input type and check that no output contains it. All fixtures are synthetic.
+log-bill is fully offline: no network, no API key, no telemetry. Patterns keep the static words of a line and replace timestamps, UUIDs, IP addresses, e-mail addresses (an ordinary address, a quoted local part such as `"john.doe"@example.com`, and letters outside ASCII such as `jöhn@exämple.de`), secrets, hex, numbers (digits, also with a leading `+` or `-` or a decimal fraction, such as `-12.5`, `3.14` and `+31612345678`, and digits outside ASCII such as `١٢٣٤٥`) and other variable words. A line with nothing to replace, such as `disk full`, is shown in full, with its pattern id, line count, byte count and share. With `--prices`, the currency, source and date from the price file are shown too. An error about a log file, a price file or a rules file does not include the path, the raw log line, the rules line or the price-file contents. An error about an index-rules file does not include the path or the rule line. Leak tests plant a fake secret in every input type and check that no output contains it. All fixtures are synthetic.
 
 ## Support
 

@@ -25,6 +25,10 @@ fn help_shows_every_option() {
         "--json",
         "--budget-month",
         "--max-new-share",
+        "--retention",
+        "--billing",
+        "--indexed-price",
+        "--index-rules",
     ] {
         assert!(help.contains(needle), "help is missing {needle}");
     }

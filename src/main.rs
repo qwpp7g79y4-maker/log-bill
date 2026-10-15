@@ -1,4 +1,5 @@
 mod diff;
+mod indexed;
 mod mask;
 mod money;
 mod pattern;
@@ -63,6 +64,22 @@ struct Cli {
     /// Maximum share of new patterns, in percent.
     #[arg(long, global = true, value_name = "PCT")]
     max_new_share: Option<String>,
+
+    /// Indexed-log retention in days: 3, 7, 15 or 30.
+    #[arg(long, global = true, value_name = "DAYS")]
+    retention: Option<String>,
+
+    /// Indexed-log billing plan: annual, monthly or ondemand.
+    #[arg(long, global = true, value_name = "PLAN")]
+    billing: Option<String>,
+
+    /// Indexed-log price in USD per 1M events. Overrides the list price.
+    #[arg(long, global = true, allow_negative_numbers = true, value_name = "USD")]
+    indexed_price: Option<String>,
+
+    /// Index exclusion rules (drop and sample), applied after --rules.
+    #[arg(long, global = true, value_name = "FILE")]
+    index_rules: Option<PathBuf>,
 }
 
 #[derive(Subcommand)]
@@ -198,13 +215,70 @@ fn execute(cli: &Cli, days_explicit: bool) -> i32 {
             None => return fail("invalid percentage", 3),
         },
     };
+    let retention = match cli.retention.as_deref() {
+        None => None,
+        Some(text) => match indexed::parse_retention(text) {
+            Some(days) => Some(days),
+            None => return fail("invalid retention", 3),
+        },
+    };
+    let billing = match cli.billing.as_deref() {
+        None => None,
+        Some(text) => match indexed::parse_billing(text) {
+            Some(plan) => Some(plan),
+            None => return fail("invalid billing", 3),
+        },
+    };
+    let indexed_price = match cli.indexed_price.as_deref() {
+        None => None,
+        Some(text) => match indexed::parse_indexed_price(text) {
+            Some(price) => Some(price),
+            None => return fail("invalid indexed price", 3),
+        },
+    };
+    let indexing = retention.is_some()
+        || billing.is_some()
+        || indexed_price.is_some()
+        || cli.index_rules.is_some();
     match &cli.command {
         Cmd::Scan { file } => {
+            // A bad retention, billing plan or price was already rejected.
+            // The window check is next, before the index-rules file is opened.
+            if window.is_none() {
+                if retention.is_some() {
+                    return fail("--retention only works together with --window", 3);
+                }
+                if billing.is_some() {
+                    return fail("--billing only works together with --window", 3);
+                }
+                if indexed_price.is_some() {
+                    return fail("--indexed-price only works together with --window", 3);
+                }
+                if cli.index_rules.is_some() {
+                    return fail("--index-rules only works together with --window", 3);
+                }
+            }
             if let Some(message) = ignored_option(cli, days_explicit) {
                 return fail(message, 3);
             }
-            match fold_file(cli, file, rules.as_ref(), cli.top) {
-                Ok((stats, effect)) => {
+            let index_rules = if let Some(path) = &cli.index_rules {
+                match rules::load_rules(path) {
+                    Ok(set) => Some(set),
+                    Err(error) => return fail(&index_rules_message(&error), 2),
+                }
+            } else {
+                None
+            };
+            let index_quote = indexing.then(|| indexed::quote(retention, billing, indexed_price));
+            match fold_file(
+                cli,
+                file,
+                rules.as_ref(),
+                index_rules.as_ref(),
+                indexing,
+                cli.top,
+            ) {
+                Ok((stats, effect, events)) => {
                     let text = if cli.json {
                         let file_text = path_text(file);
                         let paths = [file_text.as_str()];
@@ -226,6 +300,7 @@ fn execute(cli: &Cli, days_explicit: bool) -> i32 {
                             &stats,
                             rules_json,
                             prices.as_ref(),
+                            index_quote.as_ref().zip(events.as_ref()),
                         ) {
                             Ok(body) => body,
                             Err(error) => return fail(&error.to_string(), 3),
@@ -269,10 +344,24 @@ fn execute(cli: &Cli, days_explicit: bool) -> i32 {
                                 }
                             }
                         }
+                        if let (Some(quote), Some(events)) = (&index_quote, &events) {
+                            let time_window = window.expect("indexing has a window");
+                            match render::indexed_text(
+                                quote,
+                                events,
+                                time_window,
+                                cli.days_per_month,
+                                cli.explain,
+                            ) {
+                                Ok(block) => text.push_str(&block),
+                                Err(error) => return fail(&error.to_string(), 3),
+                            }
+                        }
                         text
                     };
                     // Rounding happens only on display. The budget compares the fraction,
-                    // ingest plus index, on the bytes after the rules.
+                    // ingest plus the per-GB index, on the bytes after the rules.
+                    // The indexed-event estimate is not part of the budget.
                     let over_budget = if let Some(budget) = budget {
                         let time_window = window.expect("budget has a window");
                         let price_set = prices.as_ref().expect("budget has prices");
@@ -321,17 +410,29 @@ fn execute(cli: &Cli, days_explicit: bool) -> i32 {
                     3,
                 );
             }
+            if cli.retention.is_some() {
+                return fail("--retention only works with scan", 3);
+            }
+            if cli.billing.is_some() {
+                return fail("--billing only works with scan", 3);
+            }
+            if cli.indexed_price.is_some() {
+                return fail("--indexed-price only works with scan", 3);
+            }
+            if cli.index_rules.is_some() {
+                return fail("--index-rules only works with scan", 3);
+            }
             if let Some(message) = ignored_option(cli, days_explicit) {
                 return fail(message, 3);
             }
             let old_path = path_text(old);
             let new_path = path_text(new);
-            let old = match fold_file(cli, old, rules.as_ref(), None) {
-                Ok((stats, effect)) => sampled_from(stats, effect),
+            let old = match fold_file(cli, old, rules.as_ref(), None, false, None) {
+                Ok((stats, effect, _)) => sampled_from(stats, effect),
                 Err(error) => return fail(&error.to_string(), 2),
             };
-            let new = match fold_file(cli, new, rules.as_ref(), None) {
-                Ok((stats, effect)) => sampled_from(stats, effect),
+            let new = match fold_file(cli, new, rules.as_ref(), None, false, None) {
+                Ok((stats, effect, _)) => sampled_from(stats, effect),
                 Err(error) => return fail(&error.to_string(), 2),
             };
             // Match is on the pattern text. `--top` would give the rest one id, `other`.
@@ -411,14 +512,27 @@ fn fold_file(
     cli: &Cli,
     path: &Path,
     rules: Option<&rules::RuleSet>,
+    index_rules: Option<&rules::RuleSet>,
+    tally_index: bool,
     top: Option<u32>,
-) -> Result<(pattern::Stats, Option<rules::Effect>), read::ReadError> {
+) -> Result<
+    (
+        pattern::Stats,
+        Option<rules::Effect>,
+        Option<indexed::Events>,
+    ),
+    read::ReadError,
+> {
     let mut grouped = pattern::Grouper::default();
     let mut folded = rules.map(|_| rules::Folder::default());
+    let mut tally = tally_index.then(indexed::Tally::default);
     let mut visit = |line: read::Line| {
         grouped.push(&line);
         if let (Some(folder), Some(set)) = (folded.as_mut(), rules) {
             folder.push(&line, set);
+        }
+        if let Some(tally) = tally.as_mut() {
+            tally.push(&line, rules, index_rules);
         }
     };
     match cli.format {
@@ -429,7 +543,18 @@ fn fold_file(
     }
     let stats = grouped.finish(top);
     let effect = folded.map(|folder| folder.finish(&stats));
-    Ok((stats, effect))
+    let events = tally.map(|tally| tally.finish(&stats));
+    Ok((stats, effect, events))
+}
+
+fn index_rules_message(error: &rules::RulesError) -> String {
+    match error {
+        rules::RulesError::Unreadable => "index rules file is not readable".to_owned(),
+        rules::RulesError::NotRegular => "index rules file is not a regular file".to_owned(),
+        rules::RulesError::Invalid { line } => {
+            format!("invalid rule on line {line} of the index rules file")
+        }
+    }
 }
 
 /// Patterns as scan counts them after `--rules`. Without rules this is `group` itself.

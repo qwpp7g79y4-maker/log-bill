@@ -67,6 +67,25 @@ per month: 5097600 bytes, 0.005 GB
 
 118 bytes in één minuut is × 1440 = 169920 bytes per dag, en × 30 = 5097600 bytes per maand. Met 1000000000 bytes per GB is dat 0.000 GB per dag en 0.005 GB per maand, op drie decimalen.
 
+Geïndexeerde events gebruiken datzelfde venster. Drie records over één seconde, 7 dagen bewaard, op de jaarlijkse lijstprijs:
+
+```console
+$ log-bill scan --window 1s --days-per-month 30 --retention 7 --billing annual tests/fixtures/scan-text.log
+total: 3 lines, 118 bytes
+Pe19dc70d8299c276  2 lines  108 bytes  91.5%  user <NUM> failed at <TS> from <IP>
+P46ab161881a7d411  1 line  10 bytes  8.5%  disk full
+factor: 86400
+per day: 10195200 bytes, 0.010 GB
+per month: 305856000 bytes, 0.306 GB
+indexed: list price, estimate, retention 7d, billing annual, 1.27 USD per 1M events
+indexed events per month: 7.776M before index rules, 7.776M after
+indexed cost per month: 9.88 USD before index rules, 9.88 USD after, savings 0.00 USD
+indexed Pe19dc70d8299c276: 5.184M -> 5.184M events per month, 6.58 USD -> 6.58 USD, savings 0.00 USD
+indexed P46ab161881a7d411: 2.592M -> 2.592M events per month, 3.29 USD -> 3.29 USD, savings 0.00 USD
+```
+
+3 records × 30 × 86400 / 1000000 = 7.776 miljoen events per maand. Tegen 1.27 USD per miljoen is dat 9.87552, getoond als 9.88. De synthetische fixture `tests/fixtures/indexed/app.log` (6000 regels) met hetzelfde venster, `--retention 7`, `--billing annual` en een indexregel `drop DEBUG` is 15552.000M events per maand vóór de regel en 6928.416M erna. 2673/6000 × 15552 × 1.27 is 8799.08832, getoond als 8799.09 USD per maand. Met erbij `drop GET /health` en `sample 0.1 INFO order` blijven 982.109M events en 1247.28 USD over. De lijst is gelezen op https://www.datadoghq.com/pricing/list/ op 2026-10-14. Zonder `--retention`, `--billing`, `--indexed-price` of `--index-rules` ontbreekt dit blok.
+
 Een sample-regel simuleren:
 
 ```console
@@ -92,7 +111,7 @@ new patterns: 6 of 12 bytes, 50.0%
 
 De oude steekproef is twee keer `alpha` (12 bytes) en één keer `beta` (5 bytes): 17 bytes. De nieuwe is `alpha` (6) en `gamma` (6): 12 bytes. Het nieuwe patroon `gamma` is 6 van 12 bytes, 50.0%.
 
-Prijzen komen alleen uit een JSON-bestand dat je meegeeft met `--prices` (samen met `--window`); zie [het prijsbestand](docs/reference.nl.md#prijsbestand). Elke prijs wordt als exact decimaal getal gelezen. Een breuk die niet past, een getal buiten het bereik van een binaire float, of een bestand dat meer dan 128 arrays of objecten diep is, wordt geweigerd, en een sleutel die twee keer voorkomt ook. Elke tekstuitvoer met bedragen eindigt met `estimate: extrapolation of one sample with your own prices; not an official rate` ("schatting: extrapolatie van één steekproef met je eigen prijzen; geen officieel tarief"). Alle opties, exitcodes en foutmeldingen staan in de [referentie](docs/reference.nl.md) en in `log-bill --help`.
+Prijzen komen alleen uit een JSON-bestand dat je meegeeft met `--prices` (samen met `--window`); zie [het prijsbestand](docs/reference.nl.md#prijsbestand). Elke prijs wordt als exact decimaal getal gelezen. Een breuk die niet past, een getal buiten het bereik van een binaire float, of een bestand dat meer dan 128 arrays of objecten diep is, wordt geweigerd, en een sleutel die twee keer voorkomt ook. Elke tekstuitvoer met bedragen per GB eindigt met `estimate: extrapolation of one sample with your own prices; not an official rate` ("schatting: extrapolatie van één steekproef met je eigen prijzen; geen officieel tarief"). Een schatting van geïndexeerde events heeft het label `list price, estimate`, of `custom price, estimate` als je `--indexed-price` meegeeft. Alle opties, exitcodes en foutmeldingen staan in de [referentie](docs/reference.nl.md) en in `log-bill --help`.
 
 ## Hoe het rekent
 
@@ -104,7 +123,8 @@ Elk getal is terug te voeren op deze regels. De volledige maskerregels staan in 
 - **Venster:** de factor per dag is 86400 gedeeld door het venster in seconden. Een maand is `--days-per-month` dagen, standaard 30.
 - **Kosten:** per dag = bytes in de steekproef × factor / bytes per GB × prijs per GB, apart voor ingest en index. Per maand = per dag × dagen per maand. Er wordt gerekend met gehele getallen en breuken; afronden gebeurt pas bij het tonen: bedragen op 2 decimalen, GB op 3 decimalen, half van nul af.
 - **Regels:** `drop <regex>` of `sample <fractie> <regex>`, getoetst op de ruwe regel, de eerste die past wint. Een fractie langer dan 80 tekens is ongeldig. Een gesampled patroon houdt de verwachte waarde, één keer naar beneden afgerond voor de regels en één keer voor de bytes, onafhankelijk van elkaar. Daardoor kan een patroon op 0 regels en toch nog wat bytes uitkomen. De regex en de ruwe regel worden nooit getoond.
-- **Budget:** `--budget-month` toetst op de bytes na `--rules`. De regel `total` en de kosten daarvan tonen de bytes vóór de regels; de besparing staat apart.
+- **Geïndexeerde events:** optioneel, en alleen met `--window` plus `--retention`, `--billing`, `--indexed-price` of `--index-rules`. Events zijn ingelezen records. Ze gebruiken dezelfde maandfactor als de bytes en blijven een exacte breuk tot de weergave (miljoenen op 3 decimalen, bedragen op 2 decimalen, half van nul af). `--index-rules` heeft dezelfde syntax als `--rules` en geldt na `--rules`; een sample wordt niet naar beneden afgerond tot hele events. De ingebouwde prijs is USD per miljoen events uit de openbare lijst. `--budget-month` telt die schatting niet mee.
+- **Budget:** `--budget-month` toetst op de bytes na `--rules`. De regel `total` en de kosten daarvan tonen de bytes vóór de regels; de besparing staat apart. De schatting van geïndexeerde events hoort niet bij het budget.
 
 Uitgewerkt voorbeeld (met een unit test): een steekproef van 1000000 bytes met `--window 1m` geeft factor 1440, dus 1440000000 bytes = 1.440 GB per dag. Met een ingest-prijs van 0.10 per GB is dat 0.144, getoond als 0.14 per dag, en 4.32 per maand (30 dagen).
 
@@ -127,9 +147,9 @@ Een eerlijke vergelijking met vijf producten. De pagina's zijn nagelezen op 8 ok
 ## Beperkingen
 
 - Geen officieel tarief van welke leverancier ook. Prijzen komen alleen uit je prijsbestand. Met `--prices` en `--window` eindigt de tekstuitvoer op `estimate: extrapolation of one sample with your own prices; not an official rate`.
-- Geen contractkortingen, staffels, minimale afname of retentieprijzen.
+- Geen contractkortingen, staffels of minimale afname. Retentie van geïndexeerde logs gebruikt de openbare lijstprijs, of het bedrag dat je met `--indexed-price` meegeeft, niet een eigen contract.
 - Compressie en opslag verschillen per platform. log-bill telt de ruwe bytes van de regels in de steekproef. Een platform kan na parsing meten, metadata meetellen of per event rekenen.
-- Geen prijs per miljoen events, alleen per GB; log-bill rekent ook index per GB. Op https://docs.datadoghq.com/account_management/billing/pricing staat "Datadog charges for ingested logs based on the total number of gigabytes submitted to the Datadog Logs service." en "Datadog charges per million log events submitted for indexing at the rate designated for the retention policy you selected." De ingest-prijs per GB past in het prijsbestand. De indexprijs per miljoen events past daar niet in: de tool rekent een aantal events niet om naar GB. Laat de indexprijs weg, tenzij je zelf al een bedrag per GB hebt.
+- Een prijs per miljoen events is optioneel en staat los van de prijs per GB. Op https://docs.datadoghq.com/account_management/billing/pricing staat "Datadog charges for ingested logs based on the total number of gigabytes submitted to the Datadog Logs service." en "Datadog charges per million log events submitted for indexing at the rate designated for the retention policy you selected." De ingest-prijs per GB blijft in het prijsbestand. `--retention`, `--billing`, `--indexed-price` of `--index-rules` voegt de schatting van geïndexeerde events toe uit https://www.datadoghq.com/pricing/list/ (gelezen op 2026-10-14). Zonder die opties verandert de uitvoer niet. De tool rekent een aantal events niet om naar GB. `--budget-month` telt de schatting van geïndexeerde events niet mee. Flex Logs worden niet geprijsd.
 - Een steekproef is één venster. Dag- en maandbedragen zijn een extrapolatie.
 - Het weet niet of een regel nodig is voor security of compliance. Een drop-simulatie is geen advies om te droppen.
 - Geen gzip-invoer in deze versie.
@@ -143,7 +163,7 @@ Een eerlijke vergelijking met vijf producten. De pagina's zijn nagelezen op 8 ok
 
 ## Privacy
 
-log-bill werkt volledig offline: geen netwerk, geen API-key, geen telemetrie. Patronen houden de vaste woorden van een regel en vervangen tijdstempels, UUID's, IP-adressen, e-mailadressen (een gewoon adres, een gequote lokaal deel zoals `"john.doe"@example.com`, en letters buiten ASCII zoals `jöhn@exämple.de`), geheimen, hex, getallen (cijfers, ook met een `+` of `-` ervoor of een decimale breuk, zoals `-12.5`, `3.14` en `+31612345678`, en cijfers buiten ASCII zoals `١٢٣٤٥`) en andere variabele woorden. Een regel waar niets te vervangen is, zoals `disk full`, wordt helemaal getoond, met het patroon-id, het aantal regels, het aantal bytes en het aandeel. Met `--prices` worden ook de valuta, de bron en de datum uit het prijsbestand getoond. Een fout over een logbestand, een prijsbestand of een regelsbestand bevat het pad niet, noch de ruwe logregel, de regel uit het regelsbestand of de inhoud van het prijsbestand. Lektests stoppen een nepgeheim in elk soort invoer en controleren dat geen enkele uitvoer het bevat. Alle fixtures zijn synthetisch.
+log-bill werkt volledig offline: geen netwerk, geen API-key, geen telemetrie. Patronen houden de vaste woorden van een regel en vervangen tijdstempels, UUID's, IP-adressen, e-mailadressen (een gewoon adres, een gequote lokaal deel zoals `"john.doe"@example.com`, en letters buiten ASCII zoals `jöhn@exämple.de`), geheimen, hex, getallen (cijfers, ook met een `+` of `-` ervoor of een decimale breuk, zoals `-12.5`, `3.14` en `+31612345678`, en cijfers buiten ASCII zoals `١٢٣٤٥`) en andere variabele woorden. Een regel waar niets te vervangen is, zoals `disk full`, wordt helemaal getoond, met het patroon-id, het aantal regels, het aantal bytes en het aandeel. Met `--prices` worden ook de valuta, de bron en de datum uit het prijsbestand getoond. Een fout over een logbestand, een prijsbestand of een regelsbestand bevat het pad niet, noch de ruwe logregel, de regel uit het regelsbestand of de inhoud van het prijsbestand. Een fout over een index-regelsbestand bevat het pad niet en ook de regel zelf niet. Lektests stoppen een nepgeheim in elk soort invoer en controleren dat geen enkele uitvoer het bevat. Alle fixtures zijn synthetisch.
 
 ## Steunen
 

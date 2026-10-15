@@ -4,6 +4,7 @@ use std::fmt::Write;
 use serde_json::Value;
 
 use crate::diff::{Report, Row, Status};
+use crate::indexed::{self, Events as IndexEvents, Quote};
 use crate::mask::MaskCounts;
 use crate::money::{self, Prices, Volume, Window};
 use crate::pattern::{self, Stats};
@@ -179,6 +180,18 @@ pub fn costs_text(
     }
     writeln!(out, "{ESTIMATE}").expect("text");
     Ok(out)
+}
+
+/// Indexed-event section. Separate from the per-GB ingest and index lines.
+pub fn indexed_text(
+    quote: &Quote,
+    events: &IndexEvents,
+    window: Window,
+    days: u32,
+    explain: bool,
+) -> Result<String, money::CalcError> {
+    let view = indexed::view(quote, events, window, days, explain)?;
+    Ok(indexed::text_block(&view))
 }
 
 /// Old, new, and savings in lines and bytes. No raw line and no regex.
@@ -395,6 +408,7 @@ pub fn scan_json(
     stats: &Stats,
     rules: Option<(&Effect, usize)>,
     prices: Option<&Prices>,
+    indexed: Option<(&Quote, &IndexEvents)>,
 ) -> Result<String, money::CalcError> {
     let gb_bytes = prices.map(|item| item.gb_bytes).unwrap_or(money::GB_BYTES);
     let volume = match meta.window {
@@ -441,7 +455,54 @@ pub fn scan_json(
             )?,
         ));
     }
+    if let (Some((quote, events)), Some(window)) = (indexed, meta.window) {
+        fields.push((
+            "indexed",
+            indexed_json(quote, events, window, meta.days_per_month, meta.explain)?,
+        ));
+    }
     Ok(finish(obj(fields)))
+}
+
+fn indexed_json(
+    quote: &Quote,
+    events: &IndexEvents,
+    window: Window,
+    days: u32,
+    explain: bool,
+) -> Result<Value, money::CalcError> {
+    let view = indexed::view(quote, events, window, days, explain)?;
+    let mut fields = vec![
+        ("billing", lit(view.billing)),
+        ("cost_after", lit(&view.cost_after)),
+        ("cost_before", lit(&view.cost_before)),
+        ("currency", lit("USD")),
+        ("events_after", lit(&view.events_after)),
+        ("events_before", lit(&view.events_before)),
+        ("label", lit(view.label)),
+        (
+            "patterns",
+            Value::Array(view.patterns.iter().map(indexed_pattern).collect()),
+        ),
+        ("retention_days", num_u64(u64::from(view.retention_days))),
+        ("savings", lit(&view.savings)),
+        ("usd_per_million", lit(&view.usd_per_million)),
+    ];
+    if let Some(steps) = view.steps {
+        fields.push(("steps", lit(&steps)));
+    }
+    Ok(obj(fields))
+}
+
+fn indexed_pattern(pattern: &indexed::PatternView) -> Value {
+    obj([
+        ("cost_after", lit(&pattern.cost_after)),
+        ("cost_before", lit(&pattern.cost_before)),
+        ("events_after", lit(&pattern.events_after)),
+        ("events_before", lit(&pattern.events_before)),
+        ("id", lit(&pattern.id)),
+        ("savings", lit(&pattern.savings)),
+    ])
 }
 
 /// JSON of `diff`. `patterns` is `added`, `removed`, and `changed`, in order.
@@ -1110,7 +1171,7 @@ mod tests {
         );
         let mut call = meta(None);
         call.explain = false;
-        let without = super::scan_json(&call, &stats, None, None).unwrap();
+        let without = super::scan_json(&call, &stats, None, None, None).unwrap();
         let without: serde_json::Value = serde_json::from_str(&without).unwrap();
         assert!(without["patterns"][0].get("masks").is_none());
         assert_eq!(without["patterns"][0]["note"], "possible secret");
@@ -1119,7 +1180,7 @@ mod tests {
             "This is a secret <SECRET> report"
         );
         call.explain = true;
-        let with = super::scan_json(&call, &stats, None, None).unwrap();
+        let with = super::scan_json(&call, &stats, None, None, None).unwrap();
         let with: serde_json::Value = serde_json::from_str(&with).unwrap();
         assert_eq!(with["patterns"][0]["masks"]["secret"], 1);
         assert_eq!(with["patterns"][0]["note"], "possible secret");
@@ -1186,6 +1247,7 @@ mod tests {
             &stats,
             Some((&effect, 1)),
             Some(&prices),
+            None,
         )
         .unwrap();
         let value: serde_json::Value = serde_json::from_str(&body).unwrap();
@@ -1222,8 +1284,14 @@ mod tests {
             total_bytes: 300_000_000_000_000,
             patterns: vec![],
         };
-        let body =
-            super::scan_json(&meta(Some(parse_window("1s").unwrap())), &stats, None, None).unwrap();
+        let body = super::scan_json(
+            &meta(Some(parse_window("1s").unwrap())),
+            &stats,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
         let value: serde_json::Value = serde_json::from_str(&body).unwrap();
         assert_eq!(value["totals"]["per_day"]["bytes"], "25920000000000000000");
         assert_eq!(

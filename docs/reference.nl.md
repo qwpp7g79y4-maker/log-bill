@@ -19,8 +19,12 @@ Draai `log-bill --help` of `log-bill scan --help` voor de ingebouwde hulp. Combi
 | `--top` | scan | Toon de N grootste patronen; de rest als één regel `other`. |
 | `--explain` | scan, ook met `--json` | Toon per patroon de maskers en de volledige rekensom. |
 | `--json` | scan en diff | JSON-uitvoer met `schema_version` 1. |
-| `--budget-month` | scan, met `--window` en `--prices` | Exit 1 als de maandkosten na de regels boven dit bedrag liggen. |
+| `--budget-month` | scan, met `--window` en `--prices` | Exit 1 als de maandelijkse ingest-kosten na de regels boven dit bedrag liggen. De schatting van geïndexeerde events telt niet mee. |
 | `--max-new-share` | diff | Exit 1 als nieuwe patronen meer dan PCT procent van de nieuwe bytes zijn. |
+| `--retention` | scan, alleen met `--window` | Retentie van geïndexeerde logs in dagen: `3`, `7`, `15` of `30`. Standaard 15 als een index-optie gezet is. |
+| `--billing` | scan, alleen met `--window` | Plan voor geïndexeerde logs: `annual`, `monthly` of `ondemand`. Standaard `ondemand` als een index-optie gezet is. |
+| `--indexed-price` | scan, alleen met `--window` | USD per 1M geïndexeerde events. Overschrijft de lijstprijs. Zelfde decimale regels als een prijs in het prijsbestand. |
+| `--index-rules` | scan, alleen met `--window` | Index-uitsluitingsregels, dezelfde syntax als `--rules`, op het gewicht dat na `--rules` overblijft. |
 | `--help` | overal | Toont de hulp en stopt met exit 0. |
 | `--version` | hoogste niveau | Toont het versienummer (`log-bill 0.1.2`) en stopt met exit 0. |
 
@@ -51,7 +55,8 @@ Prijzen komen alleen uit een JSON-bestand dat je meegeeft met `--prices` (samen 
 - **Venster:** `--window` neemt een getal en `s`, `m`, `h` of `d`. De factor per dag is 86400 gedeeld door het venster in seconden. Een maand is `--days-per-month` dagen, standaard 30.
 - **Kosten:** per dag = bytes in de steekproef × factor / bytes per GB × prijs per GB, apart voor ingest en (als opgegeven) index. Per maand = per dag × dagen per maand. Er wordt gerekend met gehele getallen en breuken; afronden gebeurt pas bij het tonen: bedragen op 2 decimalen, GB op 3 decimalen, half van nul af.
 - **Regels (`--rules BESTAND`):** één per regel, `drop <regex>` of `sample <fractie> <regex>`. De fractie is het deel dat blijft, van 0 tot (niet tot en met) 1, geschreven met een punt (`0.1`, niet `0,1`), en hooguit 80 tekens. De regex wordt op de ruwe regel getoetst en de eerste regel die past wint. Regels waar niets op past blijven heel. Van gesamplede regels houdt het patroon de verwachte waarde: de som van `1 × fractie` voor de regels en de som van `bytes × fractie` voor de bytes, elk één keer en onafhankelijk naar beneden afgerond. Bij één fractie voor het hele patroon is dat `floor(aantal × fractie)` regels en `floor(bytes × fractie)` bytes. Passen twee fracties op hetzelfde patroon, dan worden de verwachte waarden eerst opgeteld en daarna één keer afgerond. Daardoor kan een patroon op 0 regels en toch nog wat bytes uitkomen. De regex en de ruwe regel worden nooit getoond, alleen het regelnummer in het regelsbestand.
-- **Budget:** `--budget-month` toetst op de bytes na `--rules`. De regel `total` en de kosten daarvan tonen de bytes vóór de regels; de besparing staat apart.
+- **Geïndexeerde events:** alleen als `--retention`, `--billing`, `--indexed-price` of `--index-rules` gezet is, en alleen samen met `--window`. Events zijn de ingelezen records. Een lege regel telt niet. Eén JSON-regel is één event, ook als het bericht een regeleinde bevat. De maandfactor is dezelfde als voor de bytes. De telling blijft een exacte breuk tot de weergave: miljoenen events op 3 decimalen, bedragen op 2 decimalen, half van nul af. `--index-rules` gebruikt dezelfde syntax als `--rules` en geldt op het gewicht dat na `--rules` overblijft. Een sample blijft een breuk (889 regels × 0.1 = 88.9 events) en wordt niet naar beneden afgerond tot hele regels. Standaard is 15 dagen en `ondemand`, en alleen als deze schatting aan staat. De ingebouwde prijs in USD per 1M events is gelezen op https://www.datadoghq.com/pricing/list/ op 2026-10-14: 3 dagen 1.06/1.27/1.59, 7 dagen 1.27/1.52/1.91, 15 dagen 1.70/2.04/2.55, 30 dagen 2.50/3.00/3.75 (annual/monthly/ondemand). `--indexed-price` vervangt die cel. Het label is `list price, estimate`, of `custom price, estimate` bij een eigen prijs. Tekst, `--explain` en `--json` tonen events en kosten per maand vóór en na de indexregels, plus de besparing. De besparing rondt de kosten van het verschil één keer af. `--budget-month` telt deze schatting niet mee. Flex Logs en contractprijzen zitten er niet in.
+- **Budget:** `--budget-month` toetst op de bytes na `--rules`. De regel `total` en de kosten daarvan tonen de bytes vóór de regels; de besparing staat apart. De schatting van geïndexeerde events hoort niet bij die toets.
 - **Diff:** per patroon-id de oude en nieuwe bytes en het aandeel, plus nieuwe en verdwenen patronen. Het aandeel van nieuwe patronen is hun bytes gedeeld door de totale nieuwe bytes.
 
 ## Maskering
@@ -93,7 +98,7 @@ Als de uitvoer niet geschreven kan worden, bijvoorbeeld omdat de schijf vol is, 
 
 Een logbestand, prijsbestand of regelsbestand moet een gewoon bestand zijn. Een FIFO, een map of iets anders wordt geweigerd met exit 2, zonder te wachten tot een schrijver opent. Een `gb_bytes` die een breuk is zoals `0.5`, 0 of negatief, of een getal buiten het bereik van een binaire float, is exit 2; een prijs die tekst is in plaats van een getal, een breuk die niet past, of een prijs buiten dat bereik, geeft `price file has a price that is not a number`. Meer dan 128 geneste arrays of objecten geeft `price file is nested too deeply`. Dezelfde sleutel twee keer geeft `price file has a duplicate key`. `sample 0,1` is geen geldige fractie: exit 2 met `invalid rule on line 1 of the rules file`, zonder de regel te tonen. De meldingen over gewone bestanden noemen het pad niet, en geen foutmelding bevat een ruwe logregel.
 
-Elke rij hieronder is op de binary gedraaid, en een test houdt dat zo. Een rij met exit 3 heeft een lege stdout. De melding is de hele stderr; de binary zet er een regeleinde achter. `\n` in de laatste kolom is een regeleinde in die melding. `--json` verandert een melding niet. Bij `diff` wordt `--explain` eerder getoetst dan `--top`, `--window` en `--days-per-month`, en die melding wint dan. Een ongeldig bedrag, een ongeldig percentage en `--prices` zonder venster worden eerder getoetst dan `--explain`.
+Elke rij hieronder is op de binary gedraaid, en een test houdt dat zo. Een rij met exit 3 heeft een lege stdout. De melding is de hele stderr; de binary zet er een regeleinde achter. `\n` in de laatste kolom is een regeleinde in die melding. `--json` verandert een melding niet. Bij `diff` wordt `--explain` eerder getoetst dan `--top`, `--window`, `--days-per-month` en een geldige index-optie, en die melding wint dan. Een ongeldig bedrag, een ongeldig percentage, een ongeldige retentie, billing of indexed-prijs, en `--prices` zonder venster worden eerder getoetst dan `--explain`. Bij `scan` wordt een geldige index-optie zonder `--window` geweigerd voordat het index-regelsbestand wordt geopend.
 
 | Optie | Werkt bij | Geval | Verkeerd | Exit | Melding |
 | --- | --- | --- | --- | --- | --- |
@@ -132,6 +137,25 @@ Elke rij hieronder is op de binary gedraaid, en een test houdt dat zo. Een rij m
 | `--max-new-share` | diff | abc is geen percentage. | `diff --max-new-share abc OLD NEW` | 3 | `invalid percentage` |
 | `--max-new-share` | diff | `--explain` wint hier niet: het percentage wordt eerder getoetst. | `diff --explain --max-new-share abc OLD NEW` | 3 | `invalid percentage` |
 | `--max-new-share` | diff | `--json` verandert de melding niet. | `diff --json --max-new-share abc OLD NEW` | 3 | `invalid percentage` |
+| `--retention` | scan | 5 is niet 3, 7, 15 of 30. Eerder getoetst dan het venster. | `scan --retention 5 file.log` | 3 | `invalid retention` |
+| `--retention` | diff | 5 is ongeldig, vóór de commando-toets. | `diff --retention 5 OLD NEW` | 3 | `invalid retention` |
+| `--retention` | scan | Zonder venster. | `scan --retention 7 file.log` | 3 | `--retention only works together with --window` |
+| `--retention` | diff | Hoort niet bij diff. | `diff --retention 7 OLD NEW` | 3 | `--retention only works with scan` |
+| `--retention` | diff | `--explain` wint van een geldige retentie. | `diff --explain --retention 7 OLD NEW` | 3 | `--explain only works with scan` |
+| `--retention` | diff | `--window` zonder prijzen wordt eerder getoetst. | `diff --window 1m --retention 7 OLD NEW` | 3 | `--window with diff only works together with --prices or --json` |
+| `--billing` | scan | yearly is geen plan. | `scan --billing yearly file.log` | 3 | `invalid billing` |
+| `--billing` | scan | Zonder venster. | `scan --billing annual file.log` | 3 | `--billing only works together with --window` |
+| `--billing` | diff | Hoort niet bij diff. | `diff --billing monthly OLD NEW` | 3 | `--billing only works with scan` |
+| `--indexed-price` | scan | nope is geen decimaal. | `scan --indexed-price nope file.log` | 3 | `invalid indexed price` |
+| `--indexed-price` | scan | Een minteken is een negatieve prijs. | `scan --indexed-price -1 --window 1s file.log` | 3 | `invalid indexed price` |
+| `--indexed-price` | scan | Zonder venster. | `scan --indexed-price 1 file.log` | 3 | `--indexed-price only works together with --window` |
+| `--indexed-price` | diff | Hoort niet bij diff. | `diff --indexed-price 1 OLD NEW` | 3 | `--indexed-price only works with scan` |
+| `--index-rules` | scan | Zonder venster. Het bestand wordt niet geopend. | `scan --index-rules rules.txt file.log` | 3 | `--index-rules only works together with --window` |
+| `--index-rules` | diff | Hoort niet bij diff. | `diff --index-rules rules.txt OLD NEW` | 3 | `--index-rules only works with scan` |
+| `--index-rules` | diff | `--explain` wint van het index-regelsbestand. | `diff --explain --index-rules rules.txt OLD NEW` | 3 | `--explain only works with scan` |
+| `--index-rules` | scan | Het bestand is niet leesbaar. Het pad wordt niet getoond. |  | 2 | `index rules file is not readable` |
+| `--index-rules` | scan | Geen gewoon bestand. |  | 2 | `index rules file is not a regular file` |
+| `--index-rules` | scan | Een regel is ongeldig. De regel zelf wordt niet getoond. |  | 2 | `invalid rule on line 1 of the index rules file` |
 | logbestand | scan en diff | Geen gewoon bestand (FIFO, map). Geweigerd zonder te wachten. |  | 2 | `file is not a regular file` |
 | logbestand | scan en diff | UTF-16 of UTF-32, met of zonder byte order mark. De naam is `UTF-16LE`, `UTF-16BE`, `UTF-32LE` of `UTF-32BE`. |  | 2 | `file is UTF-16LE, not UTF-8; convert it first, for example with iconv -f UTF-16LE -t UTF-8, or in PowerShell with Out-File -Encoding utf8` |
 | `--prices` | scan en diff | Prijsbestand is geen gewoon bestand. |  | 2 | `price file is not a regular file` |
