@@ -49,6 +49,10 @@ pub enum ReadError {
     InvalidJson {
         line: u64,
     },
+    /// A JSON line longer than [`MAX_LINE_BYTES`]. The line is not included.
+    LineTooLong {
+        line: u64,
+    },
 }
 
 impl fmt::Display for ReadError {
@@ -64,6 +68,10 @@ impl fmt::Display for ReadError {
                 )
             }
             ReadError::InvalidJson { line } => write!(f, "invalid JSON on line {line}"),
+            ReadError::LineTooLong { line } => write!(
+                f,
+                "line {line} is longer than 1 MiB; JSON lines that long are not read"
+            ),
         }
     }
 }
@@ -201,24 +209,63 @@ fn read_prefix(file: &mut File) -> Result<Vec<u8>, ReadError> {
     Ok(buf)
 }
 
+/// Longest part of one line that is kept in memory: 1 MiB. A longer text
+/// line is cut there for patterns and masking; all of its bytes still count.
+/// A longer JSON line is refused, because cut JSON cannot be parsed.
+pub const MAX_LINE_BYTES: usize = 1 << 20;
+
+/// Reads one line up to the next `\n`, which is consumed but not stored.
+/// At most [`MAX_LINE_BYTES`] of it go into `buf`; the rest is skipped, so a
+/// huge line cannot fill memory. Returns the content bytes of the whole line
+/// (newline not included), whether a newline ended it, and whether it was cut.
+/// `(0, false, _)` means end of file.
+fn read_capped(
+    reader: &mut impl BufRead,
+    buf: &mut Vec<u8>,
+) -> Result<(u64, bool, bool), ReadError> {
+    let mut content = 0u64;
+    let mut cut = false;
+    let mut newline = false;
+    loop {
+        let chunk = match reader.fill_buf() {
+            Ok(chunk) => chunk,
+            Err(err) if err.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(_) => return Err(ReadError::Unreadable),
+        };
+        if chunk.is_empty() {
+            break;
+        }
+        let end = chunk.iter().position(|&byte| byte == b'\n');
+        let len = end.unwrap_or(chunk.len());
+        let room = MAX_LINE_BYTES - buf.len();
+        if len > room {
+            cut = true;
+        }
+        buf.extend_from_slice(&chunk[..len.min(room)]);
+        content += len as u64;
+        let used = if end.is_some() { len + 1 } else { len };
+        reader.consume(used);
+        if end.is_some() {
+            newline = true;
+            break;
+        }
+    }
+    Ok((content, newline, cut))
+}
+
 fn stream_text(file: File, mut visit: impl FnMut(Line)) -> Result<(), ReadError> {
     let mut reader = std::io::BufReader::new(file);
     let mut buf = Vec::new();
     let mut line_no = 0u64;
     loop {
         buf.clear();
-        let n = reader
-            .read_until(b'\n', &mut buf)
-            .map_err(|_| ReadError::Unreadable)?;
-        if n == 0 {
+        let (content, newline, cut) = read_capped(&mut reader, &mut buf)?;
+        if content == 0 && !newline {
             break;
         }
         line_no += 1;
-        let had_newline = buf.last() == Some(&b'\n');
-        if had_newline {
-            buf.pop();
-        }
-        if let Some(line) = text_line(&buf, had_newline, line_no) {
+        // A cut line keeps its `\r` out of reach; nothing is stripped then.
+        if let Some(line) = text_line_weighed(&buf, newline && !cut, line_no, content + 1) {
             visit(line);
         }
     }
@@ -235,18 +282,15 @@ fn stream_json(
     let mut line_no = 0u64;
     loop {
         buf.clear();
-        let n = reader
-            .read_until(b'\n', &mut buf)
-            .map_err(|_| ReadError::Unreadable)?;
-        if n == 0 {
+        let (content, newline, cut) = read_capped(&mut reader, &mut buf)?;
+        if content == 0 && !newline {
             break;
         }
         line_no += 1;
-        let had_newline = buf.last() == Some(&b'\n');
-        if had_newline {
-            buf.pop();
+        if cut {
+            return Err(ReadError::LineTooLong { line: line_no });
         }
-        if let Some(line) = json_line(&buf, had_newline, line_no, message_field)? {
+        if let Some(line) = json_line(&buf, newline, line_no, message_field)? {
             visit(line);
         }
     }
@@ -410,7 +454,13 @@ fn push_line(lines: &mut Vec<Line>, raw: &[u8], had_newline: bool, line_no: u64)
     }
 }
 
+#[cfg(test)]
 fn text_line(raw: &[u8], had_newline: bool, line_no: u64) -> Option<Line> {
+    text_line_weighed(raw, had_newline, line_no, (raw.len() + 1) as u64)
+}
+
+/// [`text_line`] with the weight given, for a line cut at [`MAX_LINE_BYTES`].
+fn text_line_weighed(raw: &[u8], had_newline: bool, line_no: u64, weight: u64) -> Option<Line> {
     let mut content = line_body(raw, had_newline);
     if line_no == 1 {
         // Skipped for the text; `raw.len()` below still counts the mark.
@@ -423,7 +473,7 @@ fn text_line(raw: &[u8], had_newline: bool, line_no: u64) -> Option<Line> {
     Some(Line {
         text: without_nul(raw_text.clone()),
         raw: raw_text,
-        bytes: (raw.len() + 1) as u64,
+        bytes: weight,
     })
 }
 

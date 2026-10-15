@@ -151,6 +151,7 @@ An honest comparison with five products. The pages were checked on 8 October 202
 - A sample is one window. Daily and monthly figures are an extrapolation.
 - It does not know whether a line is needed for security or compliance. A drop simulation is not advice to drop.
 - No gzip input in this version.
+- A line longer than 1 MiB is cut at 1 MiB for patterns and masking; all of its bytes still count. A JSON line longer than 1 MiB is refused with exit 2 and the line number. This keeps memory small for a file with one huge line.
 - After a keyword (`secret`, `token`, `password`, `bearer` and so on) followed by a space, the next word is always masked, even in ordinary sentences: `This is a secret mission report` → `This is a secret <SECRET> report`. This is deliberate: better to mask than to leak.
 - A tab is a separator too. Escaped quotes in a message still hide the value (`{\"password\":\"open sesame\"}`). A value that starts with `[` or `{` is masked through the matching bracket (`password=["alpha", "beta"]`). A value that contains a keyword (`password=secretPass1`) is masked in full. An e-mail does not swallow a keyword that introduces a secret (`id=a@b.co.token=hunterpass`).
 - Lookalike characters in a key name are recognised too, so a key that only looks like `password` or `secret` still hides the value. Fullwidth letters fold to ASCII, common Cyrillic and Greek lookalikes fold to Latin, and invisible characters inside the key are ignored, as are an invalid byte (read as U+FFFD) and control characters other than tab, line feed and carriage return.

@@ -157,6 +157,7 @@ Elke rij hieronder is op de binary gedraaid, en een test houdt dat zo. Een rij m
 | `--index-rules` | scan | Geen gewoon bestand. |  | 2 | `index rules file is not a regular file` |
 | `--index-rules` | scan | Een regel is ongeldig. De regel zelf wordt niet getoond. |  | 2 | `invalid rule on line 1 of the index rules file` |
 | logbestand | scan en diff | Geen gewoon bestand (FIFO, map). Geweigerd zonder te wachten. |  | 2 | `file is not a regular file` |
+| logbestand | scan en diff | Een JSON-regel langer dan 1 MiB (een tekstregel van die lengte wordt bij 1 MiB afgekapt en telt alle bytes mee). |  | 2 | `line N is longer than 1 MiB; JSON lines that long are not read` |
 | logbestand | scan en diff | UTF-16 of UTF-32, met of zonder byte order mark. De naam is `UTF-16LE`, `UTF-16BE`, `UTF-32LE` of `UTF-32BE`. |  | 2 | `file is UTF-16LE, not UTF-8; convert it first, for example with iconv -f UTF-16LE -t UTF-8, or in PowerShell with Out-File -Encoding utf8` |
 | `--prices` | scan en diff | Prijsbestand is geen gewoon bestand. |  | 2 | `price file is not a regular file` |
 | `--rules` | scan en diff | Regelsbestand is geen gewoon bestand. |  | 2 | `rules file is not a regular file` |

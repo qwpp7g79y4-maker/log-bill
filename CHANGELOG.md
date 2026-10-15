@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- A line longer than 1 MiB no longer fills memory: a text line is cut at 1 MiB for patterns and masking and still counts every byte; a JSON line that long is refused with exit 2. A 2 GB line used about 6 GB of memory before.
+
 ### Security
 
 - A key name with an invalid byte, a U+FFFD or a control character inside it (`s\xFFecret=`) is still recognised, so the value is masked.

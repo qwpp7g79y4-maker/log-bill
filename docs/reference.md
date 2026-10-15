@@ -157,6 +157,7 @@ Every row below was run against the binary, and a test keeps it that way. A row 
 | `--index-rules` | scan | Not a regular file. |  | 2 | `index rules file is not a regular file` |
 | `--index-rules` | scan | A rule is invalid. The line is not shown. |  | 2 | `invalid rule on line 1 of the index rules file` |
 | log file | scan and diff | Not a regular file (FIFO, directory). Refused without waiting. |  | 2 | `file is not a regular file` |
+| log file | scan and diff | A JSON line longer than 1 MiB (a text line that long is cut at 1 MiB and still counts every byte). |  | 2 | `line N is longer than 1 MiB; JSON lines that long are not read` |
 | log file | scan and diff | UTF-16 or UTF-32, with or without a byte order mark. The name is `UTF-16LE`, `UTF-16BE`, `UTF-32LE` or `UTF-32BE`. |  | 2 | `file is UTF-16LE, not UTF-8; convert it first, for example with iconv -f UTF-16LE -t UTF-8, or in PowerShell with Out-File -Encoding utf8` |
 | `--prices` | scan and diff | Price file is not a regular file. |  | 2 | `price file is not a regular file` |
 | `--rules` | scan and diff | Rules file is not a regular file. |  | 2 | `rules file is not a regular file` |
