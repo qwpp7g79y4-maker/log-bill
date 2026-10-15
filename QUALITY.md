@@ -17,6 +17,7 @@ This page shows how each release of log-bill was checked, what we found, and wha
 - A second external automated code review. Every finding we could reproduce is fixed in this version, each with a regression test that uses the exact input.
 - Automated tests in CI: [run 38539431902](https://github.com/qwpp7g79y4-maker/log-bill/actions/runs/38539431902) on Linux, Windows, macOS on Apple Silicon and Intel, and Rust 1.85, plus `cargo audit` (no known vulnerabilities).
 - A fresh independent final review of commit [`76180be`](https://github.com/qwpp7g79y4-maker/log-bill/commit/76180be), which is later than the release commit above and adds fixes from an earlier final review (correct message for prices outside the float range, musl tests in CI, a docs version check), against a fixed edge-case checklist, every item tried with a concrete bad input. It ended DONE, with no blocking findings.
+- Unreleased: the indexed-cost code added after this version (commit [`0c3486d`](https://github.com/qwpp7g79y4-maker/log-bill/commit/0c3486d)) has not yet had a final review.
 
 ### What we found and fixed
 
