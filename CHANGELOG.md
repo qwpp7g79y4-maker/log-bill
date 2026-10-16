@@ -6,10 +6,13 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- A price file nested 128 or more levels deep is `price file is nested too deeply` (exit 2), never `price file is not JSON`.
 - A line longer than 1 MiB no longer fills memory: a text line is cut at 1 MiB for patterns and masking and still counts every byte; a JSON line that long is refused with exit 2. A 2 GB line used about 6 GB of memory before.
 
 ### Security
 
+- Unicode whitespace around `=` or `:` (a no-break space, Ogham space, and the other White_Space characters) separates a key from its value, so the value is masked.
+- Lookalike letters in a key name fold through NFKC and the Unicode confusable skeleton, so mathematical alphanumeric and Armenian lookalikes (`sec𝐫et`, `passwoրd`) hide the value too.
 - A fullwidth or small-form `=`, `:` or quote, or an ideographic space, separates a key from its value like the ASCII character (`password＝value`), so the value is masked.
 - A combining mark or an accented letter in a key name (`ṕassword`, `sécret`) is still recognised, so the value is masked.
 - A key name with an invalid byte, a U+FFFD or a control character inside it (`s\xFFecret=`) is still recognised, so the value is masked.

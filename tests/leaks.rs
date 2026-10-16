@@ -1291,6 +1291,46 @@ fn cyrillic_ie_in_secret_hides_canary() {
     assert_masked_line("cyr-ie", CYRILLIC_IE_LINE, &["CANARYNOKEYWORDHERE"]);
 }
 
+/// NBSP around `=`. The value must not survive.
+#[test]
+fn nbsp_around_equals_hides_rosebudmission() {
+    assert_masked_line(
+        "nbsp-eq",
+        "password\u{00A0}=\u{00A0}rosebudmission other=ok",
+        &["rosebudmission"],
+    );
+}
+
+/// Mathematical bold small r (U+1D42B) inside `secret`.
+#[test]
+fn mathematical_bold_r_in_secret_hides_hunterword() {
+    assert_masked_line(
+        "math-bold-r",
+        "sec\u{1D42B}et=hunterword other=ok",
+        &["hunterword"],
+    );
+}
+
+/// Mathematical bold small a (U+1D41A) inside `password`.
+#[test]
+fn mathematical_bold_a_in_password_hides_hunterword() {
+    assert_masked_line(
+        "math-bold-a",
+        "p\u{1D41A}ssword=hunterword other=ok",
+        &["hunterword"],
+    );
+}
+
+/// Armenian small reh (U+0580) inside `password`.
+#[test]
+fn armenian_reh_in_password_hides_hunterword() {
+    assert_masked_line(
+        "armenian-reh",
+        "passwo\u{0580}d=hunterword other=ok",
+        &["hunterword"],
+    );
+}
+
 /// Fullwidth, Greek, case, invisible characters, separators, JSON keys and
 /// whitespace around the separator. Each line is the bad input on its own.
 #[test]
@@ -1427,10 +1467,12 @@ fn every_keyword_with_a_homoglyph_hides_canary() {
 }
 
 /// `passage` is not a keyword. `книга` folds one letter to `a` and still is not.
+/// `գիրք` is Armenian and is not a keyword either. `count 404 items` keeps the
+/// number mask and does not grow a secret.
 #[test]
 fn passage_and_plain_cyrillic_word_stay() {
-    let line = "passage=ok книга=текст";
-    let kept = ["passage=ok", "книга=текст"];
+    let line = "passage=ok книга=текст գիրք=ok count 404 items";
+    let kept = ["passage=ok", "книга=текст", "գիրք=ok", "count <NUM> items"];
     let dir =
         TempDir(std::env::temp_dir().join(format!("log-bill-plain-word-{}", std::process::id())));
     std::fs::create_dir_all(&dir.0).expect("temporary directory");
@@ -1584,6 +1626,206 @@ fn every_lookalike_at_every_position_hides_canary() {
     );
     assert_batch_masked("lookalike-text", &lines, &[]);
     assert_batch_masked("lookalike-jsonl", &jsonl, &["--format", "jsonl"]);
+}
+
+/// Every Unicode White_Space character around `=` / `:` and between the key
+/// and the value. LF lives in JSONL so it does not split the file.
+#[test]
+fn unicode_whitespace_around_separator_hides_canary() {
+    const WHITE_SPACE: &[char] = &[
+        '\u{0009}', '\u{000A}', '\u{000B}', '\u{000C}', '\u{000D}', '\u{0020}', '\u{0085}',
+        '\u{00A0}', '\u{1680}', '\u{2000}', '\u{2001}', '\u{2002}', '\u{2003}', '\u{2004}',
+        '\u{2005}', '\u{2006}', '\u{2007}', '\u{2008}', '\u{2009}', '\u{200A}', '\u{2028}',
+        '\u{2029}', '\u{202F}', '\u{205F}', '\u{3000}',
+    ];
+    assert_eq!(WHITE_SPACE.len(), 25, "Unicode White_Space set");
+    let mut text_lines = Vec::new();
+    let mut jsonl_lines = Vec::new();
+    let mut index = 0;
+    for &ws in WHITE_SPACE {
+        let s = ws.to_string();
+        let shapes = [
+            ("eq-before", format!("password{s}=")),
+            ("eq-after", format!("password={s}")),
+            ("eq-both", format!("password{s}={s}")),
+            ("colon-before", format!("password{s}:")),
+            ("colon-after", format!("password:{s}")),
+            ("colon-both", format!("password{s}:{s}")),
+            ("between", format!("password{s}")),
+        ];
+        for (shape, prefix) in shapes {
+            for order in ["first", "last"] {
+                let canary = letter_canary(index);
+                index += 1;
+                let core = format!("{prefix}{canary}");
+                let text = if order == "first" {
+                    format!("{core} other=ok")
+                } else {
+                    format!("other=ok {core}")
+                };
+                let label = format!("U+{:04X} {shape} {order}", u32::from(ws));
+                if ws == '\n' {
+                    jsonl_lines.push((
+                        label,
+                        serde_json::json!({ "message": text })
+                            .to_string()
+                            .into_bytes(),
+                        canary,
+                    ));
+                } else {
+                    text_lines.push((label, text.into_bytes(), canary));
+                }
+            }
+        }
+    }
+    eprintln!(
+        "unicode whitespace separator test: {} combinations ({} text, {} jsonl)",
+        text_lines.len() + jsonl_lines.len(),
+        text_lines.len(),
+        jsonl_lines.len()
+    );
+    assert_batch_masked("ws-text", &text_lines, &[]);
+    if !jsonl_lines.is_empty() {
+        assert_batch_masked("ws-jsonl", &jsonl_lines, &["--format", "jsonl"]);
+    }
+}
+
+fn math_lookalikes(ch: char) -> Vec<char> {
+    let lower = ch.to_ascii_lowercase();
+    if !lower.is_ascii_lowercase() {
+        return Vec::new();
+    }
+    let off = u32::from(lower) - u32::from('a');
+    let cap_off = u32::from(lower.to_ascii_uppercase()) - u32::from('A');
+    let mut out = Vec::new();
+    for (small, cap) in [
+        (0x1D41A, 0x1D400),
+        (0x1D44E, 0x1D434),
+        (0x1D4B6, 0x1D49C),
+        (0x1D51E, 0x1D504),
+        (0x1D552, 0x1D538),
+        (0x1D68A, 0x1D670),
+    ] {
+        if let Some(c) = char::from_u32(small + off).filter(|c| c.is_alphabetic()) {
+            out.push(c);
+        }
+        if let Some(c) = char::from_u32(cap + cap_off).filter(|c| c.is_alphabetic()) {
+            out.push(c);
+        }
+    }
+    if let Some(c) = char::from_u32(0xFF41 + off) {
+        out.push(c);
+    }
+    if let Some(c) = char::from_u32(0xFF21 + cap_off) {
+        out.push(c);
+    }
+    out
+}
+
+fn script_lookalikes(ch: char) -> &'static [char] {
+    match ch {
+        'a' => &['\u{0430}', '\u{0410}', '\u{03B1}', '\u{0391}'],
+        'b' => &['\u{0432}', '\u{0412}', '\u{0392}'],
+        'c' => &['\u{0441}', '\u{0421}'],
+        'd' => &['\u{0501}'],
+        'e' => &['\u{0435}', '\u{0415}', '\u{0395}'],
+        'h' => &['\u{04BB}', '\u{04BA}', '\u{0397}', '\u{0570}'],
+        'i' => &['\u{0456}', '\u{03B9}', '\u{0582}'],
+        'k' => &['\u{041A}', '\u{039A}'],
+        'n' => &['\u{039D}', '\u{0578}', '\u{057C}'],
+        'o' => &[
+            '\u{043E}', '\u{041E}', '\u{03BF}', '\u{039F}', '\u{0585}', '\u{0555}',
+        ],
+        'p' => &['\u{0440}', '\u{0420}', '\u{03C1}', '\u{03A1}'],
+        'r' => &['\u{0580}', '\u{0550}'],
+        's' => &['\u{0455}', '\u{0405}', '\u{054F}'],
+        't' => &['\u{0422}', '\u{03A4}'],
+        'u' => &['\u{03C5}', '\u{057D}', '\u{054D}'],
+        'w' => &['\u{051D}', '\u{051C}', '\u{0561}'],
+        'y' => &['\u{0443}', '\u{0423}', '\u{03A5}'],
+        'z' => &['\u{0396}'],
+        _ => &[],
+    }
+}
+
+fn lookalikes_for_letter(ch: char) -> Vec<char> {
+    let mut out = math_lookalikes(ch);
+    out.extend_from_slice(script_lookalikes(ch));
+    out.extend_from_slice(all_lookalikes(ch));
+    out.sort_unstable();
+    out.dedup();
+    out
+}
+
+/// Every KEYS word, every letter, every confusable lookalike that folds to
+/// that letter (mathematical, Armenian, Cyrillic, Greek, fullwidth), with
+/// `=`, `: `, `":"`, LF, CR and tab, secret first and last.
+#[test]
+fn confusable_lookalikes_hide_canary() {
+    let mut text_lines = Vec::new();
+    let mut jsonl_lines = Vec::new();
+    let mut index = 0;
+    for key in keys_from_source() {
+        for (pos, ch) in key.char_indices() {
+            if !ch.is_ascii_alphabetic() {
+                continue;
+            }
+            let looks = lookalikes_for_letter(ch);
+            assert!(!looks.is_empty(), "{key} letter {ch:?} has no lookalike");
+            for &look in &looks {
+                let mut spoiled = String::new();
+                spoiled.push_str(&key[..pos]);
+                spoiled.push(look);
+                spoiled.push_str(&key[pos + ch.len_utf8()..]);
+                for (sep_name, open, close) in [
+                    ("eq", "", "="),
+                    ("colon-space", "", ": "),
+                    ("json", "\"", "\":\""),
+                    ("tab", "", "\t"),
+                    ("cr", "", "\r="),
+                    ("lf", "", "\n="),
+                ] {
+                    for order in ["first", "last"] {
+                        let canary = letter_canary(index);
+                        index += 1;
+                        let core = format!("{open}{spoiled}{close}{canary}");
+                        let close_quote = if sep_name == "json" { "\"" } else { "" };
+                        let core = format!("{core}{close_quote}");
+                        let text = if order == "first" {
+                            format!("{core} other=ok")
+                        } else {
+                            format!("other=ok {core}")
+                        };
+                        let label = format!("{key}@{pos}={look:?} sep={sep_name} {order}");
+                        if sep_name == "lf" {
+                            jsonl_lines.push((
+                                label,
+                                serde_json::json!({ "message": text })
+                                    .to_string()
+                                    .into_bytes(),
+                                canary,
+                            ));
+                        } else {
+                            text_lines.push((label, text.into_bytes(), canary));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    eprintln!(
+        "confusable lookalike test: {} combinations ({} text, {} jsonl)",
+        text_lines.len() + jsonl_lines.len(),
+        text_lines.len(),
+        jsonl_lines.len()
+    );
+    assert!(
+        text_lines.len() + jsonl_lines.len() > 1000,
+        "expected a wide sweep, got {}",
+        text_lines.len() + jsonl_lines.len()
+    );
+    assert_batch_masked("confusable-text", &text_lines, &[]);
+    assert_batch_masked("confusable-jsonl", &jsonl_lines, &["--format", "jsonl"]);
 }
 
 /// An invalid byte becomes U+FFFD when read and must not split a key, just as

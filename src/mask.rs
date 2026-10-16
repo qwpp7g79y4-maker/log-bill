@@ -1,5 +1,6 @@
 use regex::Regex;
 use std::sync::OnceLock;
+use unicode_normalization::UnicodeNormalization;
 
 /// How often each mask was applied to one message.
 /// A literal tag in the input does not count.
@@ -553,13 +554,34 @@ fn key_len_at(input: &str, i: usize) -> Option<usize> {
     if end == i {
         return None;
     }
-    let token = &input[i..end];
+    let cut = cut_key_before_sep_ws(input, i, end);
+    let token = &input[i..cut];
     let decoded = decode_key_escapes(token);
     if contains_key(&decoded) || is_whole_email(token) {
-        Some(end - i)
+        Some(cut - i)
     } else {
         None
     }
+}
+
+/// Control White_Space (NEL, VT, FF) can sit inside a key (`pass\u{0085}word`)
+/// and also separate a key from its value (`password\u{0085}canary`). If the
+/// prefix before the first such mark is already a key, the mark starts the
+/// value. Otherwise it stays inside the key and is dropped in the skeleton.
+fn cut_key_before_sep_ws(input: &str, start: usize, end: usize) -> usize {
+    let mut k = start;
+    while k < end {
+        let ch = input[k..].chars().next().expect("index on a char boundary");
+        if is_sep_ws(ch) {
+            let prefix = decode_key_escapes(&input[start..k]);
+            if contains_key(&prefix) {
+                return k;
+            }
+            return end;
+        }
+        k += ch.len_utf8();
+    }
+    end
 }
 
 /// Key characters, plus a `\uXXXX` that decodes to one, plus an IP or e-mail
@@ -706,8 +728,13 @@ fn key_boundary_before(input: &str, index: usize) -> bool {
 
 /// A letter, a digit, `_` or `-`, or an invisible character that
 /// [`key_skeleton`] drops. Fullwidth `_` and `-` count; fullwidth letters
-/// and digits are already letters and digits.
+/// and digits are already letters and digits. Visible Unicode whitespace
+/// is a separator. Control White_Space (VT, FF, NEL) is invisible inside
+/// a key and still separates after a complete key.
 fn is_key_char(ch: char) -> bool {
+    if is_sep_ws(ch) && !is_invisible_key_char(ch) {
+        return false;
+    }
     ch.is_alphabetic()
         || ch.is_numeric()
         || matches!(ch, '_' | '-' | '\u{FF3F}' | '\u{FF0D}')
@@ -780,24 +807,63 @@ fn fold_accent(ch: char) -> char {
 
 /// Skeleton of a key, compared with [`KEYS`].
 ///
-/// Fullwidth forms U+FF01–U+FF5E fold to ASCII by subtracting U+FEE0.
-/// Common Cyrillic and Greek lookalikes fold to the Latin letter they imitate
-/// (see [`homoglyph_latin`]). Invisible characters and combining marks inside
-/// the key are dropped, and accented Latin letters fold to the base letter.
-/// Then lowercase. A `-` still counts as `_` in the byte compare.
+/// Invisible characters and combining marks inside the key are dropped.
+/// NFKC folds compatibility forms (mathematical alphanumeric, enclosed
+/// alphanumerics, fullwidth). [`homoglyph_latin`] runs next so a mapping
+/// there wins (Cyrillic `н` is `n`, Armenian `ր` is `r`). Case and accents
+/// are folded next. The UTS #39 confusable skeleton then maps remaining
+/// non-ASCII lookalikes to Latin. ASCII is left alone: UTS #39 maps `I`
+/// to `l` (`API_KEY` would miss `api_key`) and `m` to `rn`.
+/// A `-` still counts as `_` in the byte compare.
 fn key_skeleton(token: &str) -> String {
-    let mut out = String::with_capacity(token.len());
+    let mut stripped = String::with_capacity(token.len());
     for ch in token.chars() {
         if is_invisible_key_char(ch) {
             continue;
         }
-        let folded = fold_fullwidth(ch);
-        let mapped = homoglyph_latin(folded).unwrap_or(folded);
-        for lower in mapped.to_lowercase() {
-            out.push(fold_accent(lower));
+        stripped.push(ch);
+    }
+    let nfkc: String = stripped.nfkc().collect();
+    let mut mapped = String::with_capacity(nfkc.len());
+    for ch in nfkc.chars() {
+        if is_invisible_key_char(ch) {
+            continue;
         }
+        mapped.push(homoglyph_latin(ch).unwrap_or(fold_fullwidth(ch)));
+    }
+    let mut lowered = String::with_capacity(mapped.len());
+    for ch in mapped.chars() {
+        push_key_latin(&mut lowered, ch);
+    }
+    let mut out = String::with_capacity(lowered.len());
+    let mut rest = lowered.as_str();
+    while !rest.is_empty() {
+        let ch = rest.chars().next().expect("non-empty");
+        if ch.is_ascii() {
+            out.push(ch);
+            rest = &rest[ch.len_utf8()..];
+            continue;
+        }
+        let skip = rest.find(|c: char| c.is_ascii()).unwrap_or(rest.len());
+        for sk in unicode_security::skeleton(&rest[..skip]) {
+            push_key_latin(&mut out, sk);
+        }
+        rest = &rest[skip..];
     }
     out
+}
+
+fn push_key_latin(out: &mut String, ch: char) {
+    if is_invisible_key_char(ch) || is_combining_key_char(ch) {
+        return;
+    }
+    for lower in ch.to_lowercase() {
+        let folded = fold_accent(lower);
+        if is_invisible_key_char(folded) || is_combining_key_char(folded) {
+            continue;
+        }
+        out.push(folded);
+    }
 }
 
 /// U+FF01–U+FF5E is the fullwidth form of ASCII `!` through `~`.
@@ -810,16 +876,17 @@ fn fold_fullwidth(ch: char) -> char {
     }
 }
 
-/// Latin letter imitated by a Cyrillic, Greek or Latin lookalike, uppercase included.
+/// Latin letter imitated by a lookalike, uppercase included.
 ///
-/// Cyrillic: а в е к м н о р с т у х і ј ѕ ԁ һ ӏ ԛ ԝ. Greek: ο α β ε η ι κ μ ν τ ρ υ χ ζ.
-/// Latin: dotless `ı`, small `ɑ`, `ɡ`, iota `ɩ`.
+/// Applied before the UTS #39 skeleton, so these mappings win: Cyrillic `н`/`Н`
+/// count as `n` (UTS #39 maps `Н` to `H`), and Armenian letters that UTS #39
+/// does not map (`ր`/`Ր` as `r`, `Տ` as `s`, and the other Armenian
+/// lookalikes below). Cyrillic: а в е к м н о р с т у х і ј ѕ ԁ һ ӏ ԛ ԝ.
+/// Greek: ο α β ε η ι κ μ ν τ ρ υ χ ζ. Latin: dotless `ı`, small `ɑ`, `ɡ`, iota `ɩ`.
 /// Two pairs do not share one Latin letter, because the glyphs differ:
 /// capital nu `Ν` looks like `N` and small nu `ν` looks like `v`;
 /// capital upsilon `Υ` looks like `Y` and small upsilon `υ` looks like `u`;
 /// palochka `Ӏ` looks like `I` and small palochka `ӏ` looks like `l`.
-/// Cyrillic `н`/`Н` count as `n`, because `Н` is the classic stand-in for `N`
-/// in spoofed names; over-masking is preferred to a leak.
 fn homoglyph_latin(ch: char) -> Option<char> {
     Some(match ch {
         'а' | 'А' | 'α' | 'Α' | 'ɑ' => 'a',
@@ -827,6 +894,14 @@ fn homoglyph_latin(ch: char) -> Option<char> {
         'е' | 'Е' | 'ε' | 'Ε' => 'e',
         'о' | 'О' | 'ο' | 'Ο' => 'o',
         'р' | 'Р' | 'ρ' | 'Ρ' => 'p',
+        'ր' | 'Ր' => 'r',
+        'հ' => 'h',
+        'ւ' => 'i',
+        'ո' | 'ռ' => 'n',
+        'օ' | 'Օ' => 'o',
+        'Տ' => 's',
+        'ս' | 'Ս' => 'u',
+        'ա' => 'w',
         'с' | 'С' => 'c',
         'у' | 'У' | 'Υ' => 'y',
         'х' | 'Х' | 'χ' | 'Χ' => 'x',
@@ -894,7 +969,7 @@ fn is_exact_key(token: &str) -> bool {
     })
 }
 
-/// Value after a key. Spaces, tabs and line breaks around `=` and `:` belong
+/// Value after a key. Unicode whitespace around `=` and `:` belongs
 /// to the separator.
 /// A quote between the key and `:` belongs to JSON (`"key": "value"`), including
 /// a backslash-escaped quote in a message (`{\"key\":\"value\"}`).
@@ -1132,7 +1207,7 @@ fn quote_at(input: &str, i: usize) -> Option<OpenQuote> {
 }
 
 fn is_sep_ws(ch: char) -> bool {
-    matches!(ch, ' ' | '\t' | '\n' | '\r')
+    ch.is_whitespace()
 }
 
 fn skip_spaces(input: &str, mut i: usize) -> usize {
@@ -2048,5 +2123,31 @@ mod tests {
             assert!(!masked.contains("rosebud"), "{masked:?}");
             assert!(masked.contains("<SECRET>"), "{masked:?}");
         }
+    }
+
+    #[test]
+    fn nbsp_around_equals_hides_rosebudmission() {
+        let line = "password\u{00A0}=\u{00A0}rosebudmission";
+        let masked = mask(line);
+        assert!(!masked.contains("rosebudmission"), "{masked}");
+        assert!(masked.contains("<SECRET>"), "{masked}");
+    }
+
+    #[test]
+    fn mathematical_and_armenian_lookalikes_hide_hunterword() {
+        for line in [
+            "sec\u{1D42B}et=hunterword",
+            "p\u{1D41A}ssword=hunterword",
+            "passwo\u{0580}d=hunterword",
+        ] {
+            let masked = mask(line);
+            assert!(!masked.contains("hunterword"), "{line} -> {masked}");
+            assert!(masked.contains("<SECRET>"), "{line} -> {masked}");
+        }
+    }
+
+    #[test]
+    fn count_404_items_stays_a_number() {
+        assert_eq!(mask("count 404 items"), "count <NUM> items");
     }
 }

@@ -601,6 +601,35 @@ fn price_file_nested_past_128_exits_2() {
     let _ = std::fs::remove_file(&log);
 }
 
+/// Depth 127 is a field error. Depth 128 and 129 are nested-too-deep, never
+/// `price file is not JSON`.
+#[test]
+fn price_file_depth_127_128_129() {
+    let log = tmp("budget-bound.log", b"disk full\n");
+    let cases = [
+        (127, "price file has an unknown field\n"),
+        (128, "price file is nested too deeply\n"),
+        (129, "price file is nested too deeply\n"),
+    ];
+    for (depth, want) in cases {
+        let prices = prices(&format!("budget-bound-{depth}.json"), &nested(depth, true));
+        let (code, out, err) = run(&[
+            "scan",
+            "--window",
+            "1m",
+            "--prices",
+            file_path(&prices),
+            file_path(&log),
+        ]);
+        assert_eq!(code, 2, "depth {depth} stdout: {out} stderr: {err}");
+        assert!(out.is_empty(), "depth {depth}: {out}");
+        assert_eq!(err, want, "depth {depth}");
+        assert!(!err.contains("not JSON"), "depth {depth}: {err}");
+        let _ = std::fs::remove_file(&prices);
+    }
+    let _ = std::fs::remove_file(&log);
+}
+
 fn nested(depth: usize, object: bool) -> String {
     let mut json = String::new();
     if object {

@@ -220,7 +220,7 @@ pub fn load_prices(path: &std::path::Path) -> Result<Prices, PriceError> {
 /// is not a number. A number outside the f64 range (`1e400`, a `1` followed
 /// by 309 zeros) is that same error for a price, and for `gb_bytes` it is
 /// not a whole number greater than 0. It is not invalid JSON. Arrays and
-/// objects nested more than 128 deep are refused. A price is the exact
+/// objects nested 128 or more deep are refused. A price is the exact
 /// decimal text, not a binary float. The error text does not contain the
 /// file contents. One UTF-8 byte order mark at the start is skipped.
 pub fn parse_prices(data: &[u8]) -> Result<Prices, PriceError> {
@@ -375,9 +375,10 @@ fn number_text<'a>(numbers: &'a [(String, String)], key: &str) -> Option<&'a str
         .map(|(_, text)| text.as_str())
 }
 
-/// Nested arrays and objects past this depth are refused. Deeper input would
-/// grow the call stack until it overflows.
-const MAX_PRICE_DEPTH: usize = 128;
+/// Nested arrays and objects past this depth are refused. serde_json errors
+/// on the 128th nested value, which would become `price file is not JSON`.
+/// Stay below that so a file at the bound is `nested too deeply`.
+const MAX_PRICE_DEPTH: usize = 127;
 
 enum ScanError {
     Invalid,
@@ -1923,6 +1924,23 @@ mod tests {
         };
         let err = parse_prices(arrays.as_bytes()).expect_err("deep array");
         assert_eq!(err, PriceError::TooDeep);
+    }
+
+    #[test]
+    fn nested_price_file_at_127_128_129() {
+        let err = parse_prices(nested_price(127).as_bytes()).expect_err("127");
+        assert_eq!(err, PriceError::UnknownField);
+        assert_eq!(err.to_string(), "price file has an unknown field");
+        assert!(!err.to_string().contains("not JSON"));
+
+        let err = parse_prices(nested_price(128).as_bytes()).expect_err("128");
+        assert_eq!(err, PriceError::TooDeep);
+        assert_eq!(err.to_string(), "price file is nested too deeply");
+        assert!(!err.to_string().contains("not JSON"));
+
+        let err = parse_prices(nested_price(129).as_bytes()).expect_err("129");
+        assert_eq!(err, PriceError::TooDeep);
+        assert_eq!(err.to_string(), "price file is nested too deeply");
     }
 
     fn nested_price(depth: usize) -> String {

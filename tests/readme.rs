@@ -684,10 +684,10 @@ fn fixture_readme_describes_every_file_as_synthetic() {
     assert!(count > 0);
 }
 
-const INDEX_CENT_SENTENCE: &str = "Per-pattern index costs are rounded separately and can therefore differ by 1 cent from the total.";
+const INDEX_CENT_SENTENCE: &str = "Per-pattern index costs are rounded separately and can therefore differ from the total by at most half a cent per pattern, so up to N/2 cents at N patterns.";
 
 const INDEX_CENT_SENTENCE_NL: &str =
-    "Indexkosten per patroon worden apart afgerond en kunnen daardoor 1 cent van het totaal afwijken.";
+    "Indexkosten per patroon worden apart afgerond en kunnen daardoor maximaal een halve cent per patroon van het totaal afwijken, dus tot N/2 cent bij N patronen.";
 
 struct ArchiveList {
     files: BTreeSet<String>,
@@ -931,7 +931,7 @@ fn glibc_limit_matches_the_readme_promise() {
 }
 
 #[test]
-fn reference_says_pattern_index_costs_can_differ_by_one_cent() {
+fn reference_says_pattern_index_costs_can_differ_by_half_a_cent_each() {
     for (rel, sentence) in [
         (README, INDEX_CENT_SENTENCE),
         (REF, INDEX_CENT_SENTENCE),
@@ -941,7 +941,7 @@ fn reference_says_pattern_index_costs_can_differ_by_one_cent() {
         assert_eq!(
             read(rel).matches(sentence).count(),
             1,
-            "{rel} should state the one-cent pattern rounding once"
+            "{rel} should state the half-cent-per-pattern rounding once"
         );
     }
 }

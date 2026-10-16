@@ -366,9 +366,12 @@ pub fn detect_wide(data: &[u8]) -> Option<WideEncoding> {
 /// NUL bytes never carry meaning in a log message, but they can split a key
 /// such as `password` so that masking misses it. They are removed from the
 /// text that is masked; the byte counts and the raw line for the rules keep them.
-/// Fullwidth ASCII (U+FF01-U+FF5E), the ideographic space U+3000 and the
-/// small form variants of ASCII punctuation (U+FE50-U+FE6B) become plain ASCII
-/// there too, so `password＝value` and `token：value` separate like `=` and `:`.
+/// Fullwidth ASCII (U+FF01-U+FF5E), visible Unicode whitespace other than
+/// space, tab, LF and CR, and the small form variants of ASCII punctuation
+/// (U+FE50-U+FE6B) become plain ASCII there too, so `password＝value`,
+/// `token：value` and `password\u{00A0}=\u{00A0}value` separate like `=` and `:`.
+/// Control White_Space (VT, FF, NEL) is left for the masker: inside a key
+/// it is dropped, around `=` / `:` it still separates.
 fn without_nul(text: String) -> String {
     if text
         .chars()
@@ -383,12 +386,19 @@ fn without_nul(text: String) -> String {
     }
 }
 
-/// Plain ASCII for a fullwidth, ideographic-space or small-form character.
+/// Plain ASCII for a fullwidth, Unicode-whitespace or small-form character.
 fn ascii_form(ch: char) -> Option<char> {
+    if ch.is_whitespace()
+        && !matches!(
+            ch,
+            ' ' | '\t' | '\n' | '\r' | '\u{000B}' | '\u{000C}' | '\u{0085}'
+        )
+    {
+        return Some(' ');
+    }
     let code = u32::from(ch);
     match code {
         0xFF01..=0xFF5E => char::from_u32(code - 0xFEE0),
-        0x3000 => Some(' '),
         _ => Some(match ch {
             '\u{FE50}' => ',',
             '\u{FE52}' => '.',
