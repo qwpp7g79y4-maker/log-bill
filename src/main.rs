@@ -1,11 +1,4 @@
-mod diff;
-mod indexed;
-mod mask;
-mod money;
-mod pattern;
-mod read;
-mod render;
-mod rules;
+use log_bill::{diff, indexed, mask, money, pattern, read, render, rules};
 
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};

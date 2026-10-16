@@ -2,7 +2,7 @@ use std::cmp::Ordering;
 use std::fmt;
 
 /// 1 GB = 1_000_000_000 bytes, unless the price file sets `gb_bytes`.
-pub(crate) const GB_BYTES: u128 = 1_000_000_000;
+pub const GB_BYTES: u128 = 1_000_000_000;
 const SECONDS_PER_DAY: u128 = 86_400;
 
 /// Time window of the sample. Seconds are always at least 1.

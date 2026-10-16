@@ -10,7 +10,7 @@ repository = "https://github.com/qwpp7g79y4-maker/log-bill"
 readme = "README.md"
 keywords = ["logs", "logging", "cost", "observability", "cli"]
 categories = ["command-line-utilities", "development-tools"]
-exclude = [".github/", ".gitattributes"]
+exclude = [".github/", ".gitattributes", "fuzz/"]
 
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
@@ -18,3 +18,9 @@ regex = "1"
 serde_json = "1"
 unicode-normalization = "0.1.25"
 unicode-security = "0.1.2"
+
+[dev-dependencies]
+# 1.7 is the newest release whose own rust-version does not exceed this
+# package's MSRV (1.85); newer proptest releases require Rust 1.88.
+proptest = "=1.7.0"
+tempfile = "3"

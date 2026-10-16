@@ -21,7 +21,7 @@ enum Kind {
 
 /// Value = digits / 10^scale. Digits are little-endian, with no high zeros.
 #[derive(Clone, Default)]
-pub(crate) struct Fraction {
+pub struct Fraction {
     digs: Vec<u8>,
     scale: usize,
 }
@@ -384,6 +384,7 @@ enum Hit<'a> {
 
 impl RuleSet {
     /// Number of rules. Blank lines in the file do not count.
+    #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         self.rules.len()
     }

@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Build
+
+- A `fuzz/` crate (cargo-fuzz) with one target per stage that reads untrusted input: log line reading, rule parsing, masking, price and budget parsing, diff, and rendering to text and JSON. Excluded from the published package and not part of the default build, so stable CI is unaffected. Property tests (proptest) check that masking is idempotent and order-independent, that a secret never survives masking under any whitespace or `\uXXXX` variant, that the parsers never panic, and that the cost calculation matches a plain reference. Found no bugs in the library; a minimal `src/lib.rs` now exposes the modules for the fuzz crate to use, with no behavior change to the binary.
+
 ### Fixed
 
 - A price file nested 128 or more levels deep is `price file is nested too deeply` (exit 2), never `price file is not JSON`.

@@ -171,7 +171,7 @@ pub fn group(lines: &[Line], top: Option<u32>) -> Stats {
 }
 
 /// Tenths of a percent. A half step rounds away from zero, as with amounts.
-pub(crate) fn share_tenths(bytes: u64, total: u64) -> u64 {
+pub fn share_tenths(bytes: u64, total: u64) -> u64 {
     if total == 0 {
         return 0;
     }
