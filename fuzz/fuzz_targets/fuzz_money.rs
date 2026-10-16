@@ -61,9 +61,13 @@ fuzz_target!(|data: &[u8]| {
         price,
         gb_bytes,
     ));
-    if let Ok(steps) =
-        money::explain_steps(case.sample_bytes, window, case.days_per_month, price, gb_bytes)
-    {
+    if let Ok(steps) = money::explain_steps(
+        case.sample_bytes,
+        window,
+        case.days_per_month,
+        price,
+        gb_bytes,
+    ) {
         assert!(
             !steps.to_ascii_lowercase().contains("nan"),
             "NaN in explain_steps: {steps}"
@@ -90,7 +94,13 @@ fuzz_target!(|data: &[u8]| {
         }),
         gb_bytes,
     };
-    let _ = money::month_above_budget(case.sample_bytes, window, case.days_per_month, &prices, budget);
+    let _ = money::month_above_budget(
+        case.sample_bytes,
+        window,
+        case.days_per_month,
+        &prices,
+        budget,
+    );
 });
 
 fn assert_amount_sane(cost: Result<money::Cost, money::CalcError>) {
