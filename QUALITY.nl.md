@@ -2,6 +2,61 @@
 
 Deze pagina laat zien hoe elke release van log-bill is gecontroleerd, wat we vonden en wat we hebben opgelost. Het beschrijft onze controles. Het is geen garantie dat de software foutloos of veilig is.
 
+## Nog niet uitgebracht
+
+| | |
+|---|---|
+| Gecontroleerde commit | [`8ea5157`](https://github.com/qwpp7g79y4-maker/log-bill/commit/8ea5157) |
+| Datum | 2026-10-17 |
+| Tests | 325 automatische tests, gedraaid in debugmodus, releasemodus en op Rust 1.85 (alle drie: 325 geslaagd, 0 mislukt) |
+
+### Wat is toegevoegd
+
+- Een `fuzz/`-crate (cargo-fuzz, geen deel van het gepubliceerde package of de standaardbuild) met één doel per fase die onbetrouwbare invoer verwerkt:
+
+  | Doel | Eigenschap die het controleert |
+  |---|---|
+  | `fuzz_diff` | Het vergelijken van twee willekeurige samples geeft nooit een panic; de gemelde totalen komen overeen met de invoer, en geen rij heeft meer bytes dan het totaal van zijn sample |
+  | `fuzz_mask` | Het maskeren van willekeurige tekst geeft nooit een panic, en een geheim na een herkende sleutel en scheidingsteken verschijnt nooit in de gemaskeerde uitvoer |
+  | `fuzz_money` | Het parsen van prijs, venster en budget uit willekeurige tekst geeft nooit een panic, en elk bedrag dat de kostenberekening oplevert is een niet-negatieve decimaal, nooit NaN |
+  | `fuzz_read` | Het lezen van een bestand met willekeurige bytes, in elk formaat, geeft nooit een panic en meldt nooit meer regels dan het bestand regeleinden heeft |
+  | `fuzz_render` | Het renderen naar tekst en JSON geeft nooit een panic, elke JSON-body die het oplevert kan terug geparseerd worden, en een gemaskeerd geheim duikt in geen van beide weergaven weer op |
+  | `fuzz_rules` | Het parsen van een regelsbestand met willekeurige bytes geeft nooit een panic, en het toepassen ervan maakt de regels of bytes van een patroon nooit groter |
+
+- Property tests (proptest), die meedraaien in de normale testsuite: maskeren is idempotent en volgorde-onafhankelijk, een geheim na een herkende sleutel lekt nooit, bij welke variant van witruimte of `\uXXXX` dan ook, de kostenberekening komt overeen met een eenvoudige referentieberekening, en de parsers voor regels, venster, budget, prijsbestand en regelslezen geven nooit een panic op willekeurige invoer.
+- Nieuwe regressietests ([`tests/edge_cases.rs`](https://github.com/qwpp7g79y4-maker/log-bill/blob/main/tests/edge_cases.rs)) voor een leeg bestand, een bestand met alleen regeleinden, een losse `\r` zonder `\n`, een byte order mark zonder iets anders, een rauwe NUL-byte in een JSON-string, een JSON Unicode-escape voor NUL die een sleutel splitst, een dubbele sleutel genest in een prijsbestand-object, een negatieve nul als prijs, en een budget voorbij de grens van een 64-bits float.
+- Een `Fuzz build`-taak in CI die alle zes doelen bouwt op nightly Rust; hij bouwt ze, maar draait ze niet (zie "Niet gedekt" hieronder).
+
+### Hoe we controleerden
+
+- `cargo test` en `cargo test --release`: 325 geslaagd, 0 mislukt, beide exit 0.
+- `cargo +1.85 test` (oudste ondersteunde Rust-versie): 325 geslaagd, 0 mislukt, exit 0.
+- `cargo clippy --all-targets -- -D warnings`: exit 0, geen waarschuwingen, in de hoofdcrate en in `fuzz/`.
+- `cargo fmt --check`: exit 0, in de hoofdcrate en in `fuzz/`.
+- `cargo +nightly fuzz build --target x86_64-unknown-linux-gnu`: exit 0, alle zes doelen bouwen.
+- Elk van de zes doelen is 660 seconden gefuzzed, na elkaar, op één vastgezette CPU-kern:
+
+  | Doel | Looptijd | Uitvoeringen | Crashes |
+  |---|---|---|---|
+  | `fuzz_diff` | 662 s | 2.042.449 | geen |
+  | `fuzz_mask` | 661 s | 534.625 | geen |
+  | `fuzz_money` | 662 s | 1.399.109 | geen |
+  | `fuzz_read` | 662 s | 5.482.286 | geen |
+  | `fuzz_render` | 661 s | 662.055 | geen |
+  | `fuzz_rules` | 661 s | 650.763 | geen |
+
+- Geautomatiseerde tests in CI voor deze commit: [run 38972694602](https://github.com/qwpp7g79y4-maker/log-bill/actions/runs/38972694602), succesvol, inclusief de nieuwe fuzz-build-taak.
+
+### Echte bugs gevonden
+
+Geen. Bij het schrijven van de fuzz-doelen en property tests vonden en corrigeerden we één fout in de tests zelf: de fuzz- en property tests voor maskeren noemden fullwidth `＝`/`：` eerst als scheidingstekens die `mask::mask` zelf zou herkennen, maar die omzetting gebeurt al eerder, bij het lezen van een regel, niet in de masker. De testlijsten zijn hierop aangepast; dit is een correctie van het testharnas, geen productbug.
+
+### Niet gedekt
+
+- Dit zijn korte lokale fuzzruns (11 minuten per doel, één CPU-kern), geen continue fuzzing.
+- CI bouwt de zes fuzz-doelen bij elke wijziging, maar draait ze niet; de runs van 11 minuten per doel hierboven zijn apart, lokaal gedaan.
+- Deze commit heeft nog geen onafhankelijke eindreview gehad; die volgt na deze commit, en de badge "PEPAI gecontroleerd" in de README blijft tot dan ongewijzigd.
+
 ## v0.1.2
 
 | | |

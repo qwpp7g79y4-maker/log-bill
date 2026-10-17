@@ -2,6 +2,61 @@
 
 This page shows how each release of log-bill was checked, what we found, and what we fixed. It describes checks we did. It is not a guarantee that the software is free of bugs or secure.
 
+## Unreleased
+
+| | |
+|---|---|
+| Commit checked | [`8ea5157`](https://github.com/qwpp7g79y4-maker/log-bill/commit/8ea5157) |
+| Date | 2026-10-17 |
+| Tests | 325 automated tests, run in debug mode, release mode, and on Rust 1.85 (all three: 325 passed, 0 failed) |
+
+### What was added
+
+- A `fuzz/` crate (cargo-fuzz, not part of the published package or the default build) with one target per stage that handles untrusted input:
+
+  | Target | Invariant it checks |
+  |---|---|
+  | `fuzz_diff` | Comparing two arbitrary samples never panics; the reported totals match the inputs, and no row's bytes exceed its sample's total |
+  | `fuzz_mask` | Masking arbitrary text never panics, and a secret placed after a recognised key and separator never appears in the masked output |
+  | `fuzz_money` | Price, window and budget parsing of arbitrary text never panics, and every amount the cost calculator produces is a non-negative decimal, never NaN |
+  | `fuzz_read` | Reading a file of arbitrary bytes, in either format, never panics and never reports more lines than the file has newlines |
+  | `fuzz_render` | Rendering to text and JSON never panics, every JSON body it produces parses back, and a masked secret never resurfaces in either rendering |
+  | `fuzz_rules` | Parsing a rules file of arbitrary bytes never panics, and applying it never grows a pattern's lines or bytes |
+
+- Property tests (proptest), run as part of the normal test suite: masking is idempotent and order-independent, a secret after a recognised key never leaks under any whitespace or `\uXXXX` variant, the cost calculation matches a plain reference computation, and the rules, window, budget, price-file and line-reading parsers never panic on arbitrary input.
+- New regression tests ([`tests/edge_cases.rs`](https://github.com/qwpp7g79y4-maker/log-bill/blob/main/tests/edge_cases.rs)) for an empty file, a file of only newlines, a lone `\r` with no `\n`, a byte-order mark with nothing else, a raw NUL byte inside a JSON string, a JSON Unicode escape for NUL splitting a key, a duplicate key nested inside a price-file object, a negative-zero price, and a budget past the limit of a 64-bit float.
+- A `Fuzz build` job in CI that builds all six targets on nightly Rust; it builds them but does not run them (see "Not covered" below).
+
+### How we checked
+
+- `cargo test` and `cargo test --release`: 325 passed, 0 failed, both exit 0.
+- `cargo +1.85 test` (oldest supported Rust version): 325 passed, 0 failed, exit 0.
+- `cargo clippy --all-targets -- -D warnings`: exit 0, no warnings, in the main crate and in `fuzz/`.
+- `cargo fmt --check`: exit 0, in the main crate and in `fuzz/`.
+- `cargo +nightly fuzz build --target x86_64-unknown-linux-gnu`: exit 0, all six targets build.
+- Each of the six targets fuzzed for 660 seconds, sequentially, one pinned CPU core:
+
+  | Target | Wall time | Executions | Crashes |
+  |---|---|---|---|
+  | `fuzz_diff` | 662 s | 2,042,449 | none |
+  | `fuzz_mask` | 661 s | 534,625 | none |
+  | `fuzz_money` | 662 s | 1,399,109 | none |
+  | `fuzz_read` | 662 s | 5,482,286 | none |
+  | `fuzz_render` | 661 s | 662,055 | none |
+  | `fuzz_rules` | 661 s | 650,763 | none |
+
+- Automated tests in CI for this commit: [run 38972694602](https://github.com/qwpp7g79y4-maker/log-bill/actions/runs/38972694602), success, including the new fuzz-build job.
+
+### Real bugs found
+
+None. While writing the fuzz targets and property tests we found and corrected one mistake in the tests themselves: the fuzz and property tests for masking originally listed fullwidth `＝`/`：` as separators for `mask::mask` to recognise directly, but that folding happens earlier, while a line is read, not inside the masker. The test lists were corrected to match; this is a test-harness correction, not a product bug.
+
+### Not covered
+
+- These are short local fuzzing runs (11 minutes per target, one CPU core), not continuous fuzzing.
+- CI builds the six fuzz targets on every change, but does not run them; the 11-minutes-per-target runs above were done locally, separately from CI.
+- This commit has not yet had an independent final review; that happens after this commit, and the "PEPAI checked" badge in the README stays as it is now until that review is recorded.
+
 ## v0.1.2
 
 | | |
