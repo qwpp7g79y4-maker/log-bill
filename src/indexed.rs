@@ -529,6 +529,10 @@ struct Digits {
 }
 
 impl Digits {
+    /// A u128 has at most 39 decimal digits. The digit loops below stop there,
+    /// so a broken loop condition ends in an error instead of running forever.
+    const U128_DIGITS: usize = 39;
+
     fn zero() -> Self {
         Self { digs: Vec::new() }
     }
@@ -545,6 +549,9 @@ impl Digits {
         }
         let mut digs = Vec::new();
         while value > 0 {
+            if digs.len() >= Self::U128_DIGITS {
+                return Err(CalcError);
+            }
             digs.push(u8::try_from(value % 10).map_err(|_| CalcError)?);
             value /= 10;
         }
@@ -560,6 +567,9 @@ impl Digits {
         let mut shift = 0usize;
         let mut rest = factor;
         while rest > 0 {
+            if shift >= Self::U128_DIGITS {
+                return Err(CalcError);
+            }
             let digit = u8::try_from(rest % 10).map_err(|_| CalcError)?;
             rest /= 10;
             if digit != 0 {
@@ -851,7 +861,7 @@ fn format_exact(numer: &Digits, scale: usize, div: u128) -> Result<String, CalcE
 mod tests {
     use super::{
         dollars, format_rate, millions, parse_billing, parse_indexed_price, parse_retention, quote,
-        Billing,
+        Billing, Digits,
     };
     use crate::money::{parse_window, Price};
     use crate::rules::{parse_rules, Fraction};
@@ -907,6 +917,35 @@ mod tests {
         assert_eq!(events, "6928.416M");
         let amount = dollars(&sample, window("1s"), 30, 127, 2).expect("usd");
         assert_eq!(amount, two_places("8799", "09"));
+    }
+
+    #[test]
+    fn from_u128_keeps_every_u128_within_39_digits() {
+        let max = Digits::from_u128(u128::MAX).expect("u128::MAX");
+        assert_eq!(max.digs.len(), 39);
+        // 340…455, least-significant digit first.
+        assert_eq!(max.digs[0], 5);
+        assert_eq!(*max.digs.last().expect("leading digit"), 3);
+        assert_eq!(Digits::from_u128(10).expect("10").digs, vec![0, 1]);
+        assert!(Digits::from_u128(0).expect("0").digs.is_empty());
+    }
+
+    #[test]
+    fn mul_u128_handles_every_u128_factor() {
+        let mut max = Digits::from_u128(1).expect("1");
+        max.mul_u128(u128::MAX).expect("1 * u128::MAX");
+        assert_eq!(
+            max.digs,
+            Digits::from_u128(u128::MAX).expect("u128::MAX").digs
+        );
+        let mut big = Digits::from_u128(u128::MAX).expect("u128::MAX");
+        big.mul_u128(u128::MAX).expect("u128::MAX squared");
+        assert_eq!(big.digs.len(), 78);
+        let mut small = Digits::from_u128(12).expect("12");
+        small.mul_u128(10).expect("12 * 10");
+        assert_eq!(small.digs, vec![0, 2, 1]);
+        small.mul_u128(0).expect("* 0");
+        assert!(small.digs.is_empty());
     }
 
     #[test]
