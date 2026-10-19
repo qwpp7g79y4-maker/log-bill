@@ -4,12 +4,23 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-10-19
+
+### Added
+
+- Indexed log cost per million events on `scan`: `--retention` (3, 7, 15 or 30 days), `--billing` (`annual`, `monthly` or `ondemand`), `--indexed-price` and `--index-rules`, only together with `--window`. Text, `--explain` and `--json` show indexed events and cost per month before and after the index rules, plus the savings. The built-in price is the public Datadog list price read on 2026-10-14; `--indexed-price` overrides it. `--budget-month` does not include this estimate.
+
 ### Build
 
+- CI also builds and tests the `x86_64-unknown-linux-musl` target, and checks that the glibc binary needs no glibc newer than 2.34.
+- Release archives include the quality report (`QUALITY.md`, `QUALITY.nl.md`), and every archive is unpacked and checked before the release is made.
+- CI and release workflows use the Node 24 versions of the GitHub actions.
 - A `fuzz/` crate (cargo-fuzz) with one target per stage that reads untrusted input: log line reading, rule parsing, masking, price and budget parsing, diff, and rendering to text and JSON. Excluded from the published package and not part of the default build, so stable CI is unaffected. Property tests (proptest) check that masking is idempotent and order-independent, that a secret never survives masking under any whitespace or `\uXXXX` variant, that the parsers never panic, and that the cost calculation matches a plain reference. Found no bugs in the library; a minimal `src/lib.rs` now exposes the modules for the fuzz crate to use, with no behavior change to the binary.
 
 ### Fixed
 
+- A price number outside the range of a binary float (`1e400`, a 310-digit number) is refused with exit 2 and the error for that field, not `price file is not JSON`.
+- The decimal digit loops in the cost calculation stop with an error after the 39 digits a `u128` can hold instead of running without a limit.
 - A price file nested 128 or more levels deep is `price file is nested too deeply` (exit 2), never `price file is not JSON`.
 - A line longer than 1 MiB no longer fills memory: a text line is cut at 1 MiB for patterns and masking and still counts every byte; a JSON line that long is refused with exit 2. A 2 GB line used about 6 GB of memory before.
 

@@ -26,7 +26,7 @@ Run `log-bill --help` or `log-bill scan --help` for the built-in help. Combinati
 | `--indexed-price` | scan, only with `--window` | USD per 1M indexed events. Overrides the list price. Same decimal rules as a price in the price file. |
 | `--index-rules` | scan, only with `--window` | Index exclusion rules, same syntax as `--rules`, applied to the weight left after `--rules`. |
 | `--help` | everywhere | Show help and exit 0. |
-| `--version` | top level | Show the version (`log-bill 0.1.2`) and exit 0. |
+| `--version` | top level | Show the version (`log-bill 0.1.3`) and exit 0. |
 
 ## Price file
 

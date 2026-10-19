@@ -26,7 +26,7 @@ Draai `log-bill --help` of `log-bill scan --help` voor de ingebouwde hulp. Combi
 | `--indexed-price` | scan, alleen met `--window` | USD per 1M geïndexeerde events. Overschrijft de lijstprijs. Zelfde decimale regels als een prijs in het prijsbestand. |
 | `--index-rules` | scan, alleen met `--window` | Index-uitsluitingsregels, dezelfde syntax als `--rules`, op het gewicht dat na `--rules` overblijft. |
 | `--help` | overal | Toont de hulp en stopt met exit 0. |
-| `--version` | hoogste niveau | Toont het versienummer (`log-bill 0.1.2`) en stopt met exit 0. |
+| `--version` | hoogste niveau | Toont het versienummer (`log-bill 0.1.3`) en stopt met exit 0. |
 
 ## Prijsbestand
 
