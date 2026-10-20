@@ -42,6 +42,11 @@ jobs:
         with:
           targets: ${{ matrix.target }}
       - run: cargo build --release --locked --target ${{ matrix.target }}
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-about@0.9.2
+      # Copyright and license texts of the third-party crates in the binary.
+      - run: cargo about generate --locked about.hbs -o THIRD-PARTY-LICENSES.html
       - name: Package
         shell: bash
         run: |
@@ -49,7 +54,7 @@ jobs:
           mkdir -p "dist/$name"
           # Everything the README links to with a relative link, so the links
           # and the quick start examples work inside the archive.
-          cp README.md README.nl.md LICENSE-MIT LICENSE-APACHE CHANGELOG.md CONTRIBUTING.md SECURITY.md QUALITY.md QUALITY.nl.md "dist/$name/"
+          cp README.md README.nl.md LICENSE-MIT LICENSE-APACHE THIRD-PARTY-LICENSES.html CHANGELOG.md CONTRIBUTING.md SECURITY.md QUALITY.md QUALITY.nl.md "dist/$name/"
           mkdir -p "dist/$name/docs" "dist/$name/tests"
           cp docs/*.md "dist/$name/docs/"
           cp -R tests/fixtures "dist/$name/tests/"
@@ -81,6 +86,7 @@ jobs:
           test -f "$root/README.nl.md"
           test -f "$root/LICENSE-MIT"
           test -f "$root/LICENSE-APACHE"
+          test -f "$root/THIRD-PARTY-LICENSES.html"
           test -f "$root/CHANGELOG.md"
           test -f "$root/CONTRIBUTING.md"
           test -f "$root/SECURITY.md"
