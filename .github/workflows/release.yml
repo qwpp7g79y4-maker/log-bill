@@ -16,9 +16,25 @@ jobs:
   checks:
     uses: ./.github/workflows/ci.yml
 
+  # cargo-about has no prebuilt binary for every runner, so the license
+  # file is generated once here and shared with every build.
+  licenses:
+    name: Third-party licenses
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-about@0.9.2
+      - run: cargo about generate --locked about.hbs -o THIRD-PARTY-LICENSES.html
+      - uses: actions/upload-artifact@v7
+        with:
+          name: licenses
+          path: THIRD-PARTY-LICENSES.html
+
   build:
     name: Build ${{ matrix.target }}
-    needs: checks
+    needs: [checks, licenses]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -42,11 +58,11 @@ jobs:
         with:
           targets: ${{ matrix.target }}
       - run: cargo build --release --locked --target ${{ matrix.target }}
-      - uses: taiki-e/install-action@v2
+      # Copyright and license texts of the third-party crates in the binary,
+      # generated once on Linux by the licenses job.
+      - uses: actions/download-artifact@v8
         with:
-          tool: cargo-about@0.9.2
-      # Copyright and license texts of the third-party crates in the binary.
-      - run: cargo about generate --locked about.hbs -o THIRD-PARTY-LICENSES.html
+          name: licenses
       - name: Package
         shell: bash
         run: |
@@ -109,6 +125,7 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           path: dist
+          pattern: '*-*'
           merge-multiple: true
       - name: Release notes from CHANGELOG
         run: |
