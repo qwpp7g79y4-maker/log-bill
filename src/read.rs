@@ -1,6 +1,6 @@
 use std::fmt;
 use std::fs::File;
-use std::io::{BufRead, Read, Seek, SeekFrom};
+use std::io::{self, BufRead, Cursor, Read};
 use std::path::Path;
 
 /// One line. `bytes` is the raw count, not the length of `text`.
@@ -88,6 +88,11 @@ pub fn visit_text(path: &Path, visit: impl FnMut(Line)) -> Result<(), ReadError>
     visit_file(path, false, None, visit)
 }
 
+/// [`visit_text`] on standard input, for the input path `-`.
+pub fn visit_text_stdin(visit: impl FnMut(Line)) -> Result<(), ReadError> {
+    visit_reader(io::stdin().lock(), false, None, visit)
+}
+
 const NO_MESSAGE: &str = "<NO-MESSAGE>";
 
 /// Reads JSON lines one at a time. Bytes are those of the whole line. The
@@ -104,6 +109,14 @@ pub fn visit_jsonl(
     visit: impl FnMut(Line),
 ) -> Result<(), ReadError> {
     visit_file(path, true, message_field, visit)
+}
+
+/// [`visit_jsonl`] on standard input, for the input path `-`.
+pub fn visit_jsonl_stdin(
+    message_field: Option<&str>,
+    visit: impl FnMut(Line),
+) -> Result<(), ReadError> {
+    visit_reader(io::stdin().lock(), true, message_field, visit)
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -178,27 +191,40 @@ fn visit_file(
     message_field: Option<&str>,
     visit: impl FnMut(Line),
 ) -> Result<(), ReadError> {
-    let mut file = match open_regular(path) {
+    let file = match open_regular(path) {
         Ok(file) => file,
         Err(OpenError::Unreadable) => return Err(ReadError::Unreadable),
         Err(OpenError::NotRegular) => return Err(ReadError::NotRegular),
     };
-    let prefix = read_prefix(&mut file)?;
+    visit_reader(file, jsonl, message_field, visit)
+}
+
+/// Sniffs the first [`SNIFF_BYTES`] for a wide encoding, then streams the
+/// sniffed bytes followed by the rest of `reader`. Working on the sniffed
+/// prefix plus the remainder, instead of seeking back to the start, lets
+/// this run on anything that implements [`Read`], including standard input.
+fn visit_reader(
+    reader: impl Read,
+    jsonl: bool,
+    message_field: Option<&str>,
+    visit: impl FnMut(Line),
+) -> Result<(), ReadError> {
+    let mut reader = reader;
+    let prefix = read_prefix(&mut reader)?;
     refuse_wide(&prefix)?;
-    file.seek(SeekFrom::Start(0))
-        .map_err(|_| ReadError::Unreadable)?;
+    let chained = Cursor::new(prefix).chain(reader);
     if jsonl {
-        stream_json(file, message_field, visit)
+        stream_json(chained, message_field, visit)
     } else {
-        stream_text(file, visit)
+        stream_text(chained, visit)
     }
 }
 
-fn read_prefix(file: &mut File) -> Result<Vec<u8>, ReadError> {
+fn read_prefix(reader: &mut impl Read) -> Result<Vec<u8>, ReadError> {
     let mut buf = vec![0u8; SNIFF_BYTES];
     let mut filled = 0;
     while filled < buf.len() {
-        match file.read(&mut buf[filled..]) {
+        match reader.read(&mut buf[filled..]) {
             Ok(0) => break,
             Ok(n) => filled += n,
             Err(err) if err.kind() == std::io::ErrorKind::Interrupted => continue,
@@ -253,8 +279,8 @@ fn read_capped(
     Ok((content, newline, cut))
 }
 
-fn stream_text(file: File, mut visit: impl FnMut(Line)) -> Result<(), ReadError> {
-    let mut reader = std::io::BufReader::new(file);
+fn stream_text(source: impl Read, mut visit: impl FnMut(Line)) -> Result<(), ReadError> {
+    let mut reader = std::io::BufReader::new(source);
     let mut buf = Vec::new();
     let mut line_no = 0u64;
     loop {
@@ -273,11 +299,11 @@ fn stream_text(file: File, mut visit: impl FnMut(Line)) -> Result<(), ReadError>
 }
 
 fn stream_json(
-    file: File,
+    source: impl Read,
     message_field: Option<&str>,
     mut visit: impl FnMut(Line),
 ) -> Result<(), ReadError> {
-    let mut reader = std::io::BufReader::new(file);
+    let mut reader = std::io::BufReader::new(source);
     let mut buf = Vec::new();
     let mut line_no = 0u64;
     loop {

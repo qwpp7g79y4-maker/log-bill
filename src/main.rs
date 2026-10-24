@@ -79,16 +79,16 @@ struct Cli {
 enum Cmd {
     /// Group a log file into patterns.
     Scan {
-        /// Log file.
+        /// Log file. `-` reads standard input.
         #[arg(value_name = "FILE")]
         file: PathBuf,
     },
     /// Compare two samples.
     Diff {
-        /// Old sample.
+        /// Old sample. `-` reads standard input.
         #[arg(value_name = "OLD")]
         old: PathBuf,
-        /// New sample.
+        /// New sample. `-` reads standard input.
         #[arg(value_name = "NEW")]
         new: PathBuf,
     },
@@ -528,10 +528,15 @@ fn fold_file(
             tally.push(&line, rules, index_rules);
         }
     };
-    match cli.format {
-        InputFormat::Text => read::visit_text(path, &mut visit)?,
-        InputFormat::Jsonl => {
+    let stdin = path == Path::new("-");
+    match (cli.format, stdin) {
+        (InputFormat::Text, false) => read::visit_text(path, &mut visit)?,
+        (InputFormat::Text, true) => read::visit_text_stdin(&mut visit)?,
+        (InputFormat::Jsonl, false) => {
             read::visit_jsonl(path, cli.message_field.as_deref(), &mut visit)?;
+        }
+        (InputFormat::Jsonl, true) => {
+            read::visit_jsonl_stdin(cli.message_field.as_deref(), &mut visit)?;
         }
     }
     let stats = grouped.finish(top);

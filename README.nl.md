@@ -111,6 +111,60 @@ new patterns: 6 of 12 bytes, 50.0%
 
 De oude steekproef is twee keer `alpha` (12 bytes) en één keer `beta` (5 bytes): 17 bytes. De nieuwe is `alpha` (6) en `gamma` (6): 12 bytes. Het nieuwe patroon `gamma` is 6 van 12 bytes, 50.0%.
 
+### Uitproberen met je eigen data
+
+Geen clone en geen fixtures nodig: deze twee bestanden zijn te kopiëren-en-plakken en zijn genoeg om een kostenbedrag in je eigen valuta te zien.
+
+```sh
+cat > quickstart.log <<'LOG'
+2026-10-24T00:00:00Z ERROR disk full on host web-1
+2026-10-24T00:00:01Z ERROR disk full on host web-2
+2026-10-24T00:00:02Z ERROR disk full on host web-3
+2026-10-24T00:00:03Z ERROR disk full on host web-1
+2026-10-24T00:00:04Z ERROR disk full on host web-2
+2026-10-24T00:00:05Z ERROR disk full on host web-3
+2026-10-24T00:00:06Z ERROR disk full on host web-1
+2026-10-24T00:00:07Z ERROR disk full on host web-2
+2026-10-24T00:00:08Z ERROR disk full on host web-3
+2026-10-24T00:00:09Z ERROR disk full on host web-1
+2026-10-24T00:00:10Z ERROR disk full on host web-2
+2026-10-24T00:00:11Z ERROR disk full on host web-3
+2026-10-24T00:00:12Z ERROR disk full on host web-1
+2026-10-24T00:00:13Z ERROR disk full on host web-2
+2026-10-24T00:00:14Z ERROR disk full on host web-3
+2026-10-24T00:00:15Z ERROR disk full on host web-1
+2026-10-24T00:00:16Z ERROR disk full on host web-2
+2026-10-24T00:00:17Z ERROR disk full on host web-3
+2026-10-24T00:00:18Z ERROR disk full on host web-1
+2026-10-24T00:00:19Z ERROR disk full on host web-2
+LOG
+cat > quickstart-prices.json <<'JSON'
+{
+  "currency": "USD",
+  "source": "manual",
+  "date": "2026-10-24",
+  "ingest_per_gb": 2
+}
+JSON
+```
+
+```console
+$ log-bill scan --window 10s --prices quickstart-prices.json quickstart.log
+total: 20 lines, 1020 bytes
+Pccb846bfc4fff644  20 lines  1020 bytes  100.0%  <TS> ERROR disk full on host <VAR>
+factor: 8640
+per day: 8812800 bytes, 0.009 GB
+per month: 264384000 bytes, 0.264 GB
+prices: USD, source manual, date 2026-10-24
+total ingest: 0.02 USD per day, 0.53 USD per month
+Pccb846bfc4fff644 ingest: 0.02 USD per day, 0.53 USD per month
+estimate: extrapolation of one sample with your own prices; not an official rate
+```
+
+20 regels in 10 seconden is een factor 8640 naar een dag; tegen 2 USD per GB is dat 0.02 USD per dag en 0.53 USD per maand. Gebruik je eigen prijs per GB (vraag wie de rekening betaalt, of kijk op de prijspagina van je provider) en zet `--window` op hoe lang de steekproef werkelijk beslaat.
+
+`scan` en `diff` lezen ook standaardinvoer als het bestandsargument `-` is, bijvoorbeeld `kubectl logs deploy/app | log-bill scan -`; uitvoer en exitcode zijn hetzelfde als voor een echt bestand met dezelfde bytes.
+
 Prijzen komen alleen uit een JSON-bestand dat je meegeeft met `--prices` (samen met `--window`); zie [het prijsbestand](docs/reference.nl.md#prijsbestand). Elke prijs wordt als exact decimaal getal gelezen. Een breuk die niet past, een getal buiten het bereik van een binaire float, of een bestand dat meer dan 128 arrays of objecten diep is, wordt geweigerd, en een sleutel die twee keer voorkomt ook. Elke tekstuitvoer met bedragen per GB eindigt met `estimate: extrapolation of one sample with your own prices; not an official rate` ("schatting: extrapolatie van één steekproef met je eigen prijzen; geen officieel tarief"). Een schatting van geïndexeerde events heeft het label `list price, estimate`, of `custom price, estimate` als je `--indexed-price` meegeeft. Alle opties, exitcodes en foutmeldingen staan in de [referentie](docs/reference.nl.md) en in `log-bill --help`.
 
 ## Hoe het rekent
@@ -158,7 +212,7 @@ Een eerlijke vergelijking met vijf producten. De pagina's zijn nagelezen op 8 ok
 - Een tab en andere Unicode-witruimte (bijvoorbeeld een no-break space) zijn ook een scheiding. Geëscapete aanhalingstekens in een bericht verbergen de waarde nog steeds (`{\"password\":\"open sesame\"}`). Een waarde die met `[` of `{` begint wordt gemaskeerd tot het bijpassende haakje (`password=["alpha", "beta"]`). Een waarde die een sleutelwoord bevat (`password=secretPass1`) wordt helemaal gemaskeerd. Een e-mailadres slikt geen sleutelwoord op dat een geheim inleidt (`id=a@b.co.token=hunterpass`).
 - Lookalike-tekens in een sleutelnaam worden ook herkend, zodat een sleutel die alleen op `password` of `secret` lijkt de waarde nog steeds verbergt. NFKC vouwt wiskundige alfanumerieke letters, enclosed alphanumerics en fullwidth-vormen; het Unicode-confusables-skelet vouwt overige lookalikes naar Latijn, bovenop de bestaande tabel (Armeens `ր` telt als `r`). Onzichtbare tekens in de sleutel worden genegeerd, net als een ongeldige byte (gelezen als U+FFFD), stuurtekens anders dan tab, regeleinde en carriage return, en combinerende tekens; een Latijnse letter met accent telt als de letter zonder accent, zodat `sécret` en `ṕassword` de waarde nog verbergen. Fullwidth- en small-form-ASCII-tekens en Unicode-witruimte anders dan spatie, tab, LF en CR worden vóór het maskeren als gewone ASCII gelezen, zodat ook `password＝value`, `token：value` en `password\u{00A0}=\u{00A0}value` de waarde verbergen; patronen tonen ze als gewone ASCII en de bytes tellen zoals ze geschreven zijn.
 - Een regeleinde of een carriage return vóór `=` of `:` is een scheiding, zodat `password`, dan een newline, dan `= rosebud` de waarde verbergt. Een `\uXXXX`-escape in een sleutel is dat teken, zodat `pass\u0077ord` de waarde verbergt. Een geheim wordt herkend vóór een UUID-, IP- of e-mailmasker, zodat `password-123e4567-e89b-12d3-a456-426614174000=` en `password-10.0.0.1=` de waarde nog verbergen, en een e-mailadres als sleutel (`a@b.co=`) ook. `"a b"@example.com` is een e-mailadres. Een getal met een afsluitend `!`, `?`, `,` of `;`, zoals `7!`, is `<NUM>`; een afsluitende punt blijft staan (`1699482000.`). Staat `message`, `msg`, `log` of de naam van `--message-field` twee keer in de regel, dan geldt de latere waarde.
-- Alleen gewone bestanden worden gelezen. Een FIFO, een symlink naar een FIFO, een map of een apparaat wordt geweigerd met exit 2, zonder op een schrijver te wachten.
+- Alleen gewone bestanden worden gelezen, behalve het logbestand-argument van `scan` en `diff` als dat `-` is: dat leest dan standaardinvoer. Een FIFO, een symlink naar een FIFO, een map of een apparaat wordt geweigerd met exit 2, zonder op een schrijver te wachten.
 - Invoer moet UTF-8 zijn. UTF-16 en UTF-32 (bijvoorbeeld van `Out-File` of `>` in Windows PowerShell 5.1), met of zonder byte order mark, worden geweigerd met exit 2 en een melding die zegt hoe je ze omzet: `iconv -f UTF-16LE -t UTF-8 in.log > out.log`, of in PowerShell `Get-Content in.log | Out-File -Encoding utf8 out.log`. Hun NUL-bytes zouden anders een sleutel als `password` zo opknippen dat de maskering hem mist. Zonder byte order mark wordt de codering herkend aan de NUL-bytes in de eerste 4096 bytes; UTF-16-tekst die grotendeels geen ASCII is, wordt mogelijk niet herkend. NUL-bytes in UTF-8-tekst worden vóór het maskeren weggehaald, zodat ook die geen sleutel kunnen verbergen; de bytes tellen wel mee. Een UTF-8-byte order mark aan het begin van een tekstbestand wordt overgeslagen en telt mee in de bytes van de eerste regel, zodat dezelfde regel met en zonder dat teken één patroon is. Stuurtekens in een logregel en in de valuta, de bron en de datum van een prijsbestand worden niet ruw geschreven. Tekstuitvoer toont ze als `\u00XX` (ESC is `\u001b`) en escaped bidi-stuurtekens op dezelfde manier (U+202E is `\u202e`). JSON houdt het teken (een stuurteken wordt door JSON ge-escaped; een bidi-teken blijft UTF-8), zodat de uitvoer geldige JSON blijft.
 - Als het resultaat niet geschreven kan worden, is de exitcode 3 en de melding `could not write output`. `--help` en `--version` gebruiken diezelfde code als hun tekst niet weg kan.
 - In `--json` toont `inputs.paths` elk pad als tekst. Een bestandsnaam die geen geldige UTF-8 is (kan op Linux) wordt wel gelezen, maar getoond met U+FFFD voor de ongeldige bytes.

@@ -28,6 +28,8 @@ Run `log-bill --help` or `log-bill scan --help` for the built-in help. Combinati
 | `--help` | everywhere | Show help and exit 0. |
 | `--version` | top level | Show the version (`log-bill 0.1.3`) and exit 0. |
 
+The log file argument of `scan` and both of `diff` (`OLD` and `NEW`) accept `-` as the path, which reads standard input instead; the output and exit code are the same as for a regular file with the same bytes. `-` is only recognised for that positional argument, not for `--prices`, `--rules` or `--index-rules`. Giving `-` more than once in the same command (for example `diff - -`) reads the whole of standard input for the first one and nothing for the second.
+
 ## Price file
 
 Prices come only from a JSON file you pass with `--prices` (together with `--window`). This is the synthetic fixture `tests/fixtures/prices.json`:
@@ -96,7 +98,7 @@ With `--explain`, a `<SECRET>` count is marked `possible secret`. In `--json` su
 
 If the output cannot be written, for example because the disk is full, the exit code is 3 and stderr is `could not write output`. `--help` and `--version` use that same code; they do not exit 0 when their text cannot be written.
 
-A log file, price file or rules file must be a regular file. A FIFO, a directory or anything else is refused with exit 2 without waiting for a writer to open it. A `gb_bytes` that is a fraction such as `0.5`, 0 or negative, or a number outside the binary-float range, is exit 2; a price that is text instead of a number, a fraction that does not fit, or a price outside that range, gives `price file has a price that is not a number`. 128 or more nested arrays or objects gives `price file is nested too deeply`. The same key twice gives `price file has a duplicate key`. `sample 0,1` is not a valid fraction: exit 2 with `invalid rule on line 1 of the rules file`, without showing the line. The regular-file messages do not include the path, and no error message contains a raw log line.
+A log file, price file or rules file must be a regular file, except the log file argument given as `-` (see [Options](#options)), which reads standard input instead. A FIFO, a directory or anything else is refused with exit 2 without waiting for a writer to open it. A `gb_bytes` that is a fraction such as `0.5`, 0 or negative, or a number outside the binary-float range, is exit 2; a price that is text instead of a number, a fraction that does not fit, or a price outside that range, gives `price file has a price that is not a number`. 128 or more nested arrays or objects gives `price file is nested too deeply`. The same key twice gives `price file has a duplicate key`. `sample 0,1` is not a valid fraction: exit 2 with `invalid rule on line 1 of the rules file`, without showing the line. The regular-file messages do not include the path, and no error message contains a raw log line.
 
 Every row below was run against the binary, and a test keeps it that way. A row with exit 3 has empty stdout. The message is the complete stderr; the binary adds a newline. `\n` in the last column is a newline inside the message. `--json` does not change a message. For `diff`, `--explain` is checked before `--top`, `--window`, `--days-per-month` and a valid index option, so its message wins. An invalid amount, an invalid percentage, an invalid retention, billing plan or indexed price, and `--prices` without a window are checked before `--explain`. On `scan`, a valid index option without `--window` is rejected before the index-rules file is opened.
 

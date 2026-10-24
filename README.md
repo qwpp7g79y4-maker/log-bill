@@ -109,6 +109,60 @@ new patterns: 6 of 12 bytes, 50.0%
 
 The old sample is `alpha` twice (12 bytes) and `beta` once (5 bytes): 17 bytes. The new one is `alpha` (6) and `gamma` (6): 12 bytes. The new pattern `gamma` is 6 of 12 bytes, 50.0%.
 
+### Try it on your own data
+
+No clone and no fixtures needed: these two files are copy-pasteable and are enough to see a cost in your own currency.
+
+```sh
+cat > quickstart.log <<'LOG'
+2026-10-24T00:00:00Z ERROR disk full on host web-1
+2026-10-24T00:00:01Z ERROR disk full on host web-2
+2026-10-24T00:00:02Z ERROR disk full on host web-3
+2026-10-24T00:00:03Z ERROR disk full on host web-1
+2026-10-24T00:00:04Z ERROR disk full on host web-2
+2026-10-24T00:00:05Z ERROR disk full on host web-3
+2026-10-24T00:00:06Z ERROR disk full on host web-1
+2026-10-24T00:00:07Z ERROR disk full on host web-2
+2026-10-24T00:00:08Z ERROR disk full on host web-3
+2026-10-24T00:00:09Z ERROR disk full on host web-1
+2026-10-24T00:00:10Z ERROR disk full on host web-2
+2026-10-24T00:00:11Z ERROR disk full on host web-3
+2026-10-24T00:00:12Z ERROR disk full on host web-1
+2026-10-24T00:00:13Z ERROR disk full on host web-2
+2026-10-24T00:00:14Z ERROR disk full on host web-3
+2026-10-24T00:00:15Z ERROR disk full on host web-1
+2026-10-24T00:00:16Z ERROR disk full on host web-2
+2026-10-24T00:00:17Z ERROR disk full on host web-3
+2026-10-24T00:00:18Z ERROR disk full on host web-1
+2026-10-24T00:00:19Z ERROR disk full on host web-2
+LOG
+cat > quickstart-prices.json <<'JSON'
+{
+  "currency": "USD",
+  "source": "manual",
+  "date": "2026-10-24",
+  "ingest_per_gb": 2
+}
+JSON
+```
+
+```console
+$ log-bill scan --window 10s --prices quickstart-prices.json quickstart.log
+total: 20 lines, 1020 bytes
+Pccb846bfc4fff644  20 lines  1020 bytes  100.0%  <TS> ERROR disk full on host <VAR>
+factor: 8640
+per day: 8812800 bytes, 0.009 GB
+per month: 264384000 bytes, 0.264 GB
+prices: USD, source manual, date 2026-10-24
+total ingest: 0.02 USD per day, 0.53 USD per month
+Pccb846bfc4fff644 ingest: 0.02 USD per day, 0.53 USD per month
+estimate: extrapolation of one sample with your own prices; not an official rate
+```
+
+20 lines in 10 seconds is a factor of 8640 to a day; at 2 USD per GB that is 0.02 USD per day and 0.53 USD per month. Use your own price per GB (ask whoever pays the bill, or see your provider's pricing page) and `--window` set to how long the sample actually covers.
+
+`scan` and `diff` also read standard input when the file argument is `-`, for example `kubectl logs deploy/app | log-bill scan -`; output and exit code are the same as for a real file with the same bytes.
+
 Prices come only from a JSON file you pass with `--prices` (together with `--window`); see [the price file format](docs/reference.md#price-file). Each price is read as an exact decimal. A fraction that does not fit, a number outside the range of a binary float, or a file nested more than 128 arrays or objects deep, is rejected, and so is a key that appears twice. Every text output with per-GB amounts ends with `estimate: extrapolation of one sample with your own prices; not an official rate`. An indexed-event estimate is labeled `list price, estimate`, or `custom price, estimate` when you pass `--indexed-price`. All options, exit codes and error messages are listed in the [reference](docs/reference.md) and in `log-bill --help`.
 
 ## How it counts
@@ -156,7 +210,7 @@ An honest comparison with five products. The pages were checked on 8 October 202
 - A tab and other Unicode whitespace (for example a no-break space) are separators too. Escaped quotes in a message still hide the value (`{\"password\":\"open sesame\"}`). A value that starts with `[` or `{` is masked through the matching bracket (`password=["alpha", "beta"]`). A value that contains a keyword (`password=secretPass1`) is masked in full. An e-mail does not swallow a keyword that introduces a secret (`id=a@b.co.token=hunterpass`).
 - Lookalike characters in a key name are recognised too, so a key that only looks like `password` or `secret` still hides the value. NFKC folds mathematical alphanumeric letters, enclosed alphanumerics and fullwidth forms; the Unicode confusable skeleton maps remaining lookalikes to Latin, on top of the existing table (Armenian `ր` counts as `r`). Invisible characters inside the key are ignored, as are an invalid byte (read as U+FFFD), control characters other than tab, line feed and carriage return, and combining marks; an accented Latin letter counts as its base letter, so `sécret` and `ṕassword` still hide the value. Fullwidth and small-form ASCII characters and Unicode whitespace other than space, tab, LF and CR are read as plain ASCII before masking, so `password＝value`, `token：value` and `password\u{00A0}=\u{00A0}value` hide the value too; patterns show them as plain ASCII, and the bytes still count as written.
 - A line break or a carriage return before `=` or `:` is a separator, so `password` then a newline then `= rosebud` hides the value. A `\uXXXX` escape in a key is that character, so `pass\u0077ord` hides the value. A secret is found before a UUID, an IP or an e-mail mask, so `password-123e4567-e89b-12d3-a456-426614174000=` and `password-10.0.0.1=` still hide the value, and an e-mail used as a key (`a@b.co=`) does too. `"a b"@example.com` is an e-mail. A number with a trailing `!`, `?`, `,` or `;`, such as `7!`, is `<NUM>`; a trailing dot is left in place (`1699482000.`). When `message`, `msg`, `log` or the `--message-field` name appears twice, the later value is used.
-- Only regular files are read. A FIFO, a symlink to a FIFO, a directory or a device is refused with exit 2, without waiting for a writer.
+- Only regular files are read, except the log file argument of `scan` and `diff` given as `-`, which reads standard input instead. A FIFO, a symlink to a FIFO, a directory or a device is refused with exit 2, without waiting for a writer.
 - Input must be UTF-8. UTF-16 and UTF-32 (for example from Windows PowerShell 5.1 `Out-File` or `>`), with or without a byte order mark, are refused with exit 2 and a message that says how to convert them: `iconv -f UTF-16LE -t UTF-8 in.log > out.log`, or in PowerShell `Get-Content in.log | Out-File -Encoding utf8 out.log`. Their NUL bytes would otherwise split a key such as `password` so that masking misses it. Without a byte order mark the encoding is recognised by the NUL bytes in the first 4096 bytes; UTF-16 text that is mostly not ASCII may not be recognised. NUL bytes inside UTF-8 text are removed before masking, so they cannot hide a key either; the bytes still count. A UTF-8 byte order mark at the start of a text file is skipped and still counts in the bytes of the first line, so the same line with and without that mark is one pattern. Control characters in a log line and in the currency, source and date of a price file are not written raw. Text output shows them as `\u00XX` (ESC is `\u001b`) and escapes bidi controls the same way (U+202E is `\u202e`). JSON keeps the character (a control is escaped by JSON; a bidi mark stays UTF-8), so the output stays valid JSON.
 - If the result cannot be written, the exit code is 3 and the message is `could not write output`. `--help` and `--version` use that same code when their text cannot be written.
 - In `--json`, `inputs.paths` shows each path as text. A file name that is not valid UTF-8 (possible on Linux) is still read, but shown with U+FFFD for the invalid bytes.
