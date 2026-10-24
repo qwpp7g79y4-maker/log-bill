@@ -201,6 +201,7 @@ fn empty_stdin_matches_empty_file() {
 /// A literal file named `-` is not reachable through the CLI once `-` means
 /// stdin; a FIFO (an unrelated non-regular-file path) still gets the
 /// existing "not a regular file" rejection, unaffected by the stdin feature.
+#[cfg(unix)]
 #[test]
 fn fifo_is_still_rejected_unlike_stdin() {
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("stdin-fifo-dir");
