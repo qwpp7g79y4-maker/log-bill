@@ -54,6 +54,14 @@ Synthetic text file: two lines `alpha` and one line `beta`.
 
 Synthetic price file with made-up amounts and a `gb_bytes` that is not 1000000000. Not an official rate.
 
+## quickstart-prices.json
+
+Synthetic price file for the copy-paste quick start in the README. Not an official rate.
+
+## quickstart.log
+
+Synthetic text file for the copy-paste quick start in the README: 20 lines of `ERROR disk full` with made-up hosts and timestamps.
+
 ## sample-0.1.txt
 
 Synthetic rules file with one command: `sample 0.1` and a regex on the letter x. The fraction uses a dot.

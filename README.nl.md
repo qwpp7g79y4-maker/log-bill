@@ -146,10 +146,10 @@ cat > quickstart-prices.json <<'JSON'
   "ingest_per_gb": 2
 }
 JSON
+log-bill scan --window 10s --prices quickstart-prices.json quickstart.log
 ```
 
-```console
-$ log-bill scan --window 10s --prices quickstart-prices.json quickstart.log
+```text
 total: 20 lines, 1020 bytes
 Pccb846bfc4fff644  20 lines  1020 bytes  100.0%  <TS> ERROR disk full on host <VAR>
 factor: 8640

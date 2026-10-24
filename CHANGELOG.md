@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- `scan` and `diff` read standard input when the file argument is `-`, for example `kubectl logs deploy/app | log-bill scan -`. The README has a copy-paste quick start that creates its own sample log and price file to try the tool without cloning the repository.
+
 ## [0.1.3] - 2026-10-19
 
 ### Added
