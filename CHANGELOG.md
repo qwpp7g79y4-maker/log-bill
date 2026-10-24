@@ -2,11 +2,23 @@
 
 All notable changes to this project are documented in this file.
 
-## [Unreleased]
+## [0.2.0] - 2026-10-24
 
 ### Added
 
 - `scan` and `diff` read standard input when the file argument is `-`, for example `kubectl logs deploy/app | log-bill scan -`. The README has a copy-paste quick start that creates its own sample log and price file to try the tool without cloning the repository.
+- `SECURITY.md` describes how to report a vulnerability, and Dependabot is configured for Cargo and GitHub Actions.
+
+### Changed
+
+- The quick start sample log and price file live under `tests/fixtures/` instead of the package root, so they are not shipped in the published crate. The copy-paste quick start still creates its own files.
+
+### Build
+
+- Release archives include `THIRD-PARTY-LICENSES.html`. CI checks the licenses of dependencies. The file is generated once on Linux, because cargo-about has no prebuilt binary for Intel macOS.
+- Dependabot is limited to Cargo security updates, so the MSRV stays 1.85, and it ignores `dtolnay/rust-toolchain` because that ref is the Rust version.
+- A test writes the README quick start files, checks them against `tests/fixtures/`, runs the documented scan command and compares the output with the text block in the README. The quality report's test count matches `cargo test`.
+- `tests/readme.rs` is formatted. No behavior change.
 
 ## [0.1.3] - 2026-10-19
 
