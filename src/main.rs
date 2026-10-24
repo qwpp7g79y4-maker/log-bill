@@ -549,6 +549,10 @@ fn index_rules_message(error: &rules::RulesError) -> String {
     match error {
         rules::RulesError::Unreadable => "index rules file is not readable".to_owned(),
         rules::RulesError::NotRegular => "index rules file is not a regular file".to_owned(),
+        rules::RulesError::TooLarge => "index rules file is larger than 8 MiB".to_owned(),
+        rules::RulesError::TooManyRules => {
+            format!("index rules file has more than {} rules", rules::MAX_RULES)
+        }
         rules::RulesError::Invalid { line } => {
             format!("invalid rule on line {line} of the index rules file")
         }

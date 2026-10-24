@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- `--rules`, `--index-rules` and `--prices` read the whole file through a plain `read_to_end` with no bound, unlike the log path's capped, streamed reading. A rules file of 3,000,000 lines (62 MB) pushed peak RSS to 14.4 GB, because every rule stays a compiled regex for the run. Each is now refused with exit 2 before it is read if larger than 8 MiB, and `--rules`/`--index-rules` is refused above 300,000 rules, both with a message naming the limit.
+
 ## [0.2.0] - 2026-10-24
 
 ### Added

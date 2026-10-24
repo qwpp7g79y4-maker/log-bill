@@ -44,6 +44,10 @@ pub enum RulesError {
     Unreadable,
     /// Not a regular file. The path is not included.
     NotRegular,
+    /// Larger than [`crate::read::MAX_REGULAR_BYTES`].
+    TooLarge,
+    /// More than [`MAX_RULES`] rules, blank lines excluded.
+    TooManyRules,
     /// Line number in the rules file. The line itself is not included.
     Invalid {
         line: u64,
@@ -55,6 +59,10 @@ impl std::fmt::Display for RulesError {
         match self {
             RulesError::Unreadable => f.write_str("rules file is not readable"),
             RulesError::NotRegular => f.write_str("rules file is not a regular file"),
+            RulesError::TooLarge => f.write_str("rules file is larger than 8 MiB"),
+            RulesError::TooManyRules => {
+                write!(f, "rules file has more than {MAX_RULES} rules")
+            }
             RulesError::Invalid { line } => {
                 write!(f, "invalid rule on line {line} of the rules file")
             }
@@ -64,20 +72,28 @@ impl std::fmt::Display for RulesError {
 
 impl std::error::Error for RulesError {}
 
+/// Compiled rules kept past this count cost too much memory: each compiled
+/// regex holds a few KB, so a rules file with no other limit can be made to
+/// use many GB of RAM without ever being invalid syntax. 300,000 rules keeps
+/// that cost in the low gigabytes, well above any ordinary rules file.
+pub const MAX_RULES: usize = 300_000;
+
 /// Reads a rules file. An unreadable path yields an error without that path.
 pub fn load_rules(path: &std::path::Path) -> Result<RuleSet, RulesError> {
     let data = match crate::read::read_regular(path) {
         Ok(data) => data,
-        Err(crate::read::OpenError::NotRegular) => return Err(RulesError::NotRegular),
-        Err(crate::read::OpenError::Unreadable) => return Err(RulesError::Unreadable),
+        Err(crate::read::ReadRegularError::NotRegular) => return Err(RulesError::NotRegular),
+        Err(crate::read::ReadRegularError::Unreadable) => return Err(RulesError::Unreadable),
+        Err(crate::read::ReadRegularError::TooLarge) => return Err(RulesError::TooLarge),
     };
     parse_rules(&data)
 }
 
 /// `drop <regex>` or `sample <fraction> <regex>`, one per line. Blank lines
 /// are ignored. An unknown command, a missing regex, a fraction outside
-/// `0..1`, or a regex that does not compile, is invalid on that line.
-/// The error text does not contain the line.
+/// `0..1`, or a regex that does not compile, is invalid on that line. More
+/// than [`MAX_RULES`] rules stops parsing at that point, rather than
+/// compiling further regexes first. The error text does not contain the line.
 pub fn parse_rules(data: &[u8]) -> Result<RuleSet, RulesError> {
     let data = data.strip_prefix(b"\xef\xbb\xbf").unwrap_or(data);
     let mut rules = Vec::new();
@@ -89,11 +105,17 @@ pub fn parse_rules(data: &[u8]) -> Result<RuleSet, RulesError> {
         }
         line_no += 1;
         push_rule(&mut rules, &data[start..index], line_no)?;
+        if rules.len() > MAX_RULES {
+            return Err(RulesError::TooManyRules);
+        }
         start = index + 1;
     }
     if start < data.len() {
         line_no += 1;
         push_rule(&mut rules, &data[start..], line_no)?;
+        if rules.len() > MAX_RULES {
+            return Err(RulesError::TooManyRules);
+        }
     }
     Ok(RuleSet { rules })
 }
@@ -587,7 +609,7 @@ fn finish_groups(groups: BTreeMap<String, Acc>, stats: &Stats) -> Effect {
 
 #[cfg(test)]
 mod tests {
-    use super::{effect, parse_rules, RulesError};
+    use super::{effect, parse_rules, RulesError, MAX_RULES};
     use crate::pattern::group;
     use crate::read::Line;
 
@@ -597,6 +619,18 @@ mod tests {
             raw: text.to_owned(),
             bytes,
         }
+    }
+
+    #[test]
+    fn too_large_and_too_many_rules_messages() {
+        assert_eq!(
+            RulesError::TooLarge.to_string(),
+            "rules file is larger than 8 MiB"
+        );
+        assert_eq!(
+            RulesError::TooManyRules.to_string(),
+            format!("rules file has more than {MAX_RULES} rules")
+        );
     }
 
     #[test]

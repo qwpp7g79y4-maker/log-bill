@@ -125,15 +125,52 @@ pub enum OpenError {
     NotRegular,
 }
 
+/// [`read_regular`]'s error, [`OpenError`] plus [`ReadRegularError::TooLarge`].
+/// A separate type so [`open_regular`]'s other caller, which streams instead
+/// of capping the whole file by size, is not forced to handle a case it
+/// cannot produce.
+#[derive(Debug, PartialEq, Eq)]
+pub enum ReadRegularError {
+    Unreadable,
+    NotRegular,
+    /// Regular file larger than [`MAX_REGULAR_BYTES`].
+    TooLarge,
+}
+
+impl From<OpenError> for ReadRegularError {
+    fn from(err: OpenError) -> Self {
+        match err {
+            OpenError::Unreadable => ReadRegularError::Unreadable,
+            OpenError::NotRegular => ReadRegularError::NotRegular,
+        }
+    }
+}
+
+/// Largest file that [`read_regular`] holds in memory: 8 MiB. `--rules`,
+/// `--index-rules` and `--prices` load the whole file and keep it for the
+/// life of the run (every rule stays a compiled regex), so unlike the log
+/// path this cannot be streamed line by line. A file over the limit is
+/// refused before it is read, by its size on disk, so an oversized file is
+/// never pulled into memory.
+pub const MAX_REGULAR_BYTES: u64 = 8 * 1024 * 1024;
+
 /// Reads bytes of a regular file. The open does not block, and the file type
 /// comes from the opened file, so a path that turns into a FIFO between the
 /// name and the read does not hang. A symlink to a regular file counts; a
-/// symlink to a FIFO does not.
-pub fn read_regular(path: &Path) -> Result<Vec<u8>, OpenError> {
+/// symlink to a FIFO does not. A file larger than [`MAX_REGULAR_BYTES`] is
+/// refused instead of read.
+pub fn read_regular(path: &Path) -> Result<Vec<u8>, ReadRegularError> {
     let mut file = open_regular(path)?;
+    let len = file
+        .metadata()
+        .map_err(|_| ReadRegularError::Unreadable)?
+        .len();
+    if len > MAX_REGULAR_BYTES {
+        return Err(ReadRegularError::TooLarge);
+    }
     let mut data = Vec::new();
     file.read_to_end(&mut data)
-        .map_err(|_| OpenError::Unreadable)?;
+        .map_err(|_| ReadRegularError::Unreadable)?;
     Ok(data)
 }
 
@@ -957,7 +994,38 @@ struct Frame {
 
 #[cfg(test)]
 mod tests {
-    use super::{detect_wide, json_lines, text_lines, Line, WideEncoding};
+    use super::{
+        detect_wide, json_lines, read_regular, text_lines, Line, ReadRegularError, WideEncoding,
+        MAX_REGULAR_BYTES,
+    };
+
+    /// A file right at the cap is read whole; one byte over is refused before
+    /// any of it is read. `set_len` makes a sparse file, so this does not
+    /// actually write 8 MiB to disk.
+    #[test]
+    fn read_regular_caps_at_max_regular_bytes() {
+        let dir = std::env::temp_dir().join("log-bill-read-regular-cap-test");
+        std::fs::create_dir_all(&dir).expect("dir");
+
+        let at_cap = dir.join("at-cap.bin");
+        std::fs::File::create(&at_cap)
+            .expect("file")
+            .set_len(MAX_REGULAR_BYTES)
+            .expect("grow");
+        assert_eq!(
+            read_regular(&at_cap).map(|data| data.len() as u64),
+            Ok(MAX_REGULAR_BYTES)
+        );
+
+        let over_cap = dir.join("over-cap.bin");
+        std::fs::File::create(&over_cap)
+            .expect("file")
+            .set_len(MAX_REGULAR_BYTES + 1)
+            .expect("grow");
+        assert_eq!(read_regular(&over_cap), Err(ReadRegularError::TooLarge));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn wide_encodings_by_bom() {
