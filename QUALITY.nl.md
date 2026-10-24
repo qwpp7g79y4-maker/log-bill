@@ -8,7 +8,7 @@ Deze pagina laat zien hoe elke release van log-bill is gecontroleerd, wat we von
 |---|---|
 | Gecontroleerde commit | [`8ea5157`](https://github.com/qwpp7g79y4-maker/log-bill/commit/8ea5157) |
 | Datum | 2026-10-17 |
-| Tests | 325 automatische tests, gedraaid in debugmodus, releasemodus en op Rust 1.85 (alle drie: 325 geslaagd, 0 mislukt) |
+| Tests | 337 automatische tests, gedraaid in debugmodus, releasemodus en op Rust 1.85 (alle drie: 337 geslaagd, 0 mislukt) |
 
 ### Wat is toegevoegd
 
@@ -29,8 +29,8 @@ Deze pagina laat zien hoe elke release van log-bill is gecontroleerd, wat we von
 
 ### Hoe we controleerden
 
-- `cargo test` en `cargo test --release`: 325 geslaagd, 0 mislukt, beide exit 0.
-- `cargo +1.85 test` (oudste ondersteunde Rust-versie): 325 geslaagd, 0 mislukt, exit 0.
+- `cargo test` en `cargo test --release`: 337 geslaagd, 0 mislukt, beide exit 0.
+- `cargo +1.85 test` (oudste ondersteunde Rust-versie): 337 geslaagd, 0 mislukt, exit 0.
 - `cargo clippy --all-targets -- -D warnings`: exit 0, geen waarschuwingen, in de hoofdcrate en in `fuzz/`.
 - `cargo fmt --check`: exit 0, in de hoofdcrate en in `fuzz/`.
 - `cargo +nightly fuzz build --target x86_64-unknown-linux-gnu`: exit 0, alle zes doelen bouwen.

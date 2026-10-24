@@ -131,6 +131,69 @@ fn examples(doc: &str) -> Vec<(Vec<String>, String)> {
     out
 }
 
+/// The "Try it on your own data" ```sh heredoc (quickstart.log,
+/// quickstart-prices.json, the `log-bill` command) and the ```text block
+/// right after it that shows its output.
+fn quickstart_example(doc: &str) -> (String, String, Vec<String>, String) {
+    let mut lines = doc.lines();
+    for line in lines.by_ref() {
+        if line == "cat > quickstart.log <<'LOG'" {
+            break;
+        }
+    }
+    let mut log_body = String::new();
+    for line in lines.by_ref() {
+        if line == "LOG" {
+            break;
+        }
+        log_body.push_str(line);
+        log_body.push('\n');
+    }
+    assert_eq!(
+        lines.next(),
+        Some("cat > quickstart-prices.json <<'JSON'"),
+        "missing quickstart-prices.json heredoc"
+    );
+    let mut prices_body = String::new();
+    for line in lines.by_ref() {
+        if line == "JSON" {
+            break;
+        }
+        prices_body.push_str(line);
+        prices_body.push('\n');
+    }
+    let command = lines.next().expect("missing quick start command");
+    let args: Vec<String> = command
+        .strip_prefix("log-bill ")
+        .unwrap_or_else(|| panic!("quick start command does not start with `log-bill `: {command}"))
+        .split_whitespace()
+        .map(str::to_string)
+        .collect();
+    assert_eq!(
+        lines.next(),
+        Some("```"),
+        "quick start sh block not closed"
+    );
+    for line in lines.by_ref() {
+        if line == "```text" {
+            break;
+        }
+        assert!(line.is_empty(), "unexpected line before ```text: {line}");
+    }
+    let mut expected = String::new();
+    let mut closed = false;
+    for line in lines.by_ref() {
+        if line == "```" {
+            closed = true;
+            break;
+        }
+        expected.push_str(line);
+        expected.push('\n');
+    }
+    assert!(closed, "quick start text block not closed");
+    (log_body, prices_body, args, expected)
+}
+
 #[test]
 fn readme_has_the_sections_and_names() {
     let readme = read(README);
@@ -393,6 +456,45 @@ fn examples_match_the_binary() {
         }
         assert!(count >= 4, "{rel} has only {count} examples");
         assert!(saw_sample, "{rel} is missing the 0 lines, 1 byte example");
+    }
+}
+
+#[test]
+fn quick_start_standalone_example_matches_the_fixtures_and_binary() {
+    for rel in [README, README_NL] {
+        let doc = read(rel);
+        let (log_body, prices_body, args, expected) = quickstart_example(&doc);
+        assert_eq!(
+            log_body,
+            read("tests/fixtures/quickstart.log"),
+            "{rel}: the quickstart.log heredoc differs from tests/fixtures/quickstart.log"
+        );
+        assert_eq!(
+            prices_body,
+            read("tests/fixtures/quickstart-prices.json"),
+            "{rel}: the quickstart-prices.json heredoc differs from tests/fixtures/quickstart-prices.json"
+        );
+        let dir = tempfile::tempdir().expect("create temp dir");
+        fs::write(dir.path().join("quickstart.log"), &log_body).expect("write quickstart.log");
+        fs::write(
+            dir.path().join("quickstart-prices.json"),
+            &prices_body,
+        )
+        .expect("write quickstart-prices.json");
+        let output = Command::new(env!("CARGO_BIN_EXE_log-bill"))
+            .current_dir(dir.path())
+            .args(&args)
+            .output()
+            .expect("start binary");
+        let out = String::from_utf8(output.stdout).expect("stdout is utf-8");
+        let err = String::from_utf8(output.stderr).expect("stderr is utf-8");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "{rel} {args:?}\nstderr: {err}"
+        );
+        assert!(err.is_empty(), "{rel} {args:?} stderr: {err}");
+        assert_eq!(out, expected, "{rel}: quick start output differs from README");
     }
 }
 
