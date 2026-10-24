@@ -169,11 +169,7 @@ fn quickstart_example(doc: &str) -> (String, String, Vec<String>, String) {
         .split_whitespace()
         .map(str::to_string)
         .collect();
-    assert_eq!(
-        lines.next(),
-        Some("```"),
-        "quick start sh block not closed"
-    );
+    assert_eq!(lines.next(), Some("```"), "quick start sh block not closed");
     for line in lines.by_ref() {
         if line == "```text" {
             break;
@@ -476,11 +472,8 @@ fn quick_start_standalone_example_matches_the_fixtures_and_binary() {
         );
         let dir = tempfile::tempdir().expect("create temp dir");
         fs::write(dir.path().join("quickstart.log"), &log_body).expect("write quickstart.log");
-        fs::write(
-            dir.path().join("quickstart-prices.json"),
-            &prices_body,
-        )
-        .expect("write quickstart-prices.json");
+        fs::write(dir.path().join("quickstart-prices.json"), &prices_body)
+            .expect("write quickstart-prices.json");
         let output = Command::new(env!("CARGO_BIN_EXE_log-bill"))
             .current_dir(dir.path())
             .args(&args)
@@ -494,7 +487,10 @@ fn quick_start_standalone_example_matches_the_fixtures_and_binary() {
             "{rel} {args:?}\nstderr: {err}"
         );
         assert!(err.is_empty(), "{rel} {args:?} stderr: {err}");
-        assert_eq!(out, expected, "{rel}: quick start output differs from README");
+        assert_eq!(
+            out, expected,
+            "{rel}: quick start output differs from README"
+        );
     }
 }
 
