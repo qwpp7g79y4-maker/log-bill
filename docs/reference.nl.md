@@ -26,7 +26,7 @@ Draai `log-bill --help` of `log-bill scan --help` voor de ingebouwde hulp. Combi
 | `--indexed-price` | scan, alleen met `--window` | USD per 1M geïndexeerde events. Overschrijft de lijstprijs. Zelfde decimale regels als een prijs in het prijsbestand. |
 | `--index-rules` | scan, alleen met `--window` | Index-uitsluitingsregels, dezelfde syntax als `--rules`, op het gewicht dat na `--rules` overblijft. |
 | `--help` | overal | Toont de hulp en stopt met exit 0. |
-| `--version` | hoogste niveau | Toont het versienummer (`log-bill 0.1.3`) en stopt met exit 0. |
+| `--version` | hoogste niveau | Toont het versienummer (`log-bill 0.2.0`) en stopt met exit 0. |
 
 Het logbestand-argument van `scan` en beide van `diff` (`OLD` en `NEW`) accepteren `-` als pad; dat leest dan standaardinvoer in plaats van een bestand. Uitvoer en exitcode zijn hetzelfde als voor een gewoon bestand met dezelfde bytes. `-` wordt alleen herkend voor dat positie-argument, niet voor `--prices`, `--rules` of `--index-rules`. `-` meer dan één keer in hetzelfde commando opgeven (bijvoorbeeld `diff - -`) leest de hele standaardinvoer voor de eerste en niets voor de tweede.
 

@@ -26,7 +26,7 @@ Run `log-bill --help` or `log-bill scan --help` for the built-in help. Combinati
 | `--indexed-price` | scan, only with `--window` | USD per 1M indexed events. Overrides the list price. Same decimal rules as a price in the price file. |
 | `--index-rules` | scan, only with `--window` | Index exclusion rules, same syntax as `--rules`, applied to the weight left after `--rules`. |
 | `--help` | everywhere | Show help and exit 0. |
-| `--version` | top level | Show the version (`log-bill 0.1.3`) and exit 0. |
+| `--version` | top level | Show the version (`log-bill 0.2.0`) and exit 0. |
 
 The log file argument of `scan` and both of `diff` (`OLD` and `NEW`) accept `-` as the path, which reads standard input instead; the output and exit code are the same as for a regular file with the same bytes. `-` is only recognised for that positional argument, not for `--prices`, `--rules` or `--index-rules`. Giving `-` more than once in the same command (for example `diff - -`) reads the whole of standard input for the first one and nothing for the second.
 
