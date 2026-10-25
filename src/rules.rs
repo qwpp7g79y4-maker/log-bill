@@ -189,10 +189,12 @@ pub fn parse_rules(data: &[u8]) -> Result<RuleSet, RulesError> {
 /// Candidates: the pattern's prefix, its suffix (`.*foo`, `\dfoo`), and the
 /// prefix of each of the first `INNER_LITERAL_STARTS` tails of a top-level
 /// concatenation (`.*foo.*`): any match of the whole contains a match of
-/// every tail, so a tail's literals are required too. The longest one wins
-/// (the later one on a tie: the prefix is the part rules are likeliest to share), so rules sharing an inexact prefix
-/// (`^ERROR .*code=7`) are told apart by their rarer part instead of all
-/// becoming candidates for every line with that prefix.
+/// every tail, so a tail's literals are required too. The longest one wins;
+/// on a tie the later literal wins, so a prefix (which comes first, and is
+/// the part rules are likeliest to share) loses to an equally long later
+/// one. Rules sharing an inexact prefix (`^ERROR .*code=7`) are thus told
+/// apart by their rarer part instead of all becoming candidates for every
+/// line with that prefix.
 fn required_literals(pattern: &str) -> Vec<Vec<u8>> {
     // `pattern` already compiled via `Regex::new` in `push_rule`, with the
     // same default syntax, so parsing it again here cannot fail.
@@ -259,11 +261,11 @@ fn usable_literals(extractor: &Extractor, hir: &Hir) -> Option<Vec<Vec<u8>>> {
     Some(folded)
 }
 
-/// Most literals one rule may add to the filter after case folding.
 /// Literals an inner tail may expand to before extraction gives up on it;
 /// more than `MAX_LITERALS_PER_RULE` would be dropped anyway, and with
 /// `(?i)` the full expansion of every tail dominated the load time.
 const TAIL_LIMIT_TOTAL: usize = 16;
+/// Most literals one rule may add to the filter after case folding.
 const MAX_LITERALS_PER_RULE: usize = 8;
 
 fn push_rule(rules: &mut Vec<Compiled>, raw: &[u8], line_no: u64) -> Result<(), RulesError> {
