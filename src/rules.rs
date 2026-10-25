@@ -1,6 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use aho_corasick::AhoCorasick;
 use regex::Regex;
+use regex_syntax::hir::literal::Extractor;
 
 use crate::mask;
 use crate::pattern::Stats;
@@ -28,7 +30,32 @@ pub struct Fraction {
 
 pub struct RuleSet {
     rules: Vec<Compiled>,
+    /// Indices into `rules` whose regex has no required literal, so a
+    /// missing literal can never rule them out: always tried.
+    always: Vec<usize>,
+    /// One pass per batch over the raw line finds every literal that could
+    /// belong to a matching rule, in time independent of `rules.len()`.
+    /// Rules without a usable required literal are not in here; see
+    /// `always`. Batched (`LITERAL_BATCH_SIZE` literals each) rather than
+    /// one combined automaton: building a single `AhoCorasick` over all of
+    /// them scales worse than linearly in the literal count, which turns a
+    /// huge rules file back into the slow load this fix is meant to avoid.
+    literal_batches: Vec<LiteralBatch>,
 }
+
+struct LiteralBatch {
+    filter: AhoCorasick,
+    /// Parallel to `filter`'s patterns: which rule each literal came from.
+    rule: Vec<usize>,
+}
+
+/// Literals per `AhoCorasick` batch. Building one combined automaton over
+/// all literals scales worse than linearly with the literal count (seen
+/// directly: ~0.5s for 50,000 short literals, ~8s for 200,000); batches of
+/// this size keep each build's cost small while the number of batches, and
+/// so the per-line search cost, stays low for any rules file up to
+/// `MAX_RULES`.
+const LITERAL_BATCH_SIZE: usize = 4096;
 
 impl std::fmt::Debug for RuleSet {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -117,7 +144,60 @@ pub fn parse_rules(data: &[u8]) -> Result<RuleSet, RulesError> {
             return Err(RulesError::TooManyRules);
         }
     }
-    Ok(RuleSet { rules })
+    let mut always = Vec::new();
+    let mut literals = Vec::new();
+    let mut literal_rule = Vec::new();
+    for (index, rule) in rules.iter().enumerate() {
+        let rule_literals = required_literals(rule.regex.as_str());
+        if rule_literals.is_empty() {
+            always.push(index);
+            continue;
+        }
+        for literal in rule_literals {
+            literal_rule.push(index);
+            literals.push(literal);
+        }
+    }
+    let mut literal_batches = Vec::new();
+    for start in (0..literals.len()).step_by(LITERAL_BATCH_SIZE) {
+        let end = (start + LITERAL_BATCH_SIZE).min(literals.len());
+        // Each literal came from a pattern `push_rule` already compiled,
+        // so building a plain substring search over them cannot fail.
+        let filter =
+            AhoCorasick::new(&literals[start..end]).expect("literals from already-valid patterns");
+        literal_batches.push(LiteralBatch {
+            filter,
+            rule: literal_rule[start..end].to_vec(),
+        });
+    }
+    Ok(RuleSet {
+        rules,
+        always,
+        literal_batches,
+    })
+}
+
+/// Byte strings that must be present, somewhere, in any line this pattern
+/// matches, so their absence rules the pattern out. Empty when no such
+/// literal could be derived (the rule must then always be tried): a class
+/// or repeat too open-ended (`.`, `[A-Z]`), a pattern that can match the
+/// empty string, or one whose required literal is itself empty.
+fn required_literals(pattern: &str) -> Vec<Vec<u8>> {
+    // `pattern` already compiled via `Regex::new` in `push_rule`, with the
+    // same default syntax, so parsing it again here cannot fail.
+    let hir = regex_syntax::parse(pattern).expect("already valid as a Regex");
+    let sequence = Extractor::new().extract(&hir);
+    if !sequence.is_finite() {
+        return Vec::new();
+    }
+    let literals = sequence.literals().unwrap_or(&[]);
+    if literals.is_empty() || literals.iter().any(|literal| literal.as_bytes().is_empty()) {
+        return Vec::new();
+    }
+    literals
+        .iter()
+        .map(|literal| literal.as_bytes().to_vec())
+        .collect()
 }
 
 fn push_rule(rules: &mut Vec<Compiled>, raw: &[u8], line_no: u64) -> Result<(), RulesError> {
@@ -422,15 +502,32 @@ impl RuleSet {
         }
     }
 
-    /// First rule that matches the raw line. `None` when none matches.
+    /// First rule that matches the raw line. `None` when none matches. Only
+    /// `always` plus the rules `literal_batches` found a literal for in
+    /// `raw` are tried, in ascending order, so a rule whose required
+    /// literal is absent from `raw` is never tried: cost no longer depends
+    /// on how many such rules come before the one that matches.
     fn hit(&self, raw: &str) -> Option<Hit<'_>> {
-        self.rules
-            .iter()
-            .find(|rule| rule.regex.is_match(raw))
-            .map(|rule| match &rule.kind {
-                Kind::Drop => Hit::Drop(rule.line_no),
-                Kind::Sample(fraction) => Hit::Sample(rule.line_no, fraction),
-            })
+        let mut candidates: Vec<usize> = Vec::with_capacity(self.always.len());
+        candidates.extend_from_slice(&self.always);
+        // Overlapping, not `find_iter`: one rule's literal can be a prefix
+        // of another's (`user` inside `user 1`), and a plain leftmost-first
+        // non-overlapping search would consume one and skip the other.
+        for batch in &self.literal_batches {
+            for found in batch.filter.find_overlapping_iter(raw) {
+                candidates.push(batch.rule[found.pattern().as_usize()]);
+            }
+        }
+        candidates.sort_unstable();
+        candidates.dedup();
+        let rule = candidates
+            .into_iter()
+            .map(|index| &self.rules[index])
+            .find(|rule| rule.regex.is_match(raw))?;
+        Some(match &rule.kind {
+            Kind::Drop => Hit::Drop(rule.line_no),
+            Kind::Sample(fraction) => Hit::Sample(rule.line_no, fraction),
+        })
     }
 }
 
@@ -609,7 +706,7 @@ fn finish_groups(groups: BTreeMap<String, Acc>, stats: &Stats) -> Effect {
 
 #[cfg(test)]
 mod tests {
-    use super::{effect, parse_rules, RulesError, MAX_RULES};
+    use super::{effect, parse_rules, RuleSet, RulesError, MAX_RULES};
     use crate::pattern::group;
     use crate::read::Line;
 
@@ -1173,6 +1270,53 @@ mod tests {
         assert_eq!(
             outcome.old_bytes - outcome.new_bytes,
             16_602_069_666_338_596_454
+        );
+    }
+
+    /// Before `RuleSet::hit` filtered rules by required literal, it tried
+    /// each rule's own regex in turn and stopped at the first match: a line
+    /// whose only matching rule sits after many thousands of non-matching
+    /// rules paid for all of them, every time. Placing the matching rule
+    /// last must cost about the same as placing it first.
+    #[test]
+    fn rule_position_does_not_change_hit_cost() {
+        fn rules_with_match_at(n: usize, matching_first: bool) -> RuleSet {
+            let mut source = String::new();
+            if matching_first {
+                source.push_str("drop ^weg\x24\n");
+            }
+            for index in 0..n {
+                source.push_str(&format!("drop ^nomatch-pattern-{index}\x24\n"));
+            }
+            if !matching_first {
+                source.push_str("drop ^weg\x24\n");
+            }
+            parse_rules(source.as_bytes()).unwrap()
+        }
+
+        fn timed(rules: &RuleSet, reps: usize) -> std::time::Duration {
+            let start = std::time::Instant::now();
+            for _ in 0..reps {
+                assert!(rules.keep("weg").is_zero());
+            }
+            start.elapsed()
+        }
+
+        let n = 3_000;
+        let reps = 300;
+        let first = rules_with_match_at(n, true);
+        let last = rules_with_match_at(n, false);
+        // Warm up so the first timed call does not pay for page faults.
+        timed(&first, 10);
+        timed(&last, 10);
+        let first_time = (0..3).map(|_| timed(&first, reps)).min().unwrap();
+        let last_time = (0..3).map(|_| timed(&last, reps)).min().unwrap();
+        let ratio = last_time.as_secs_f64() / first_time.as_secs_f64().max(1e-9);
+        // Order-independent: ratio stays near 1. A per-rule linear scan
+        // grows close to `n` (thousands) here.
+        assert!(
+            ratio < 5.0,
+            "matching rule last cost {ratio:.1}x matching rule first ({first_time:?} vs {last_time:?}, n={n})"
         );
     }
 }
