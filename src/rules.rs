@@ -164,8 +164,10 @@ pub fn parse_rules(data: &[u8]) -> Result<RuleSet, RulesError> {
         let end = (start + LITERAL_BATCH_SIZE).min(literals.len());
         // Each literal came from a pattern `push_rule` already compiled,
         // so building a plain substring search over them cannot fail.
-        let filter =
-            AhoCorasick::new(&literals[start..end]).expect("literals from already-valid patterns");
+        let filter = AhoCorasick::builder()
+            .ascii_case_insensitive(true)
+            .build(&literals[start..end])
+            .expect("literals from already-valid patterns");
         literal_batches.push(LiteralBatch {
             filter,
             rule: literal_rule[start..end].to_vec(),
@@ -224,13 +226,25 @@ fn usable_literals(extractor: &Extractor, hir: &Hir) -> Option<Vec<Vec<u8>>> {
     if literals.is_empty() || literals.iter().any(|literal| literal.as_bytes().is_empty()) {
         return None;
     }
-    Some(
-        literals
-            .iter()
-            .map(|literal| literal.as_bytes().to_vec())
-            .collect(),
-    )
+    // `(?i)` arrives as every ASCII case variant of the literal (up to 128
+    // per rule). Fold them to lowercase and drop duplicates: the filter
+    // matches ASCII-case-insensitively, so one literal covers them all.
+    let mut folded: Vec<Vec<u8>> = literals
+        .iter()
+        .map(|literal| literal.as_bytes().to_ascii_lowercase())
+        .collect();
+    folded.sort_unstable();
+    folded.dedup();
+    // Still many (e.g. non-ASCII case variants): too costly to keep in the
+    // filter, so this strategy is not usable and the rule falls through.
+    if folded.len() > MAX_LITERALS_PER_RULE {
+        return None;
+    }
+    Some(folded)
 }
+
+/// Most literals one rule may add to the filter after case folding.
+const MAX_LITERALS_PER_RULE: usize = 8;
 
 fn push_rule(rules: &mut Vec<Compiled>, raw: &[u8], line_no: u64) -> Result<(), RulesError> {
     let raw = raw.strip_suffix(b"\r").unwrap_or(raw);
@@ -1458,5 +1472,36 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// `(?i)` used to be written out as every case variant of its literal
+    /// (up to 128 per rule), which cost hundreds of MB at 20,000 rules.
+    /// One folded literal per rule must do, matched ASCII-case-insensitively.
+    #[test]
+    fn case_insensitive_rules_need_one_literal() {
+        for pattern in [
+            "(?i)nomatch-pattern-1",
+            ".*(?i)nomatch-pattern-1",
+            ".*(?i)nomatch.*pattern-1.*",
+        ] {
+            let literals = super::required_literals(pattern);
+            assert_eq!(literals.len(), 1, "{pattern}: {literals:?}");
+        }
+    }
+
+    #[test]
+    fn case_insensitive_rules_keep_first_match() {
+        let rules =
+            parse_rules(b"drop (?i)error\nsample 0.5 .*(?i)warn.*\ndrop (?i)Stra\xc3\x9fe\n")
+                .unwrap();
+        let line = |raw: &str| match rules.hit(raw) {
+            Some(super::Hit::Drop(line)) | Some(super::Hit::Sample(line, _)) => Some(line),
+            None => None,
+        };
+        assert_eq!(line("an ERROR here"), Some(1));
+        assert_eq!(line("eRrOr and WaRn"), Some(1));
+        assert_eq!(line("x WARN y"), Some(2));
+        assert_eq!(line("STRA\u{1e9e}E"), Some(3));
+        assert_eq!(line("nothing"), None);
     }
 }
