@@ -586,13 +586,19 @@ fn cut_key_before_sep_ws(input: &str, start: usize, end: usize) -> usize {
 
 /// Key characters, plus a `\uXXXX` that decodes to one, plus an IP or e-mail
 /// glued onto that run. `password-10.0.0.1` and `pass\u0077ord` stay one key.
-/// How far past `start` [`sticky_end`] will chase a chain of glued
-/// addresses. Longer than any real key plus one glued IP or e-mail
-/// (`[fe80::1%eth0]:443` and an RFC 5321 address both fit many times over),
-/// so no real match is cut short. Bounding it is what keeps a noisy line
-/// that merely looks address-shaped from making `sticky_end` rescan a chain
-/// that grows with the length of the line itself.
+/// How far past the key's own first run [`sticky_end`] will chase a chain of
+/// glued addresses. Counted from the end of that run, not from `start`, so a
+/// long key name does not eat into it; and checked only before a new glue
+/// step, so one glued address always lands whole. Bounding it is what keeps
+/// a noisy line that merely looks address-shaped from making `sticky_end`
+/// rescan a chain that grows with the length of the line itself.
 const MAX_GLUE_SPAN: usize = 256;
+
+/// The longest IP or e-mail one glue step will look for, counted from where
+/// the address starts: a 64-byte local part, `@` and a 255-byte domain. The
+/// probe window is cut there, so an address starting further back than this
+/// before the current end cannot reach past it and is not tried.
+const MAX_GLUE_ADDR: usize = 64 + 1 + 255;
 
 /// How far [`glue_span`] and [`glue_email`] have already looked, within one
 /// [`sticky_end`] call, for an IP or e-mail starting at or after a given
@@ -617,14 +623,15 @@ impl GlueCursor {
 }
 
 fn sticky_end(input: &str, start: usize) -> usize {
-    let mut end = start;
+    let mut end = start + key_char_run(input, start);
+    let base = end;
     let mut cursor = GlueCursor::new(start);
     loop {
         end += key_char_run(input, end);
-        if end - start >= MAX_GLUE_SPAN {
+        if end - base >= MAX_GLUE_SPAN {
             return end;
         }
-        match glue_mask(input, start, &mut cursor, end) {
+        match glue_mask(input, &mut cursor, end) {
             Some(next) if next > end => end = next,
             _ => return end,
         }
@@ -688,7 +695,7 @@ fn decode_key_escapes(raw: &str) -> String {
 }
 
 /// Round down to the nearest char boundary at or before `idx`, so a probe
-/// window cut at [`MAX_GLUE_SPAN`] never splits a multi-byte char.
+/// window cut at [`MAX_GLUE_ADDR`] never splits a multi-byte char.
 fn char_boundary_floor(input: &str, mut idx: usize) -> usize {
     while !input.is_char_boundary(idx) {
         idx -= 1;
@@ -696,31 +703,48 @@ fn char_boundary_floor(input: &str, mut idx: usize) -> usize {
     idx
 }
 
-fn glue_mask(input: &str, start: usize, cursor: &mut GlueCursor, end: usize) -> Option<usize> {
+fn glue_mask(input: &str, cursor: &mut GlueCursor, end: usize) -> Option<usize> {
     let next = input[end..].chars().next()?;
     if matches!(next, '.' | ':' | '[') {
-        if let Some(ip_end) = glue_span(input, start, &mut cursor.ip, end, ip_len) {
+        if let Some(ip_end) = glue_span(input, &mut cursor.ip, end, ip_len) {
             return Some(ip_end);
         }
     }
     if next == '@' || next == '"' {
-        return glue_email(input, start, &mut cursor.email, end);
+        return glue_email(input, &mut cursor.email, end);
     }
     None
 }
 
+/// First position worth trying for an address that has to reach past `end`:
+/// the cursor, or [`MAX_GLUE_ADDR`] before `end` if that is later.
+fn glue_first(input: &str, cursor: usize, end: usize) -> usize {
+    let floor = end.saturating_sub(MAX_GLUE_ADDR);
+    if cursor >= floor {
+        return cursor;
+    }
+    let mut i = floor;
+    while !input.is_char_boundary(i) {
+        i += 1;
+    }
+    i
+}
+
+/// The probe window for an address starting at `i`.
+fn glue_window_end(input: &str, i: usize) -> usize {
+    char_boundary_floor(input, (i + MAX_GLUE_ADDR).min(input.len()))
+}
+
 fn glue_span(
     input: &str,
-    start: usize,
     cursor: &mut usize,
     end: usize,
     len_at: fn(&str, usize) -> Option<usize>,
 ) -> Option<usize> {
-    let window_end = char_boundary_floor(input, (start + MAX_GLUE_SPAN).min(input.len()));
-    let probe = &input[..window_end];
-    let mut i = *cursor;
+    let mut i = glue_first(input, *cursor, end);
     while i <= end {
-        if probe.is_char_boundary(i) {
+        if input.is_char_boundary(i) {
+            let probe = &input[..glue_window_end(input, i)];
             if let Some(len) = len_at(probe, i) {
                 let span_end = i + len;
                 if span_end > end {
@@ -739,12 +763,11 @@ fn glue_span(
     None
 }
 
-fn glue_email(input: &str, start: usize, cursor: &mut usize, end: usize) -> Option<usize> {
-    let window_end = char_boundary_floor(input, (start + MAX_GLUE_SPAN).min(input.len()));
-    let mut i = *cursor;
+fn glue_email(input: &str, cursor: &mut usize, end: usize) -> Option<usize> {
+    let mut i = glue_first(input, *cursor, end);
     while i <= end {
         if input.is_char_boundary(i) && boundary_at(input, i) {
-            if let Some(hit) = email_re().find(&input[i..window_end]) {
+            if let Some(hit) = email_re().find(&input[i..glue_window_end(input, i)]) {
                 if hit.start() == 0 {
                     let email_end = i + hit.end();
                     if email_end > end && boundary_at_end(input, email_end) {
@@ -760,6 +783,7 @@ fn glue_email(input: &str, start: usize, cursor: &mut usize, end: usize) -> Opti
         let ch = input[i..].chars().next()?;
         i += ch.len_utf8();
     }
+    *cursor = i;
     None
 }
 
@@ -2211,6 +2235,29 @@ mod tests {
     /// bound here is generous (seconds, for a line far smaller than
     /// `read::MAX_LINE_BYTES`) so this only fails on that blow-up, not on
     /// ordinary machine slowness.
+    /// A key glued onto a long e-mail, then `=` or `: ` and a value, around
+    /// the 256 bytes the glue scan used to be cut at: the window was counted
+    /// from the start of the key, so the e-mail no longer fit, the key ended
+    /// at the `@` and `rosebud` stayed in the output.
+    #[test]
+    fn key_glued_to_long_email_hides_secret_around_256_bytes() {
+        for total in [250, 255, 256, 257, 264, 265, 266, 267, 300, 330] {
+            for sep in ["= ", ": "] {
+                let fixed = "password-user@".len() + ".com".len() + sep.len() + "rosebud".len();
+                let domain = "a".repeat(total - fixed) + ".com";
+                let line = format!("password-user@{domain}{sep}rosebud");
+                assert_eq!(line.len(), total);
+                let masked = mask(&line);
+                assert_eq!(
+                    masked,
+                    format!("<EMAIL>{sep}<SECRET>"),
+                    "{} bytes",
+                    line.len()
+                );
+            }
+        }
+    }
+
     #[test]
     fn noisy_glued_email_chain_stays_fast() {
         let noisy = "a@a.co".repeat(20_000 / 6);
