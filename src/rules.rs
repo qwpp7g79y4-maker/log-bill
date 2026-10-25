@@ -2,7 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use aho_corasick::AhoCorasick;
 use regex::Regex;
-use regex_syntax::hir::literal::Extractor;
+use regex_syntax::hir::literal::{ExtractKind, Extractor};
+use regex_syntax::hir::{Hir, HirKind};
 
 use crate::mask;
 use crate::pattern::Stats;
@@ -182,22 +183,53 @@ pub fn parse_rules(data: &[u8]) -> Result<RuleSet, RulesError> {
 /// literal could be derived (the rule must then always be tried): a class
 /// or repeat too open-ended (`.`, `[A-Z]`), a pattern that can match the
 /// empty string, or one whose required literal is itself empty.
+///
+/// Tried in order: the pattern's prefix, then its suffix (`.*foo`,
+/// `\dfoo`), then the prefix of each of the first
+/// `INNER_LITERAL_STARTS` tails of a top-level concatenation
+/// (`.*foo.*`): any match of the whole contains a match of every tail, so
+/// a tail's literals are required too.
 fn required_literals(pattern: &str) -> Vec<Vec<u8>> {
     // `pattern` already compiled via `Regex::new` in `push_rule`, with the
     // same default syntax, so parsing it again here cannot fail.
     let hir = regex_syntax::parse(pattern).expect("already valid as a Regex");
-    let sequence = Extractor::new().extract(&hir);
-    if !sequence.is_finite() {
-        return Vec::new();
+    let prefix = Extractor::new();
+    let mut suffix = Extractor::new();
+    suffix.kind(ExtractKind::Suffix);
+    if let Some(literals) = usable_literals(&prefix, &hir) {
+        return literals;
     }
-    let literals = sequence.literals().unwrap_or(&[]);
+    if let Some(literals) = usable_literals(&suffix, &hir) {
+        return literals;
+    }
+    if let HirKind::Concat(parts) = hir.kind() {
+        for start in 1..parts.len().min(INNER_LITERAL_STARTS + 1) {
+            let tail = Hir::concat(parts[start..].to_vec());
+            if let Some(literals) = usable_literals(&prefix, &tail) {
+                return literals;
+            }
+        }
+    }
+    Vec::new()
+}
+
+/// Tails of a top-level concatenation tried for an inner literal. Bounded
+/// so a pattern with very many top-level parts cannot cost quadratic time
+/// at load.
+const INNER_LITERAL_STARTS: usize = 16;
+
+fn usable_literals(extractor: &Extractor, hir: &Hir) -> Option<Vec<Vec<u8>>> {
+    let sequence = extractor.extract(hir);
+    let literals = sequence.literals()?;
     if literals.is_empty() || literals.iter().any(|literal| literal.as_bytes().is_empty()) {
-        return Vec::new();
+        return None;
     }
-    literals
-        .iter()
-        .map(|literal| literal.as_bytes().to_vec())
-        .collect()
+    Some(
+        literals
+            .iter()
+            .map(|literal| literal.as_bytes().to_vec())
+            .collect(),
+    )
 }
 
 fn push_rule(rules: &mut Vec<Compiled>, raw: &[u8], line_no: u64) -> Result<(), RulesError> {
@@ -504,26 +536,46 @@ impl RuleSet {
 
     /// First rule that matches the raw line. `None` when none matches. Only
     /// `always` plus the rules `literal_batches` found a literal for in
-    /// `raw` are tried, in ascending order, so a rule whose required
+    /// `raw` are tried, in ascending order and stopping at the first match, so a rule whose required
     /// literal is absent from `raw` is never tried: cost no longer depends
     /// on how many such rules come before the one that matches.
     fn hit(&self, raw: &str) -> Option<Hit<'_>> {
-        let mut candidates: Vec<usize> = Vec::with_capacity(self.always.len());
-        candidates.extend_from_slice(&self.always);
+        let mut found: Vec<usize> = Vec::new();
         // Overlapping, not `find_iter`: one rule's literal can be a prefix
         // of another's (`user` inside `user 1`), and a plain leftmost-first
         // non-overlapping search would consume one and skip the other.
         for batch in &self.literal_batches {
-            for found in batch.filter.find_overlapping_iter(raw) {
-                candidates.push(batch.rule[found.pattern().as_usize()]);
+            for literal in batch.filter.find_overlapping_iter(raw) {
+                found.push(batch.rule[literal.pattern().as_usize()]);
             }
         }
-        candidates.sort_unstable();
-        candidates.dedup();
-        let rule = candidates
-            .into_iter()
-            .map(|index| &self.rules[index])
-            .find(|rule| rule.regex.is_match(raw))?;
+        found.sort_unstable();
+        found.dedup();
+        // `always` is already sorted and disjoint from `found`: merge the two
+        // in ascending order and stop at the first match, without copying
+        // or sorting `always` per line.
+        let (mut a, mut f) = (0, 0);
+        let rule = loop {
+            let index = match (self.always.get(a), found.get(f)) {
+                (Some(&x), Some(&y)) if x < y => {
+                    a += 1;
+                    x
+                }
+                (_, Some(&y)) => {
+                    f += 1;
+                    y
+                }
+                (Some(&x), None) => {
+                    a += 1;
+                    x
+                }
+                (None, None) => return None,
+            };
+            let rule = &self.rules[index];
+            if rule.regex.is_match(raw) {
+                break rule;
+            }
+        };
         Some(match &rule.kind {
             Kind::Drop => Hit::Drop(rule.line_no),
             Kind::Sample(fraction) => Hit::Sample(rule.line_no, fraction),
@@ -1318,5 +1370,93 @@ mod tests {
             ratio < 5.0,
             "matching rule last cost {ratio:.1}x matching rule first ({first_time:?} vs {last_time:?}, n={n})"
         );
+    }
+
+    /// Rules with no literal prefix (`.*foo`, `\dfoo`, `[a-z]+ foo`) still
+    /// keep first-rule-wins order among themselves and with prefix rules.
+    #[test]
+    fn rules_without_literal_prefix_keep_first_match() {
+        let rules = parse_rules(
+            b"drop .*nomatch\x24\nsample 0.5 \\dfoo\ndrop [a-z]+ foo\ndrop ^9foo\ndrop .*foo.*bar.*\n",
+        )
+        .unwrap();
+        let line = |raw: &str| match rules.hit(raw) {
+            Some(super::Hit::Drop(line)) | Some(super::Hit::Sample(line, _)) => Some(line),
+            None => None,
+        };
+        assert_eq!(line("9foo"), Some(2));
+        assert_eq!(line("abc foo"), Some(3));
+        assert_eq!(line("x nomatch"), Some(1));
+        assert_eq!(line("x nomatch 9foo"), Some(2));
+        assert_eq!(line("zz foo bar"), Some(3));
+        assert_eq!(line("FOO-bar"), None);
+        assert_eq!(line("Xfoo Ybar"), Some(5));
+        assert_eq!(line("weg"), None);
+    }
+
+    /// Rules without a literal prefix used to sit in `always`, which
+    /// `RuleSet::hit` copied and sorted on every log line: linear in the
+    /// rule count even with the matching rule first, and a full regex scan
+    /// with it last. Both must now cost about the same as one rule alone.
+    #[test]
+    fn rules_without_literal_prefix_do_not_scale_hit_cost() {
+        fn rules_with_match_at(shape: &str, n: usize, matching_first: bool) -> RuleSet {
+            let mut source = String::new();
+            if matching_first {
+                source.push_str("drop ^weg\x24\n");
+            }
+            for index in 0..n {
+                source.push_str(&format!(
+                    "drop {}\n",
+                    shape.replace("{i}", &index.to_string())
+                ));
+            }
+            if !matching_first {
+                source.push_str("drop ^weg\x24\n");
+            }
+            parse_rules(source.as_bytes()).unwrap()
+        }
+
+        fn timed(rules: &RuleSet, reps: usize) -> std::time::Duration {
+            timed_best(|| {
+                for _ in 0..reps {
+                    assert!(rules.keep("weg").is_zero());
+                }
+            })
+        }
+
+        fn timed_best(mut run: impl FnMut()) -> std::time::Duration {
+            run();
+            (0..3)
+                .map(|_| {
+                    let start = std::time::Instant::now();
+                    run();
+                    start.elapsed()
+                })
+                .min()
+                .unwrap()
+        }
+
+        let n = 3_000;
+        let reps = 300;
+        let alone = timed(&rules_with_match_at("", 0, true), reps);
+        for shape in [
+            ".*nomatch-pattern-{i}\x24",
+            "\\dnomatch-pattern-{i}",
+            "[a-z]+ nomatch-pattern-{i}",
+            ".*nomatch.*pattern-{i}.*",
+        ] {
+            for matching_first in [true, false] {
+                let rules = rules_with_match_at(shape, n, matching_first);
+                let time = timed(&rules, reps);
+                let ratio = time.as_secs_f64() / alone.as_secs_f64().max(1e-9);
+                // A per-line copy/sort or regex scan over `n` rules is
+                // hundreds of times one rule's cost here.
+                assert!(
+                    ratio < 25.0,
+                    "{shape} first={matching_first}: {ratio:.1}x one rule ({time:?} vs {alone:?}, n={n})"
+                );
+            }
+        }
     }
 }
