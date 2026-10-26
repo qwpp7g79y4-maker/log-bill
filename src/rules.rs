@@ -189,12 +189,13 @@ pub fn parse_rules(data: &[u8]) -> Result<RuleSet, RulesError> {
 /// Candidates: the pattern's prefix, its suffix (`.*foo`, `\dfoo`), and the
 /// prefix of each of the first `INNER_LITERAL_STARTS` tails of a top-level
 /// concatenation (`.*foo.*`): any match of the whole contains a match of
-/// every tail, so a tail's literals are required too. The longest one wins;
-/// on a tie the later literal wins, so a prefix (which comes first, and is
-/// the part rules are likeliest to share) loses to an equally long later
-/// one. Rules sharing an inexact prefix (`^ERROR .*code=7`) are thus told
-/// apart by their rarer part instead of all becoming candidates for every
-/// line with that prefix.
+/// every tail, so a tail's literals are required too. The candidate with the
+/// highest `strength` wins: with one literal that is its length, with several
+/// (e.g. `(?i)` variants) the length of the shortest member. On a tie the
+/// later candidate wins, so a prefix (which comes first, and is the part
+/// rules are likeliest to share) loses to an equally strong later one. Rules sharing an inexact
+/// prefix (`^ERROR .*code=7`) are thus told apart by their rarer part instead
+/// of all becoming candidates for every line with that prefix.
 fn required_literals(pattern: &str) -> Vec<Vec<u8>> {
     // `pattern` already compiled via `Regex::new` in `push_rule`, with the
     // same default syntax, so parsing it again here cannot fail.
@@ -800,7 +801,7 @@ fn finish_groups(groups: BTreeMap<String, Acc>, stats: &Stats) -> Effect {
 
 #[cfg(test)]
 mod tests {
-    use super::{effect, parse_rules, RuleSet, RulesError, MAX_RULES};
+    use super::{effect, parse_rules, strength, RuleSet, RulesError, MAX_RULES};
     use crate::pattern::group;
     use crate::read::Line;
 
@@ -1596,5 +1597,12 @@ mod tests {
                 "first={matching_first}: {ratio:.1}x one rule ({time:?} vs {alone:?}, n=20000)"
             );
         }
+    }
+    #[test]
+    fn strength_is_the_length_of_the_shortest_literal() {
+        let lit = |text: &str| text.as_bytes().to_vec();
+        assert_eq!(strength(&[]), 0);
+        assert_eq!(strength(&[lit("error")]), 5);
+        assert_eq!(strength(&[lit("warning"), lit("err"), lit("failure")]), 3);
     }
 }
