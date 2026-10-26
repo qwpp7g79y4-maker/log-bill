@@ -197,3 +197,92 @@ fn budget_past_the_f64_range_is_rejected_cleanly() {
     assert_eq!(code, 3, "{err}");
     assert_eq!(err, "invalid budget\n");
 }
+
+fn pattern_texts(value: &serde_json::Value) -> Vec<String> {
+    value["patterns"]
+        .as_array()
+        .expect("patterns")
+        .iter()
+        .map(|pattern| pattern["text"].as_str().expect("text").to_owned())
+        .collect()
+}
+
+fn pattern_ids(value: &serde_json::Value) -> Vec<String> {
+    value["patterns"]
+        .as_array()
+        .expect("patterns")
+        .iter()
+        .map(|pattern| pattern["id"].as_str().expect("id").to_owned())
+        .collect()
+}
+
+#[test]
+fn last_line_ending_in_a_lone_cr_masks_the_number() {
+    // No `\n`: the trailing `\r` is not part of the text, but still weighs 1.
+    // 8 (`id 12345`) + 1 (`\r`) + 1 = 10 bytes.
+    let log = tmp("edge-trailing-lone-cr.log", b"id 12345\r");
+    let (code, value, err) = scan_json(&log, &[]);
+    assert_eq!(code, 0, "{err}");
+    assert_eq!(value["totals"]["lines"], 1);
+    assert_eq!(value["totals"]["bytes"], 10);
+    assert_eq!(pattern_texts(&value), ["id <NUM>"]);
+}
+
+#[test]
+fn double_cr_before_lf_masks_the_number() {
+    // `id 12345` (8) + `\r\r\n` (3) = 11 bytes.
+    let log = tmp("edge-double-cr.log", b"id 12345\r\r\n");
+    let (code, value, err) = scan_json(&log, &[]);
+    assert_eq!(code, 0, "{err}");
+    assert_eq!(value["totals"]["lines"], 1);
+    assert_eq!(value["totals"]["bytes"], 11);
+    assert_eq!(pattern_texts(&value), ["id <NUM>"]);
+}
+
+#[test]
+fn lf_crlf_and_double_cr_lines_share_one_pattern_id() {
+    let ids = [
+        ("edge-same-lf.log", &b"took 250 ms\n"[..]),
+        ("edge-same-crlf.log", &b"took 250 ms\r\n"[..]),
+        ("edge-same-crcrlf.log", &b"took 250 ms\r\r\n"[..]),
+        ("edge-same-lone-cr.log", &b"took 250 ms\r"[..]),
+    ]
+    .map(|(name, bytes)| {
+        let (code, value, err) = scan_json(&tmp(name, bytes), &[]);
+        assert_eq!(code, 0, "{err}");
+        pattern_ids(&value)
+    });
+    assert_eq!(ids[0].len(), 1);
+    for other in &ids[1..] {
+        assert_eq!(&ids[0], other, "{ids:?}");
+    }
+}
+
+#[test]
+fn a_thousand_double_cr_lines_are_one_pattern() {
+    let mut raw = Vec::new();
+    for n in 0..1000 {
+        raw.extend_from_slice(format!("req done {n}\r\r\n").as_bytes());
+    }
+    let log = tmp("edge-thousand-crcrlf.log", &raw);
+    let (code, value, err) = scan_json(&log, &[]);
+    assert_eq!(code, 0, "{err}");
+    assert_eq!(value["totals"]["lines"], 1000);
+    assert_eq!(pattern_texts(&value), ["req done <NUM>"]);
+}
+
+#[test]
+fn end_anchored_rule_matches_with_any_line_ending() {
+    let rules = tmp("edge-anchor.rules", b"drop ^sample this \\d$\n");
+    for (name, bytes) in [
+        ("edge-anchor-lf.log", &b"sample this 2\n"[..]),
+        ("edge-anchor-crlf.log", &b"sample this 2\r\n"[..]),
+        ("edge-anchor-lone-cr.log", &b"sample this 2\r"[..]),
+        ("edge-anchor-crcrlf.log", &b"sample this 2\r\r\n"[..]),
+    ] {
+        let log = tmp(name, bytes);
+        let (code, out, err) = run(&["scan", "--rules", file_path(&rules), file_path(&log)]);
+        assert_eq!(code, 0, "{name}: {out}\n{err}");
+        assert!(out.contains("-> 0 lines, 0 bytes"), "{name}: {out}");
+    }
+}
