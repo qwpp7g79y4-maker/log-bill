@@ -81,7 +81,8 @@ impl std::error::Error for ReadError {}
 /// Reads a text file one line at a time. Each line weighs its raw bytes plus 1
 /// for the newline; without `\n` that +1 still counts. Every `\r` counts. Every
 /// `\r` at the end of a line (`\r\n`, `\r\r\n`, or a last line ending in `\r`
-/// without `\n`) is left out of the line text. Empty lines are dropped. Invalid UTF-8 counts and is read lossily.
+/// without `\n`) is left out of the line text. Empty lines are dropped. Invalid
+/// UTF-8 counts and is read lossily.
 /// One UTF-8 byte order mark at the start is skipped for the line text and
 /// still counts in the bytes of the first line. UTF-16 and UTF-32 are
 /// refused, see [`detect_wide`]. The whole file is not held in memory.
