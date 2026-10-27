@@ -27,7 +27,13 @@ struct Cli {
     window: Option<String>,
 
     /// Days in a month for the extrapolation.
-    #[arg(long, global = true, default_value_t = 30, value_name = "DAYS")]
+    #[arg(
+        long,
+        global = true,
+        default_value_t = 30,
+        value_name = "DAYS",
+        value_parser = parse_days_per_month
+    )]
     days_per_month: u32,
 
     /// Price file (JSON).
@@ -114,6 +120,14 @@ fn main() {
         Err(error) => report(error),
     };
     std::process::exit(code);
+}
+
+fn parse_days_per_month(raw: &str) -> Result<u32, String> {
+    match raw.parse::<u32>() {
+        Ok(0) => Err("--days-per-month must be at least 1".to_string()),
+        Ok(days) => Ok(days),
+        Err(_) => Err(format!("invalid value '{raw}' for --days-per-month")),
+    }
 }
 
 fn report(error: clap::Error) -> i32 {

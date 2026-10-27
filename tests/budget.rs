@@ -649,3 +649,35 @@ fn nested(depth: usize, object: bool) -> String {
     }
     json
 }
+
+#[test]
+fn days_per_month_zero_is_exit_3_one_and_default_work() {
+    let log = million("days-zero.log");
+    let prices = prices(
+        "days-zero-prices.json",
+        r#"{"currency":"EUR","source":"scratchpad","date":"1999-01-02","ingest_per_gb":0.10}"#,
+    );
+    let base = |days: Option<&'static str>| {
+        let mut args = vec!["scan", "--window", "1m", "--budget-month", "0.01"];
+        if let Some(days) = days {
+            args.extend(["--days-per-month", days]);
+        }
+        args.extend(["--prices", file_path(&prices), file_path(&log)]);
+        run(&args)
+    };
+
+    let (code, out, err) = base(Some("0"));
+    assert_eq!(code, 3, "{err}");
+    assert!(out.is_empty(), "{out}");
+    assert!(err.contains("--days-per-month must be at least 1"), "{err}");
+
+    // 1 000 000 bytes per minute is 43.2 GB a day at 0.10 per GB, far above 0.01.
+    let (code, _, err) = base(Some("1"));
+    assert_eq!(code, 1, "{err}");
+    let (code, _, err) = base(None);
+    assert_eq!(code, 1, "{err}");
+    let (code, _, err) = base(Some("30"));
+    assert_eq!(code, 1, "{err}");
+    let _ = std::fs::remove_file(&log);
+    let _ = std::fs::remove_file(&prices);
+}

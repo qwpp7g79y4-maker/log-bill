@@ -13,7 +13,7 @@ Run `log-bill --help` or `log-bill scan --help` for the built-in help. Combinati
 | `--format` | scan and diff | Input format, `text` or `jsonl`. Default `text`. |
 | `--message-field` | scan and diff, only with `--format jsonl` | Take the pattern from this JSON field. |
 | `--window` | scan; for diff only with `--prices` or `--json` | Time window of the sample, for example `15m`. Extrapolates to a day and a month. |
-| `--days-per-month` | scan and diff, only with `--window` | Days in a month. Default 30. |
+| `--days-per-month` | scan and diff, only with `--window` | Days in a month, at least 1 (0 is exit 3). Default 30. |
 | `--prices` | scan and diff, only with `--window` | Your own price file (JSON). |
 | `--rules` | scan and diff | Simulate `drop` and `sample` rules. |
 | `--top` | scan | Show the N largest patterns; the rest as one `other` line. |
