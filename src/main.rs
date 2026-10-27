@@ -124,9 +124,8 @@ fn main() {
 
 fn parse_days_per_month(raw: &str) -> Result<u32, String> {
     match raw.parse::<u32>() {
-        Ok(0) => Err("--days-per-month must be at least 1".to_string()),
+        Ok(0) | Err(_) => Err("must be a whole number of at least 1".to_string()),
         Ok(days) => Ok(days),
-        Err(_) => Err(format!("invalid value '{raw}' for --days-per-month")),
     }
 }
 

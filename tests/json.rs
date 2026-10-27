@@ -963,7 +963,10 @@ fn zero_difference_empty_input_and_top() {
     let _ = std::fs::remove_file(&day0);
     assert_eq!(code, 3);
     assert!(out.is_empty(), "{out}");
-    assert!(err.contains("--days-per-month must be at least 1"), "{err}");
+    assert!(
+        err.contains("must be a whole number of at least 1"),
+        "{err}"
+    );
 }
 
 #[test]

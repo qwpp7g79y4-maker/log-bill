@@ -669,7 +669,10 @@ fn days_per_month_zero_is_exit_3_one_and_default_work() {
     let (code, out, err) = base(Some("0"));
     assert_eq!(code, 3, "{err}");
     assert!(out.is_empty(), "{out}");
-    assert!(err.contains("--days-per-month must be at least 1"), "{err}");
+    assert!(
+        err.contains("must be a whole number of at least 1"),
+        "{err}"
+    );
 
     // 1 000 000 bytes per minute is 43.2 GB a day at 0.10 per GB, far above 0.01.
     let (code, _, err) = base(Some("1"));
@@ -680,4 +683,22 @@ fn days_per_month_zero_is_exit_3_one_and_default_work() {
     assert_eq!(code, 1, "{err}");
     let _ = std::fs::remove_file(&log);
     let _ = std::fs::remove_file(&prices);
+}
+
+/// clap already prefixes `invalid value '<x>' for '--days-per-month <DAYS>':`, so our own text
+/// must not repeat the value or the flag name.
+#[test]
+fn days_per_month_error_names_flag_and_value_once() {
+    for value in ["abc", "0"] {
+        let (code, out, err) = run(&["scan", "--days-per-month", value, "missing.log"]);
+        assert_eq!(code, 3, "{err}");
+        assert!(out.is_empty(), "{out}");
+        let first = err.lines().next().expect("error line");
+        assert_eq!(first.matches("--days-per-month").count(), 1, "{err}");
+        assert_eq!(first.matches(&format!("'{value}'")).count(), 1, "{err}");
+        assert!(
+            first.ends_with(": must be a whole number of at least 1"),
+            "{err}"
+        );
+    }
 }
