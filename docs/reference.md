@@ -20,7 +20,7 @@ Run `log-bill --help` or `log-bill scan --help` for the built-in help. Combinati
 | `--explain` | scan, also with `--json` | Show the masks per pattern and the full calculation. |
 | `--json` | scan and diff | JSON output with `schema_version` 1. |
 | `--budget-month` | scan, with `--window` and `--prices` | Exit 1 if the monthly ingest cost after rules is above this amount. The indexed-event estimate is not included. |
-| `--max-new-share` | diff | Exit 1 if new patterns are more than PCT percent of the new bytes. |
+| `--max-new-share` | diff | Exit 1 if new patterns are more than PCT percent of the new bytes. PCT is 0 to 100; above 100 is exit 3. |
 | `--retention` | scan, only with `--window` | Indexed-log retention in days: `3`, `7`, `15` or `30`. Default 15 when an indexed option is set. |
 | `--billing` | scan, only with `--window` | Indexed-log plan: `annual`, `monthly` or `ondemand`. Default `ondemand` when an indexed option is set. |
 | `--indexed-price` | scan, only with `--window` | USD per 1M indexed events. Overrides the list price. Same decimal rules as a price in the price file. |
@@ -100,7 +100,7 @@ If the output cannot be written, for example because the disk is full, the exit 
 
 A log file, price file or rules file must be a regular file, except the log file argument given as `-` (see [Options](#options)), which reads standard input instead. A FIFO, a directory or anything else is refused with exit 2 without waiting for a writer to open it. A `gb_bytes` that is a fraction such as `0.5`, 0 or negative, or a number outside the binary-float range, is exit 2; a price that is text instead of a number, a fraction that does not fit, or a price outside that range, gives `price file has a price that is not a number`. 128 or more nested arrays or objects gives `price file is nested too deeply`. The same key twice gives `price file has a duplicate key`. `sample 0,1` is not a valid fraction: exit 2 with `invalid rule on line 1 of the rules file`, without showing the line. A price, rules, or index-rules file over 8 MiB is exit 2 before it is read, with `price file is larger than 8 MiB`, `rules file is larger than 8 MiB` or `index rules file is larger than 8 MiB`. A rules or index-rules file with more than 300,000 rules is exit 2 with `rules file has more than 300000 rules` or `index rules file has more than 300000 rules`. The regular-file messages do not include the path, and no error message contains a raw log line.
 
-Every row below was run against the binary, and a test keeps it that way. A row with exit 3 has empty stdout. The message is the complete stderr; the binary adds a newline. `\n` in the last column is a newline inside the message. `--json` does not change a message. For `diff`, `--explain` is checked before `--top`, `--window`, `--days-per-month` and a valid index option, so its message wins. An invalid amount, an invalid percentage, an invalid retention, billing plan or indexed price, and `--prices` without a window are checked before `--explain`. On `scan`, a valid index option without `--window` is rejected before the index-rules file is opened.
+Every row below was run against the binary, and a test keeps it that way. A row with exit 3 has empty stdout. The message is the complete stderr; the binary adds a newline. `\n` in the last column is a newline inside the message. `--json` does not change a message. For `diff`, `--explain` is checked before `--top`, `--window`, `--days-per-month` and a valid index option, so its message wins. An invalid amount, an invalid percentage (including one above 100), an invalid retention, billing plan or indexed price, and `--prices` without a window are checked before `--explain`. On `scan`, a valid index option without `--window` is rejected before the index-rules file is opened.
 
 | Option | Applies to | Case | Wrong use | Exit | Message |
 | --- | --- | --- | --- | --- | --- |
@@ -141,6 +141,9 @@ Every row below was run against the binary, and a test keeps it that way. A row 
 | `--max-new-share` | diff | abc is not a percentage. | `diff --max-new-share abc OLD NEW` | 3 | `invalid percentage` |
 | `--max-new-share` | diff | `--explain` does not win: the percentage is checked first. | `diff --explain --max-new-share abc OLD NEW` | 3 | `invalid percentage` |
 | `--max-new-share` | diff | `--json` does not change the message. | `diff --json --max-new-share abc OLD NEW` | 3 | `invalid percentage` |
+| `--max-new-share` | diff | 101 is not clamped: more than 100 is refused. | `diff --max-new-share 101 OLD NEW` | 3 | `invalid percentage: must be at most 100` |
+| `--max-new-share` | diff | 100.01 is also above 100. | `diff --max-new-share 100.01 OLD NEW` | 3 | `invalid percentage: must be at most 100` |
+| `--max-new-share` | diff | `--explain` and `--json` do not change the message. | `diff --json --explain --max-new-share 1000 OLD NEW` | 3 | `invalid percentage: must be at most 100` |
 | `--retention` | scan | 5 is not 3, 7, 15 or 30. Checked before the window. | `scan --retention 5 file.log` | 3 | `invalid retention` |
 | `--retention` | diff | 5 is invalid, before the command check. | `diff --retention 5 OLD NEW` | 3 | `invalid retention` |
 | `--retention` | scan | Without a window. | `scan --retention 7 file.log` | 3 | `--retention only works together with --window` |

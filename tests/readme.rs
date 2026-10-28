@@ -558,6 +558,7 @@ fn option_and_error_tables_match_the_binary() {
             "invalid window\n",
             "invalid budget\n",
             "invalid percentage\n",
+            "invalid percentage: must be at most 100\n",
             "error: invalid value '0' for '--days-per-month <DAYS>': must be a whole number of at least 1\n\nFor more information, try '--help'.\n",
             "error: invalid value 'abc' for '--days-per-month <DAYS>': must be a whole number of at least 1\n\nFor more information, try '--help'.\n",
         ] {
