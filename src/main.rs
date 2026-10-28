@@ -60,7 +60,7 @@ struct Cli {
     #[arg(long, global = true, value_name = "AMOUNT")]
     budget_month: Option<String>,
 
-    /// Maximum share of new patterns, in percent.
+    /// Maximum share of new patterns, in percent (0 to 100).
     #[arg(long, global = true, value_name = "PCT")]
     max_new_share: Option<String>,
 
