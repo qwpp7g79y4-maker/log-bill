@@ -188,6 +188,67 @@ fn invalid_percentage_exit_3() {
 }
 
 #[test]
+fn percentage_above_100_too_big_for_the_counter_exit_3() {
+    // Decimal numbers that do not fit in a u128 are still above 100.
+    let message = "invalid percentage: must be at most 100\n";
+    let (old, new_sample) = old_and_new();
+    let old_path = old.to_str().expect("path");
+    let new_path = new_sample.to_str().expect("path");
+    let ten_pow_40 = format!("1{}", "0".repeat(40));
+    let sixty = "9".repeat(60);
+    let hundred_tail = format!("100.{}1", "0".repeat(39));
+    let wide_zero_whole = format!("{}101", "0".repeat(70));
+    for pct in [
+        ten_pow_40.as_str(),
+        "340282366920938463463374607431768211456",
+        sixty.as_str(),
+        hundred_tail.as_str(),
+        wide_zero_whole.as_str(),
+    ] {
+        for extra in [vec![], vec!["--json"], vec!["--explain"]] {
+            let mut args = vec!["diff"];
+            args.extend(extra.iter().copied());
+            args.extend(["--max-new-share", pct, old_path, new_path]);
+            let (code, out, err) = run_exit(&args);
+            assert_eq!(code, 3, "{args:?}");
+            assert!(out.is_empty(), "{args:?}: {out}");
+            assert_eq!(err, message, "{args:?}");
+        }
+    }
+}
+
+#[test]
+fn percentage_longer_than_80_chars_stays_invalid() {
+    let (old, new_sample) = old_and_new();
+    let old_path = old.to_str().expect("path");
+    let new_path = new_sample.to_str().expect("path");
+    let long = "9".repeat(81);
+    let (code, out, err) = run_exit(&["diff", "--max-new-share", &long, old_path, new_path]);
+    assert_eq!(code, 3);
+    assert!(out.is_empty());
+    assert_eq!(err, "invalid percentage\n");
+}
+
+#[test]
+fn many_decimals_at_most_100_are_never_reported_as_above_100() {
+    // Not above 100: never "must be at most 100", and no panic.
+    let (old, new_sample) = old_and_new();
+    let old_path = old.to_str().expect("path");
+    let new_path = new_sample.to_str().expect("path");
+    let nines = format!("99.{}", "9".repeat(40));
+    let tiny = format!("0.{}1", "0".repeat(39));
+    let hundred_zeros = format!("100.{}", "0".repeat(40));
+    for pct in [nines.as_str(), tiny.as_str(), hundred_zeros.as_str()] {
+        let (code, _, err) = run_exit(&["diff", "--max-new-share", pct, old_path, new_path]);
+        assert!(!err.contains("must be at most 100"), "{pct}: {err}");
+        assert!(code == 0 || code == 1 || code == 3, "{pct}: {code}");
+        if code == 3 {
+            assert_eq!(err, "invalid percentage\n", "{pct}");
+        }
+    }
+}
+
+#[test]
 fn percentage_above_100_exit_3() {
     // 100 and 100.0 stay valid. Anything above is refused, not clamped.
     let message = "invalid percentage: must be at most 100\n";
