@@ -2,12 +2,21 @@
 
 All notable changes to this project are documented in this file.
 
-## [Unreleased]
+## [0.2.1] - 2026-10-28
 
 ### Fixed
 
 - `diff --max-new-share` above 100 is now refused with exit 3 and `invalid percentage: must be at most 100`, where such a value was accepted before. This also holds for numbers too big for the internal counter, such as `1` followed by 40 zeros. The help text now names the range, 0 to 100.
 - `--rules`, `--index-rules` and `--prices` read the whole file through a plain `read_to_end` with no bound, unlike the log path's capped, streamed reading. A rules file of 3,000,000 lines (62 MB) pushed peak RSS to 14.4 GB, because every rule stays a compiled regex for the run. Each is now refused with exit 2 before it is read if larger than 8 MiB, and `--rules`/`--index-rules` is refused above 300,000 rules, both with a message naming the limit.
+- `--days-per-month 0` is refused with exit 3, so a monthly budget can no longer pass on a zero cost. An invalid value, such as 0 or text, gives one clear message, `must be a whole number of at least 1`, instead of repeating clap's prefix.
+- A trailing carriage return is trimmed from every line, also `\r\r\n` and a last line ending in `\r` without `\n`, so numbers still mask and `$` rules still match on files with Windows line endings. A line cut at 1 MiB keeps its `\r`.
+- Masking a line made of repeated address-shaped noise, such as `a@a.co` over and over, no longer takes time cubic in the line length: a 1 MiB line took over a minute before and now takes about 4 seconds. A long glued e-mail address in front of a secret is still masked.
+- `--rules` and `--index-rules` no longer slow down with the position of the matching rule: with 50,001 rules, a line matched only by the last rule took 229 seconds over 200,000 lines before and about 2 seconds now. First rule wins, as before.
+
+### Docs
+
+- The reference tables document the usage error for an invalid `--days-per-month` and that `--days-per-month 0` is exit 3, and the exit 3 error for `diff --max-new-share` above 100.
+- The README says that large logs need a release build, not `cargo run`.
 
 ## [0.2.0] - 2026-10-24
 
