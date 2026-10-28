@@ -217,6 +217,9 @@ fn execute(cli: &Cli, days_explicit: bool) -> i32 {
     let max_new_share = match cli.max_new_share.as_deref() {
         None => None,
         Some(text) => match diff::parse_percent(text) {
+            Some(percent) if percent.above_hundred() => {
+                return fail("invalid percentage: must be at most 100", 3)
+            }
             Some(percent) => Some(percent),
             None => return fail("invalid percentage", 3),
         },

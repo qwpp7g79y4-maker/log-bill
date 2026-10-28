@@ -178,6 +178,12 @@ fn gcd(mut a: u128, mut b: u128) -> u128 {
 }
 
 impl Percent {
+    /// True when the value is above 100%. `100` and `100.0` are not.
+    pub fn above_hundred(self) -> bool {
+        let whole = self.numer / self.denom;
+        whole > 100 || (whole == 100 && self.numer % self.denom != 0)
+    }
+
     /// `part / total × 100` strictly greater than this percentage.
     /// Equal is not greater. A total of 0 is not greater.
     /// The comparison is the fraction, not the shown 1-decimal share.
@@ -352,6 +358,12 @@ mod tests {
         assert!(parse_percent(&mini)
             .expect("mini")
             .exceeded_by(u64::MAX, u64::MAX));
+        for text in ["0", "99.9", "100", "100.0", "100.000"] {
+            assert!(!parse_percent(text).expect(text).above_hundred(), "{text}");
+        }
+        for text in ["100.001", "100.1", "101", "1000"] {
+            assert!(parse_percent(text).expect(text).above_hundred(), "{text}");
+        }
         for text in [
             "", ".", "5.", "10,5", "-1", "+10", "1e2", " 1", "1 ", "1.2.3",
         ] {
