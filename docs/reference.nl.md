@@ -114,6 +114,8 @@ Elke rij hieronder is op de binary gedraaid, en een test houdt dat zo. Een rij m
 | `--window` | scan | 5x is ongeldig. | `scan --window 5x file.log` | 3 | `invalid window` |
 | `--window` | scan | De eenheid is niet `s`, `m`, `h` of `d`. | `scan --window 1é file.log` | 3 | `invalid window` |
 | `--window` | diff | 0m is ongeldig, vóór de diff-toets. | `diff --window 0m OLD NEW` | 3 | `invalid window` |
+| `--days-per-month` | scan | Nul is ongeldig. | `scan --window 1m --days-per-month 0 file.log` | 3 | `error: invalid value '0' for '--days-per-month <DAYS>': must be a whole number of at least 1\n\nFor more information, try '--help'.\n` |
+| `--days-per-month` | scan | Geen getal. | `scan --window 1m --days-per-month abc file.log` | 3 | `error: invalid value 'abc' for '--days-per-month <DAYS>': must be a whole number of at least 1\n\nFor more information, try '--help'.\n` |
 | `--days-per-month` | scan | Zonder venster. | `scan --days-per-month 31 file.log` | 3 | `--days-per-month only works together with --window` |
 | `--days-per-month` | diff | Zonder venster. | `diff --days-per-month 31 OLD NEW` | 3 | `--days-per-month only works together with --window` |
 | `--days-per-month` | diff | `--json` verandert de melding niet. | `diff --json --days-per-month 31 OLD NEW` | 3 | `--days-per-month only works together with --window` |
