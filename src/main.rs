@@ -27,7 +27,13 @@ struct Cli {
     window: Option<String>,
 
     /// Days in a month for the extrapolation.
-    #[arg(long, global = true, default_value_t = 30, value_name = "DAYS")]
+    #[arg(
+        long,
+        global = true,
+        default_value_t = 30,
+        value_name = "DAYS",
+        value_parser = parse_days_per_month
+    )]
     days_per_month: u32,
 
     /// Price file (JSON).
@@ -54,7 +60,7 @@ struct Cli {
     #[arg(long, global = true, value_name = "AMOUNT")]
     budget_month: Option<String>,
 
-    /// Maximum share of new patterns, in percent.
+    /// Maximum share of new patterns, in percent (0 to 100).
     #[arg(long, global = true, value_name = "PCT")]
     max_new_share: Option<String>,
 
@@ -114,6 +120,13 @@ fn main() {
         Err(error) => report(error),
     };
     std::process::exit(code);
+}
+
+fn parse_days_per_month(raw: &str) -> Result<u32, String> {
+    match raw.parse::<u32>() {
+        Ok(0) | Err(_) => Err("must be a whole number of at least 1".to_string()),
+        Ok(days) => Ok(days),
+    }
 }
 
 fn report(error: clap::Error) -> i32 {
@@ -204,6 +217,9 @@ fn execute(cli: &Cli, days_explicit: bool) -> i32 {
     let max_new_share = match cli.max_new_share.as_deref() {
         None => None,
         Some(text) => match diff::parse_percent(text) {
+            Some(percent) if percent.above_hundred() => {
+                return fail("invalid percentage: must be at most 100", 3)
+            }
             Some(percent) => Some(percent),
             None => return fail("invalid percentage", 3),
         },
@@ -549,6 +565,10 @@ fn index_rules_message(error: &rules::RulesError) -> String {
     match error {
         rules::RulesError::Unreadable => "index rules file is not readable".to_owned(),
         rules::RulesError::NotRegular => "index rules file is not a regular file".to_owned(),
+        rules::RulesError::TooLarge => "index rules file is larger than 8 MiB".to_owned(),
+        rules::RulesError::TooManyRules => {
+            format!("index rules file has more than {} rules", rules::MAX_RULES)
+        }
         rules::RulesError::Invalid { line } => {
             format!("invalid rule on line {line} of the index rules file")
         }

@@ -79,8 +79,10 @@ impl fmt::Display for ReadError {
 impl std::error::Error for ReadError {}
 
 /// Reads a text file one line at a time. Each line weighs its raw bytes plus 1
-/// for the newline; without `\n` that +1 still counts. A `\r` just before `\n`
-/// counts. Empty lines are dropped. Invalid UTF-8 counts and is read lossily.
+/// for the newline; without `\n` that +1 still counts. Every `\r` counts. Every
+/// `\r` at the end of a line (`\r\n`, `\r\r\n`, or a last line ending in `\r`
+/// without `\n`) is left out of the line text. Empty lines are dropped. Invalid
+/// UTF-8 counts and is read lossily.
 /// One UTF-8 byte order mark at the start is skipped for the line text and
 /// still counts in the bytes of the first line. UTF-16 and UTF-32 are
 /// refused, see [`detect_wide`]. The whole file is not held in memory.
@@ -125,15 +127,52 @@ pub enum OpenError {
     NotRegular,
 }
 
+/// [`read_regular`]'s error, [`OpenError`] plus [`ReadRegularError::TooLarge`].
+/// A separate type so [`open_regular`]'s other caller, which streams instead
+/// of capping the whole file by size, is not forced to handle a case it
+/// cannot produce.
+#[derive(Debug, PartialEq, Eq)]
+pub enum ReadRegularError {
+    Unreadable,
+    NotRegular,
+    /// Regular file larger than [`MAX_REGULAR_BYTES`].
+    TooLarge,
+}
+
+impl From<OpenError> for ReadRegularError {
+    fn from(err: OpenError) -> Self {
+        match err {
+            OpenError::Unreadable => ReadRegularError::Unreadable,
+            OpenError::NotRegular => ReadRegularError::NotRegular,
+        }
+    }
+}
+
+/// Largest file that [`read_regular`] holds in memory: 8 MiB. `--rules`,
+/// `--index-rules` and `--prices` load the whole file and keep it for the
+/// life of the run (every rule stays a compiled regex), so unlike the log
+/// path this cannot be streamed line by line. A file over the limit is
+/// refused before it is read, by its size on disk, so an oversized file is
+/// never pulled into memory.
+pub const MAX_REGULAR_BYTES: u64 = 8 * 1024 * 1024;
+
 /// Reads bytes of a regular file. The open does not block, and the file type
 /// comes from the opened file, so a path that turns into a FIFO between the
 /// name and the read does not hang. A symlink to a regular file counts; a
-/// symlink to a FIFO does not.
-pub fn read_regular(path: &Path) -> Result<Vec<u8>, OpenError> {
+/// symlink to a FIFO does not. A file larger than [`MAX_REGULAR_BYTES`] is
+/// refused instead of read.
+pub fn read_regular(path: &Path) -> Result<Vec<u8>, ReadRegularError> {
     let mut file = open_regular(path)?;
+    let len = file
+        .metadata()
+        .map_err(|_| ReadRegularError::Unreadable)?
+        .len();
+    if len > MAX_REGULAR_BYTES {
+        return Err(ReadRegularError::TooLarge);
+    }
     let mut data = Vec::new();
     file.read_to_end(&mut data)
-        .map_err(|_| OpenError::Unreadable)?;
+        .map_err(|_| ReadRegularError::Unreadable)?;
     Ok(data)
 }
 
@@ -290,8 +329,8 @@ fn stream_text(source: impl Read, mut visit: impl FnMut(Line)) -> Result<(), Rea
             break;
         }
         line_no += 1;
-        // A cut line keeps its `\r` out of reach; nothing is stripped then.
-        if let Some(line) = text_line_weighed(&buf, newline && !cut, line_no, content + 1) {
+        // A cut line keeps its `\r`: its end is not a line end, so nothing is trimmed.
+        if let Some(line) = text_line_weighed(&buf, !cut, line_no, content + 1) {
             visit(line);
         }
     }
@@ -316,7 +355,7 @@ fn stream_json(
         if cut {
             return Err(ReadError::LineTooLong { line: line_no });
         }
-        if let Some(line) = json_line(&buf, newline, line_no, message_field)? {
+        if let Some(line) = json_line(&buf, true, line_no, message_field)? {
             visit(line);
         }
     }
@@ -474,7 +513,7 @@ fn json_lines(data: &[u8], message_field: Option<&str>) -> Result<Vec<Line>, Rea
     }
     if start < data.len() {
         line_no += 1;
-        push_json_line(&mut lines, &data[start..], false, line_no, message_field)?;
+        push_json_line(&mut lines, &data[start..], true, line_no, message_field)?;
     }
     Ok(lines)
 }
@@ -483,11 +522,11 @@ fn json_lines(data: &[u8], message_field: Option<&str>) -> Result<Vec<Line>, Rea
 fn push_json_line(
     lines: &mut Vec<Line>,
     raw: &[u8],
-    had_newline: bool,
+    at_line_end: bool,
     line_no: u64,
     message_field: Option<&str>,
 ) -> Result<(), ReadError> {
-    if let Some(line) = json_line(raw, had_newline, line_no, message_field)? {
+    if let Some(line) = json_line(raw, at_line_end, line_no, message_field)? {
         lines.push(line);
     }
     Ok(())
@@ -495,11 +534,11 @@ fn push_json_line(
 
 fn json_line(
     raw: &[u8],
-    had_newline: bool,
+    at_line_end: bool,
     line_no: u64,
     message_field: Option<&str>,
 ) -> Result<Option<Line>, ReadError> {
-    let mut content = line_body(raw, had_newline);
+    let mut content = line_body(raw, at_line_end);
     if line_no == 1 {
         // The BOM is skipped for parsing; `raw.len()` below still counts it.
         content = content.strip_prefix(UTF8_BOM).unwrap_or(content);
@@ -518,29 +557,37 @@ fn json_line(
     }))
 }
 
-fn line_body(raw: &[u8], had_newline: bool) -> &[u8] {
-    if had_newline {
-        raw.strip_suffix(b"\r").unwrap_or(raw)
+/// The line text: `raw` without every `\r` at its end. A `\r` is trimmed
+/// whether or not a `\n` follows, so `\r\n`, `\r\r\n` and a last line ending
+/// in a lone `\r` all read like the same line ended by `\n`. `at_line_end` is
+/// false for a line cut at [`MAX_LINE_BYTES`]: there the end is not a line end.
+fn line_body(raw: &[u8], at_line_end: bool) -> &[u8] {
+    if at_line_end {
+        let end = raw
+            .iter()
+            .rposition(|&byte| byte != b'\r')
+            .map_or(0, |i| i + 1);
+        &raw[..end]
     } else {
         raw
     }
 }
 
 #[cfg(test)]
-fn push_line(lines: &mut Vec<Line>, raw: &[u8], had_newline: bool, line_no: u64) {
-    if let Some(line) = text_line(raw, had_newline, line_no) {
+fn push_line(lines: &mut Vec<Line>, raw: &[u8], at_line_end: bool, line_no: u64) {
+    if let Some(line) = text_line(raw, at_line_end, line_no) {
         lines.push(line);
     }
 }
 
 #[cfg(test)]
-fn text_line(raw: &[u8], had_newline: bool, line_no: u64) -> Option<Line> {
-    text_line_weighed(raw, had_newline, line_no, (raw.len() + 1) as u64)
+fn text_line(raw: &[u8], at_line_end: bool, line_no: u64) -> Option<Line> {
+    text_line_weighed(raw, at_line_end, line_no, (raw.len() + 1) as u64)
 }
 
 /// [`text_line`] with the weight given, for a line cut at [`MAX_LINE_BYTES`].
-fn text_line_weighed(raw: &[u8], had_newline: bool, line_no: u64, weight: u64) -> Option<Line> {
-    let mut content = line_body(raw, had_newline);
+fn text_line_weighed(raw: &[u8], at_line_end: bool, line_no: u64, weight: u64) -> Option<Line> {
+    let mut content = line_body(raw, at_line_end);
     if line_no == 1 {
         // Skipped for the text; `raw.len()` below still counts the mark.
         content = content.strip_prefix(UTF8_BOM).unwrap_or(content);
@@ -573,7 +620,7 @@ fn text_lines(data: &[u8]) -> Vec<Line> {
     if start < data.len() {
         line_no += 1;
         // Last line without `\n`: the same +1, so each line weighs the same.
-        push_line(&mut lines, &data[start..], false, line_no);
+        push_line(&mut lines, &data[start..], true, line_no);
     }
     lines
 }
@@ -957,7 +1004,38 @@ struct Frame {
 
 #[cfg(test)]
 mod tests {
-    use super::{detect_wide, json_lines, text_lines, Line, WideEncoding};
+    use super::{
+        detect_wide, json_lines, read_regular, text_lines, Line, ReadRegularError, WideEncoding,
+        MAX_REGULAR_BYTES,
+    };
+
+    /// A file right at the cap is read whole; one byte over is refused before
+    /// any of it is read. `set_len` makes a sparse file, so this does not
+    /// actually write 8 MiB to disk.
+    #[test]
+    fn read_regular_caps_at_max_regular_bytes() {
+        let dir = std::env::temp_dir().join("log-bill-read-regular-cap-test");
+        std::fs::create_dir_all(&dir).expect("dir");
+
+        let at_cap = dir.join("at-cap.bin");
+        std::fs::File::create(&at_cap)
+            .expect("file")
+            .set_len(MAX_REGULAR_BYTES)
+            .expect("grow");
+        assert_eq!(
+            read_regular(&at_cap).map(|data| data.len() as u64),
+            Ok(MAX_REGULAR_BYTES)
+        );
+
+        let over_cap = dir.join("over-cap.bin");
+        std::fs::File::create(&over_cap)
+            .expect("file")
+            .set_len(MAX_REGULAR_BYTES + 1)
+            .expect("grow");
+        assert_eq!(read_regular(&over_cap), Err(ReadRegularError::TooLarge));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn wide_encodings_by_bom() {

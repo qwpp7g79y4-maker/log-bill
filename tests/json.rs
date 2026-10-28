@@ -949,10 +949,9 @@ fn zero_difference_empty_input_and_top() {
     assert_eq!(output_2["patterns"][1]["bytes"], 5);
     assert_eq!(output_2["patterns"][1]["share"], "55.6");
 
-    // 0 days: the month is 0 bytes. The day stays the sample × factor.
-    // `z\n` = 2 bytes, window 1d, factor 1. Month × 0 = 0.
+    // 0 days is refused: it would make every monthly cost 0.
     let day0 = tmp("json-day0.log", b"z\n");
-    let (code, output_2, err) = run_exit(&[
+    let (code, out, err) = run_exit(&[
         "scan",
         "--json",
         "--window",
@@ -962,13 +961,12 @@ fn zero_difference_empty_input_and_top() {
         day0.to_str().expect("path"),
     ]);
     let _ = std::fs::remove_file(&day0);
-    assert_eq!(code, 0);
-    assert!(err.is_empty(), "{err}");
-    let output_2 = json(&output_2);
-    assert_eq!(output_2["inputs"]["days_per_month"], 0);
-    assert_eq!(output_2["totals"]["per_day"]["bytes"], 2);
-    assert_eq!(output_2["totals"]["per_month"]["bytes"], 0);
-    assert_eq!(output_2["totals"]["per_month"]["gb"], "0.000");
+    assert_eq!(code, 3);
+    assert!(out.is_empty(), "{out}");
+    assert!(
+        err.contains("must be a whole number of at least 1"),
+        "{err}"
+    );
 }
 
 #[test]

@@ -649,3 +649,56 @@ fn nested(depth: usize, object: bool) -> String {
     }
     json
 }
+
+#[test]
+fn days_per_month_zero_is_exit_3_one_and_default_work() {
+    let log = million("days-zero.log");
+    let prices = prices(
+        "days-zero-prices.json",
+        r#"{"currency":"EUR","source":"scratchpad","date":"1999-01-02","ingest_per_gb":0.10}"#,
+    );
+    let base = |days: Option<&'static str>| {
+        let mut args = vec!["scan", "--window", "1m", "--budget-month", "0.01"];
+        if let Some(days) = days {
+            args.extend(["--days-per-month", days]);
+        }
+        args.extend(["--prices", file_path(&prices), file_path(&log)]);
+        run(&args)
+    };
+
+    let (code, out, err) = base(Some("0"));
+    assert_eq!(code, 3, "{err}");
+    assert!(out.is_empty(), "{out}");
+    assert!(
+        err.contains("must be a whole number of at least 1"),
+        "{err}"
+    );
+
+    // 1 000 000 bytes per minute is 43.2 GB a day at 0.10 per GB, far above 0.01.
+    let (code, _, err) = base(Some("1"));
+    assert_eq!(code, 1, "{err}");
+    let (code, _, err) = base(None);
+    assert_eq!(code, 1, "{err}");
+    let (code, _, err) = base(Some("30"));
+    assert_eq!(code, 1, "{err}");
+    let _ = std::fs::remove_file(&log);
+    let _ = std::fs::remove_file(&prices);
+}
+
+/// clap already prefixes `invalid value '<x>' for '--days-per-month <DAYS>':`, so our own text
+/// must not repeat the value or the flag name.
+#[test]
+fn days_per_month_error_names_flag_and_value_once() {
+    for value in ["abc", "0"] {
+        let (code, out, err) = run(&["scan", "--days-per-month", value, "missing.log"]);
+        assert_eq!(code, 3, "{err}");
+        assert!(out.is_empty(), "{out}");
+        let first = err.lines().next().expect("error line");
+        assert_eq!(first.matches("--days-per-month").count(), 1, "{err}");
+        assert_eq!(first.matches(&format!("'{value}'")).count(), 1, "{err}");
+        assert!(
+            first.ends_with(": must be a whole number of at least 1"),
+            "{err}"
+        );
+    }
+}

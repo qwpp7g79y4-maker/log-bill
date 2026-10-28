@@ -36,7 +36,7 @@ The tests run in CI on Linux, Windows, macOS on Apple Silicon and macOS on Intel
 
 For the latest `main`: `cargo install --locked --git https://github.com/qwpp7g79y4-maker/log-bill`.
 
-From a local clone: `cargo install --locked --path .`, or `cargo build --release`; the binary is `target/release/log-bill`.
+From a local clone: `cargo install --locked --path .`, or `cargo build --release`; the binary is `target/release/log-bill`. A debug build (`cargo run` without `--release`) is much slower on large files; for large logs use a release build (`cargo install` or `cargo build --release`).
 
 ## Quick start
 

@@ -478,6 +478,147 @@ fn fifo_exit_2_within_two_seconds() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// Guards the asymmetry found by the breaktest report: `--rules`/`--prices`
+/// went through `read::read_regular`'s plain `read_to_end`, with none of the
+/// line-count cap and streaming that the log path (`read.rs`) already has.
+/// 200k rules is enough to see the trend without needing a multi-GB fixture,
+/// and stays under both the 8 MiB file-size cap and the 300,000-rule cap, so
+/// this checks that an ordinary large rules file still works, fast.
+/// The breaktest report measured this in a release build (well under 5s);
+/// the bound here is wider because `cargo test` runs the unoptimized build.
+#[test]
+fn huge_rules_file_does_not_balloon_memory() {
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("huge-rules");
+    std::fs::create_dir_all(&dir).expect("dir");
+    let rules_path = dir.join("rules.txt");
+    let log_path = dir.join("plain.log");
+    std::fs::write(&log_path, "ok\n").expect("log");
+    {
+        use std::io::Write;
+        let mut file = std::fs::File::create(&rules_path).expect("rules file");
+        for i in 0..200_000u32 {
+            writeln!(file, "drop pattern-{i}").expect("write rule");
+        }
+    }
+    let start = std::time::Instant::now();
+    let output = bin()
+        .args(["scan", "--rules"])
+        .arg(&rules_path)
+        .arg(&log_path)
+        .output()
+        .expect("start binary");
+    let elapsed = start.elapsed();
+    assert_eq!(output.status.code(), Some(0));
+    assert!(
+        elapsed < std::time::Duration::from_secs(30),
+        "200k rules took {elapsed:?}, expected well under 30s"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A regular file above the 8 MiB cap is refused before it is read, for
+/// `--rules`, `--prices` and `--index-rules` alike. The content never has to
+/// parse: the size check in `read::read_regular` runs first.
+#[test]
+fn file_over_8_mib_is_rejected_for_rules_prices_and_index_rules() {
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("too-large-regular");
+    std::fs::create_dir_all(&dir).expect("dir");
+    let log = dir.join("plain.log");
+    std::fs::write(&log, "ok\n").expect("log");
+    let big = dir.join("big.bin");
+    std::fs::File::create(&big)
+        .expect("big file")
+        .set_len(8 * 1024 * 1024 + 1)
+        .expect("grow");
+
+    let output = bin()
+        .args(["scan", "--rules"])
+        .arg(&big)
+        .arg(&log)
+        .output()
+        .expect("start binary");
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+    assert_eq!(
+        String::from_utf8(output.stderr).expect("stderr"),
+        "rules file is larger than 8 MiB\n"
+    );
+
+    let output = bin()
+        .args(["scan", "--window", "1d", "--prices"])
+        .arg(&big)
+        .arg(&log)
+        .output()
+        .expect("start binary");
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+    assert_eq!(
+        String::from_utf8(output.stderr).expect("stderr"),
+        "price file is larger than 8 MiB\n"
+    );
+
+    let output = bin()
+        .args(["scan", "--window", "1d", "--index-rules"])
+        .arg(&big)
+        .arg(&log)
+        .output()
+        .expect("start binary");
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+    assert_eq!(
+        String::from_utf8(output.stderr).expect("stderr"),
+        "index rules file is larger than 8 MiB\n"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// More than 300,000 rules is refused, for `--rules` and `--index-rules`,
+/// with a message that names the limit and not the file's line count.
+#[test]
+fn more_than_300_000_rules_is_rejected() {
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("too-many-rules");
+    std::fs::create_dir_all(&dir).expect("dir");
+    let log = dir.join("plain.log");
+    std::fs::write(&log, "ok\n").expect("log");
+    let rules = dir.join("rules.txt");
+    {
+        use std::io::Write;
+        let mut file = std::fs::File::create(&rules).expect("rules file");
+        for _ in 0..=300_000u32 {
+            writeln!(file, "drop a").expect("write rule");
+        }
+    }
+
+    let output = bin()
+        .args(["scan", "--rules"])
+        .arg(&rules)
+        .arg(&log)
+        .output()
+        .expect("start binary");
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+    assert_eq!(
+        String::from_utf8(output.stderr).expect("stderr"),
+        "rules file has more than 300000 rules\n"
+    );
+
+    let output = bin()
+        .args(["scan", "--window", "1d", "--index-rules"])
+        .arg(&rules)
+        .arg(&log)
+        .output()
+        .expect("start binary");
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+    assert_eq!(
+        String::from_utf8(output.stderr).expect("stderr"),
+        "index rules file has more than 300000 rules\n"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn sample_fraction_longer_than_80_characters_exits_2() {
     // `0.` plus 79 zeros is 81 characters. Shorter, the same zeros are a valid

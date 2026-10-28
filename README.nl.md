@@ -38,7 +38,7 @@ De tests draaien in CI op Linux, Windows, macOS op Apple Silicon en macOS op Int
 
 Voor de nieuwste `main`: `cargo install --locked --git https://github.com/qwpp7g79y4-maker/log-bill`.
 
-Vanuit een lokale clone: `cargo install --locked --path .`, of `cargo build --release`; de binary staat dan in `target/release/log-bill`.
+Vanuit een lokale clone: `cargo install --locked --path .`, of `cargo build --release`; de binary staat dan in `target/release/log-bill`. Een debug-build (`cargo run` zonder `--release`) is bij grote bestanden veel trager; gebruik voor grote logs een release-build (`cargo install` of `cargo build --release`).
 
 ## Snel aan de slag
 

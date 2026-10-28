@@ -558,6 +558,9 @@ fn option_and_error_tables_match_the_binary() {
             "invalid window\n",
             "invalid budget\n",
             "invalid percentage\n",
+            "invalid percentage: must be at most 100\n",
+            "error: invalid value '0' for '--days-per-month <DAYS>': must be a whole number of at least 1\n\nFor more information, try '--help'.\n",
+            "error: invalid value 'abc' for '--days-per-month <DAYS>': must be a whole number of at least 1\n\nFor more information, try '--help'.\n",
         ] {
             assert!(
                 messages.contains(needed),
@@ -577,6 +580,8 @@ fn option_and_error_tables_match_the_binary() {
             "diff --explain --prices no-prices.json OLD NEW",
             "diff --explain --window 1m OLD NEW",
             "diff --explain --days-per-month 31 OLD NEW",
+            "scan --window 1m --days-per-month 0 file.log",
+            "scan --window 1m --days-per-month abc file.log",
             "diff --budget-month 1 OLD NEW",
             "diff --json --explain --budget-month 1 OLD NEW",
             "scan --max-new-share 10 file.log",

@@ -180,6 +180,8 @@ pub enum PriceError {
     GbBytes,
     NotRegular,
     TooDeep,
+    /// Larger than [`crate::read::MAX_REGULAR_BYTES`].
+    TooLarge,
 }
 
 impl fmt::Display for PriceError {
@@ -196,6 +198,7 @@ impl fmt::Display for PriceError {
             PriceError::GbBytes => "gb_bytes must be a whole number greater than 0",
             PriceError::NotRegular => "price file is not a regular file",
             PriceError::TooDeep => "price file is nested too deeply",
+            PriceError::TooLarge => "price file is larger than 8 MiB",
         };
         f.write_str(text)
     }
@@ -207,8 +210,9 @@ impl std::error::Error for PriceError {}
 pub fn load_prices(path: &std::path::Path) -> Result<Prices, PriceError> {
     let data = match crate::read::read_regular(path) {
         Ok(data) => data,
-        Err(crate::read::OpenError::NotRegular) => return Err(PriceError::NotRegular),
-        Err(crate::read::OpenError::Unreadable) => return Err(PriceError::Unreadable),
+        Err(crate::read::ReadRegularError::NotRegular) => return Err(PriceError::NotRegular),
+        Err(crate::read::ReadRegularError::Unreadable) => return Err(PriceError::Unreadable),
+        Err(crate::read::ReadRegularError::TooLarge) => return Err(PriceError::TooLarge),
     };
     parse_prices(&data)
 }
@@ -1368,6 +1372,14 @@ mod tests {
         assert_eq!(parse_window("15m").unwrap().seconds(), 900);
         assert_eq!(parse_window("2h").unwrap().seconds(), 7_200);
         assert_eq!(parse_window("1d").unwrap().seconds(), 86_400);
+    }
+
+    #[test]
+    fn too_large_message() {
+        assert_eq!(
+            PriceError::TooLarge.to_string(),
+            "price file is larger than 8 MiB"
+        );
     }
 
     #[test]

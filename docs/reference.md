@@ -13,20 +13,20 @@ Run `log-bill --help` or `log-bill scan --help` for the built-in help. Combinati
 | `--format` | scan and diff | Input format, `text` or `jsonl`. Default `text`. |
 | `--message-field` | scan and diff, only with `--format jsonl` | Take the pattern from this JSON field. |
 | `--window` | scan; for diff only with `--prices` or `--json` | Time window of the sample, for example `15m`. Extrapolates to a day and a month. |
-| `--days-per-month` | scan and diff, only with `--window` | Days in a month. Default 30. |
+| `--days-per-month` | scan and diff, only with `--window` | Days in a month, at least 1 (0 is exit 3). Default 30. |
 | `--prices` | scan and diff, only with `--window` | Your own price file (JSON). |
 | `--rules` | scan and diff | Simulate `drop` and `sample` rules. |
 | `--top` | scan | Show the N largest patterns; the rest as one `other` line. |
 | `--explain` | scan, also with `--json` | Show the masks per pattern and the full calculation. |
 | `--json` | scan and diff | JSON output with `schema_version` 1. |
 | `--budget-month` | scan, with `--window` and `--prices` | Exit 1 if the monthly ingest cost after rules is above this amount. The indexed-event estimate is not included. |
-| `--max-new-share` | diff | Exit 1 if new patterns are more than PCT percent of the new bytes. |
+| `--max-new-share` | diff | Exit 1 if new patterns are more than PCT percent of the new bytes. PCT is 0 to 100; above 100 is exit 3. |
 | `--retention` | scan, only with `--window` | Indexed-log retention in days: `3`, `7`, `15` or `30`. Default 15 when an indexed option is set. |
 | `--billing` | scan, only with `--window` | Indexed-log plan: `annual`, `monthly` or `ondemand`. Default `ondemand` when an indexed option is set. |
 | `--indexed-price` | scan, only with `--window` | USD per 1M indexed events. Overrides the list price. Same decimal rules as a price in the price file. |
 | `--index-rules` | scan, only with `--window` | Index exclusion rules, same syntax as `--rules`, applied to the weight left after `--rules`. |
 | `--help` | everywhere | Show help and exit 0. |
-| `--version` | top level | Show the version (`log-bill 0.2.0`) and exit 0. |
+| `--version` | top level | Show the version (`log-bill 0.2.1`) and exit 0. |
 
 The log file argument of `scan` and both of `diff` (`OLD` and `NEW`) accept `-` as the path, which reads standard input instead; the output and exit code are the same as for a regular file with the same bytes. `-` is only recognised for that positional argument, not for `--prices`, `--rules` or `--index-rules`. Giving `-` more than once in the same command (for example `diff - -`) reads the whole of standard input for the first one and nothing for the second.
 
@@ -56,7 +56,7 @@ Prices come only from a JSON file you pass with `--prices` (together with `--win
 - **Share:** bytes of the pattern divided by the total bytes, shown as a percentage with 1 decimal, rounded half away from zero.
 - **Window:** `--window` takes a number and `s`, `m`, `h` or `d`. The daily factor is 86400 divided by the window in seconds. A month is `--days-per-month` days, 30 by default.
 - **Cost:** per day = bytes in the sample × factor / bytes per GB × price per GB, separately for ingest and (if given) index. Per month = per day × days per month. All arithmetic uses whole numbers and fractions; rounding only happens on display: amounts to 2 decimals, GB to 3 decimals, half away from zero.
-- **Rules (`--rules FILE`):** one per line, `drop <regex>` or `sample <fraction> <regex>`. The fraction is the part that is kept, from 0 up to but not including 1, written with a dot (`0.1`, not `0,1`), and at most 80 characters. The regex is tested against the raw line and the first matching rule wins. Lines that match no rule stay. For sampled lines the pattern keeps the expected value: the sum of `1 × fraction` for the lines and the sum of `bytes × fraction` for the bytes, each rounded down once and independently. With one fraction for the whole pattern that is `floor(count × fraction)` lines and `floor(bytes × fraction)` bytes. If two fractions apply to the same pattern, the expected values are added first and rounded down once. That is why a pattern can end up with 0 lines and still some bytes. The regex and the raw line are never shown, only the rule's line number.
+- **Rules (`--rules FILE`):** one per line, `drop <regex>` or `sample <fraction> <regex>`. The fraction is the part that is kept, from 0 up to but not including 1, written with a dot (`0.1`, not `0,1`), and at most 80 characters. The regex is tested against the raw line and the first matching rule wins. Lines that match no rule stay. For sampled lines the pattern keeps the expected value: the sum of `1 × fraction` for the lines and the sum of `bytes × fraction` for the bytes, each rounded down once and independently. With one fraction for the whole pattern that is `floor(count × fraction)` lines and `floor(bytes × fraction)` bytes. If two fractions apply to the same pattern, the expected values are added first and rounded down once. That is why a pattern can end up with 0 lines and still some bytes. The regex and the raw line are never shown, only the rule's line number. Unlike the log file, `--rules`, `--index-rules` and `--prices` are read whole and kept for the run (every rule stays a compiled regex), so each is refused over 8 MiB, and `--rules`/`--index-rules` is refused over 300,000 rules (blank lines excluded), before the file is parsed.
 - **Indexed events:** shown only when `--retention`, `--billing`, `--indexed-price` or `--index-rules` is set, and only together with `--window`. Events are the ingested records. An empty line does not count. One JSON line is one event, even when the message contains a newline. The month factor is the same as for the bytes. The count stays an exact fraction until display: millions of events with 3 decimals, amounts with 2 decimals, half away from zero. `--index-rules` uses the same syntax as `--rules` and applies to the weight left after `--rules`. A sample stays a fraction (889 lines × 0.1 = 88.9 events) and is not rounded down to whole lines. Defaults are 15 days and `ondemand`, and only when indexing is on. The built-in USD price per 1M events was read from https://www.datadoghq.com/pricing/list/ on 2026-10-14: 3 days 1.06/1.27/1.59, 7 days 1.27/1.52/1.91, 15 days 1.70/2.04/2.55, 30 days 2.50/3.00/3.75 (annual/monthly/ondemand). `--indexed-price` replaces that cell. The label is `list price, estimate`, or `custom price, estimate` when the price is overridden. Text, `--explain` and `--json` show events and cost per month before and after the index rules, plus the savings. Savings round the cost of the difference once. Per-pattern index costs are rounded separately and can therefore differ from the total by at most half a cent per pattern, so up to N/2 cents at N patterns. `--budget-month` does not include this estimate. Flex Logs and contract prices are not included.
 - **Budget:** `--budget-month` is checked against the bytes after `--rules`. The `total` line and its cost show the bytes before the rules; the savings are shown separately. The indexed-event estimate is not part of that check.
 - **Diff:** per pattern id the old and new bytes and share, plus new and removed patterns. The share of new patterns is their bytes divided by the total new bytes.
@@ -98,9 +98,9 @@ With `--explain`, a `<SECRET>` count is marked `possible secret`. In `--json` su
 
 If the output cannot be written, for example because the disk is full, the exit code is 3 and stderr is `could not write output`. `--help` and `--version` use that same code; they do not exit 0 when their text cannot be written.
 
-A log file, price file or rules file must be a regular file, except the log file argument given as `-` (see [Options](#options)), which reads standard input instead. A FIFO, a directory or anything else is refused with exit 2 without waiting for a writer to open it. A `gb_bytes` that is a fraction such as `0.5`, 0 or negative, or a number outside the binary-float range, is exit 2; a price that is text instead of a number, a fraction that does not fit, or a price outside that range, gives `price file has a price that is not a number`. 128 or more nested arrays or objects gives `price file is nested too deeply`. The same key twice gives `price file has a duplicate key`. `sample 0,1` is not a valid fraction: exit 2 with `invalid rule on line 1 of the rules file`, without showing the line. The regular-file messages do not include the path, and no error message contains a raw log line.
+A log file, price file or rules file must be a regular file, except the log file argument given as `-` (see [Options](#options)), which reads standard input instead. A FIFO, a directory or anything else is refused with exit 2 without waiting for a writer to open it. A `gb_bytes` that is a fraction such as `0.5`, 0 or negative, or a number outside the binary-float range, is exit 2; a price that is text instead of a number, a fraction that does not fit, or a price outside that range, gives `price file has a price that is not a number`. 128 or more nested arrays or objects gives `price file is nested too deeply`. The same key twice gives `price file has a duplicate key`. `sample 0,1` is not a valid fraction: exit 2 with `invalid rule on line 1 of the rules file`, without showing the line. A price, rules, or index-rules file over 8 MiB is exit 2 before it is read, with `price file is larger than 8 MiB`, `rules file is larger than 8 MiB` or `index rules file is larger than 8 MiB`. A rules or index-rules file with more than 300,000 rules is exit 2 with `rules file has more than 300000 rules` or `index rules file has more than 300000 rules`. The regular-file messages do not include the path, and no error message contains a raw log line.
 
-Every row below was run against the binary, and a test keeps it that way. A row with exit 3 has empty stdout. The message is the complete stderr; the binary adds a newline. `\n` in the last column is a newline inside the message. `--json` does not change a message. For `diff`, `--explain` is checked before `--top`, `--window`, `--days-per-month` and a valid index option, so its message wins. An invalid amount, an invalid percentage, an invalid retention, billing plan or indexed price, and `--prices` without a window are checked before `--explain`. On `scan`, a valid index option without `--window` is rejected before the index-rules file is opened.
+Every row below was run against the binary, and a test keeps it that way. A row with exit 3 has empty stdout. The message is the complete stderr; the binary adds a newline. `\n` in the last column is a newline inside the message. `--json` does not change a message. For `diff`, `--explain` is checked before `--top`, `--window`, `--days-per-month` and a valid index option, so its message wins. An invalid amount, an invalid percentage (including one above 100), an invalid retention, billing plan or indexed price, and `--prices` without a window are checked before `--explain`. On `scan`, a valid index option without `--window` is rejected before the index-rules file is opened.
 
 | Option | Applies to | Case | Wrong use | Exit | Message |
 | --- | --- | --- | --- | --- | --- |
@@ -114,6 +114,8 @@ Every row below was run against the binary, and a test keeps it that way. A row 
 | `--window` | scan | 5x is invalid. | `scan --window 5x file.log` | 3 | `invalid window` |
 | `--window` | scan | The unit is not one of `s`, `m`, `h`, `d`. | `scan --window 1é file.log` | 3 | `invalid window` |
 | `--window` | diff | 0m is invalid, before the diff check. | `diff --window 0m OLD NEW` | 3 | `invalid window` |
+| `--days-per-month` | scan | Zero is invalid. | `scan --window 1m --days-per-month 0 file.log` | 3 | `error: invalid value '0' for '--days-per-month <DAYS>': must be a whole number of at least 1\n\nFor more information, try '--help'.\n` |
+| `--days-per-month` | scan | Not a number. | `scan --window 1m --days-per-month abc file.log` | 3 | `error: invalid value 'abc' for '--days-per-month <DAYS>': must be a whole number of at least 1\n\nFor more information, try '--help'.\n` |
 | `--days-per-month` | scan | Without a window. | `scan --days-per-month 31 file.log` | 3 | `--days-per-month only works together with --window` |
 | `--days-per-month` | diff | Without a window. | `diff --days-per-month 31 OLD NEW` | 3 | `--days-per-month only works together with --window` |
 | `--days-per-month` | diff | `--json` does not change the message. | `diff --json --days-per-month 31 OLD NEW` | 3 | `--days-per-month only works together with --window` |
@@ -139,6 +141,9 @@ Every row below was run against the binary, and a test keeps it that way. A row 
 | `--max-new-share` | diff | abc is not a percentage. | `diff --max-new-share abc OLD NEW` | 3 | `invalid percentage` |
 | `--max-new-share` | diff | `--explain` does not win: the percentage is checked first. | `diff --explain --max-new-share abc OLD NEW` | 3 | `invalid percentage` |
 | `--max-new-share` | diff | `--json` does not change the message. | `diff --json --max-new-share abc OLD NEW` | 3 | `invalid percentage` |
+| `--max-new-share` | diff | 101 is not clamped: more than 100 is refused. | `diff --max-new-share 101 OLD NEW` | 3 | `invalid percentage: must be at most 100` |
+| `--max-new-share` | diff | 100.01 is also above 100. | `diff --max-new-share 100.01 OLD NEW` | 3 | `invalid percentage: must be at most 100` |
+| `--max-new-share` | diff | `--explain` and `--json` do not change the message. | `diff --json --explain --max-new-share 1000 OLD NEW` | 3 | `invalid percentage: must be at most 100` |
 | `--retention` | scan | 5 is not 3, 7, 15 or 30. Checked before the window. | `scan --retention 5 file.log` | 3 | `invalid retention` |
 | `--retention` | diff | 5 is invalid, before the command check. | `diff --retention 5 OLD NEW` | 3 | `invalid retention` |
 | `--retention` | scan | Without a window. | `scan --retention 7 file.log` | 3 | `--retention only works together with --window` |
@@ -158,6 +163,8 @@ Every row below was run against the binary, and a test keeps it that way. A row 
 | `--index-rules` | scan | The file cannot be read. The path is not shown. |  | 2 | `index rules file is not readable` |
 | `--index-rules` | scan | Not a regular file. |  | 2 | `index rules file is not a regular file` |
 | `--index-rules` | scan | A rule is invalid. The line is not shown. |  | 2 | `invalid rule on line 1 of the index rules file` |
+| `--index-rules` | scan | The file is larger than 8 MiB. Refused before it is read. |  | 2 | `index rules file is larger than 8 MiB` |
+| `--index-rules` | scan | More than 300,000 rules (blank lines excluded). |  | 2 | `index rules file has more than 300000 rules` |
 | log file | scan and diff | Not a regular file (FIFO, directory). Refused without waiting. |  | 2 | `file is not a regular file` |
 | log file | scan and diff | A JSON line longer than 1 MiB (a text line that long is cut at 1 MiB and still counts every byte). |  | 2 | `line N is longer than 1 MiB; JSON lines that long are not read` |
 | log file | scan and diff | UTF-16 or UTF-32, with or without a byte order mark. The name is `UTF-16LE`, `UTF-16BE`, `UTF-32LE` or `UTF-32BE`. |  | 2 | `file is UTF-16LE, not UTF-8; convert it first, for example with iconv -f UTF-16LE -t UTF-8, or in PowerShell with Out-File -Encoding utf8` |
@@ -167,6 +174,9 @@ Every row below was run against the binary, and a test keeps it that way. A row 
 | `--prices` | scan and diff | The same key appears twice. |  | 2 | `price file has a duplicate key` |
 | `--prices` | scan and diff | A price fraction does not fit, or the number is outside the binary-float range. |  | 2 | `price file has a price that is not a number` |
 | `--prices` | scan and diff | 128 or more nested arrays or objects. |  | 2 | `price file is nested too deeply` |
+| `--prices` | scan and diff | The file is larger than 8 MiB. Refused before it is read. |  | 2 | `price file is larger than 8 MiB` |
+| `--rules` | scan and diff | The file is larger than 8 MiB. Refused before it is read. |  | 2 | `rules file is larger than 8 MiB` |
+| `--rules` | scan and diff | More than 300,000 rules (blank lines excluded). |  | 2 | `rules file has more than 300000 rules` |
 
 ## Privacy and safety
 

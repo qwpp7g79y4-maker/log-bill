@@ -121,7 +121,8 @@ fn abs_delta(row: &Row) -> u128 {
 }
 
 /// A non-negative decimal with a decimal point. `10,5`, `5.`, and `1e2` are invalid.
-/// More digits than fit in a u128 is invalid, not truncation.
+/// More digits than fit in a u128 is invalid, not truncation, unless the
+/// value is above 100: that is still reported as above 100.
 pub fn parse_percent(text: &str) -> Option<Percent> {
     if text.is_empty() || text.len() > 80 {
         return None;
@@ -140,6 +141,20 @@ pub fn parse_percent(text: &str) -> Option<Percent> {
     if !frac.bytes().all(|byte| byte.is_ascii_digit()) {
         return None;
     }
+    let exact = exact_fraction(whole, frac);
+    match exact {
+        Some(percent) => Some(percent),
+        // Too many digits for a u128. A value above 100 is still refused
+        // with the right message, so it is kept as 101, which is also above 100.
+        None if text_above_hundred(whole, frac) => Some(Percent {
+            numer: 101,
+            denom: 1,
+        }),
+        None => None,
+    }
+}
+
+fn exact_fraction(whole: &str, frac: &str) -> Option<Percent> {
     let mut numer = digits(whole)?;
     for byte in frac.bytes() {
         numer = numer
@@ -149,6 +164,16 @@ pub fn parse_percent(text: &str) -> Option<Percent> {
     let scale = u32::try_from(frac.len()).ok()?;
     let denom = 10u128.checked_pow(scale)?;
     Some(reduce(numer, denom))
+}
+
+/// Above 100, decided on the digits as text, so it needs no counter.
+fn text_above_hundred(whole: &str, frac: &str) -> bool {
+    let whole = whole.trim_start_matches('0');
+    match whole.len() {
+        0..=2 => false,
+        3 => whole > "100" || (whole == "100" && frac.bytes().any(|byte| byte != b'0')),
+        _ => true,
+    }
 }
 
 fn digits(text: &str) -> Option<u128> {
@@ -178,6 +203,12 @@ fn gcd(mut a: u128, mut b: u128) -> u128 {
 }
 
 impl Percent {
+    /// True when the value is above 100%. `100` and `100.0` are not.
+    pub fn above_hundred(self) -> bool {
+        let whole = self.numer / self.denom;
+        whole > 100 || (whole == 100 && self.numer % self.denom != 0)
+    }
+
     /// `part / total × 100` strictly greater than this percentage.
     /// Equal is not greater. A total of 0 is not greater.
     /// The comparison is the fraction, not the shown 1-decimal share.
@@ -352,6 +383,31 @@ mod tests {
         assert!(parse_percent(&mini)
             .expect("mini")
             .exceeded_by(u64::MAX, u64::MAX));
+        for text in ["0", "99.9", "100", "100.0", "100.000"] {
+            assert!(!parse_percent(text).expect(text).above_hundred(), "{text}");
+        }
+        let big = [
+            format!("1{}", "0".repeat(40)),
+            "340282366920938463463374607431768211456".to_string(),
+            format!("100.{}1", "0".repeat(39)),
+            format!("{}101", "0".repeat(70)),
+        ];
+        for text in &big {
+            assert!(parse_percent(text).expect(text).above_hundred(), "{text}");
+        }
+        // At most 100 but too many digits: invalid, never "above 100".
+        for text in [
+            format!("99.{}", "9".repeat(40)),
+            format!("100.{}", "0".repeat(40)),
+        ] {
+            if let Some(percent) = parse_percent(&text) {
+                assert!(!percent.above_hundred(), "{text}");
+            }
+        }
+        assert!(parse_percent(&"9".repeat(81)).is_none());
+        for text in ["100.001", "100.1", "101", "1000"] {
+            assert!(parse_percent(text).expect(text).above_hundred(), "{text}");
+        }
         for text in [
             "", ".", "5.", "10,5", "-1", "+10", "1e2", " 1", "1 ", "1.2.3",
         ] {

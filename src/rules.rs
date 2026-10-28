@@ -1,6 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use aho_corasick::AhoCorasick;
 use regex::Regex;
+use regex_syntax::hir::literal::{ExtractKind, Extractor};
+use regex_syntax::hir::{Hir, HirKind};
 
 use crate::mask;
 use crate::pattern::Stats;
@@ -28,7 +31,32 @@ pub struct Fraction {
 
 pub struct RuleSet {
     rules: Vec<Compiled>,
+    /// Indices into `rules` whose regex has no required literal, so a
+    /// missing literal can never rule them out: always tried.
+    always: Vec<usize>,
+    /// One pass per batch over the raw line finds every literal that could
+    /// belong to a matching rule, in time independent of `rules.len()`.
+    /// Rules without a usable required literal are not in here; see
+    /// `always`. Batched (`LITERAL_BATCH_SIZE` literals each) rather than
+    /// one combined automaton: building a single `AhoCorasick` over all of
+    /// them scales worse than linearly in the literal count, which turns a
+    /// huge rules file back into the slow load this fix is meant to avoid.
+    literal_batches: Vec<LiteralBatch>,
 }
+
+struct LiteralBatch {
+    filter: AhoCorasick,
+    /// Parallel to `filter`'s patterns: which rule each literal came from.
+    rule: Vec<usize>,
+}
+
+/// Literals per `AhoCorasick` batch. Building one combined automaton over
+/// all literals scales worse than linearly with the literal count (seen
+/// directly: ~0.5s for 50,000 short literals, ~8s for 200,000); batches of
+/// this size keep each build's cost small while the number of batches, and
+/// so the per-line search cost, stays low for any rules file up to
+/// `MAX_RULES`.
+const LITERAL_BATCH_SIZE: usize = 4096;
 
 impl std::fmt::Debug for RuleSet {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -44,6 +72,10 @@ pub enum RulesError {
     Unreadable,
     /// Not a regular file. The path is not included.
     NotRegular,
+    /// Larger than [`crate::read::MAX_REGULAR_BYTES`].
+    TooLarge,
+    /// More than [`MAX_RULES`] rules, blank lines excluded.
+    TooManyRules,
     /// Line number in the rules file. The line itself is not included.
     Invalid {
         line: u64,
@@ -55,6 +87,10 @@ impl std::fmt::Display for RulesError {
         match self {
             RulesError::Unreadable => f.write_str("rules file is not readable"),
             RulesError::NotRegular => f.write_str("rules file is not a regular file"),
+            RulesError::TooLarge => f.write_str("rules file is larger than 8 MiB"),
+            RulesError::TooManyRules => {
+                write!(f, "rules file has more than {MAX_RULES} rules")
+            }
             RulesError::Invalid { line } => {
                 write!(f, "invalid rule on line {line} of the rules file")
             }
@@ -64,20 +100,28 @@ impl std::fmt::Display for RulesError {
 
 impl std::error::Error for RulesError {}
 
+/// Compiled rules kept past this count cost too much memory: each compiled
+/// regex holds a few KB, so a rules file with no other limit can be made to
+/// use many GB of RAM without ever being invalid syntax. 300,000 rules keeps
+/// that cost in the low gigabytes, well above any ordinary rules file.
+pub const MAX_RULES: usize = 300_000;
+
 /// Reads a rules file. An unreadable path yields an error without that path.
 pub fn load_rules(path: &std::path::Path) -> Result<RuleSet, RulesError> {
     let data = match crate::read::read_regular(path) {
         Ok(data) => data,
-        Err(crate::read::OpenError::NotRegular) => return Err(RulesError::NotRegular),
-        Err(crate::read::OpenError::Unreadable) => return Err(RulesError::Unreadable),
+        Err(crate::read::ReadRegularError::NotRegular) => return Err(RulesError::NotRegular),
+        Err(crate::read::ReadRegularError::Unreadable) => return Err(RulesError::Unreadable),
+        Err(crate::read::ReadRegularError::TooLarge) => return Err(RulesError::TooLarge),
     };
     parse_rules(&data)
 }
 
 /// `drop <regex>` or `sample <fraction> <regex>`, one per line. Blank lines
 /// are ignored. An unknown command, a missing regex, a fraction outside
-/// `0..1`, or a regex that does not compile, is invalid on that line.
-/// The error text does not contain the line.
+/// `0..1`, or a regex that does not compile, is invalid on that line. More
+/// than [`MAX_RULES`] rules stops parsing at that point, rather than
+/// compiling further regexes first. The error text does not contain the line.
 pub fn parse_rules(data: &[u8]) -> Result<RuleSet, RulesError> {
     let data = data.strip_prefix(b"\xef\xbb\xbf").unwrap_or(data);
     let mut rules = Vec::new();
@@ -89,14 +133,141 @@ pub fn parse_rules(data: &[u8]) -> Result<RuleSet, RulesError> {
         }
         line_no += 1;
         push_rule(&mut rules, &data[start..index], line_no)?;
+        if rules.len() > MAX_RULES {
+            return Err(RulesError::TooManyRules);
+        }
         start = index + 1;
     }
     if start < data.len() {
         line_no += 1;
         push_rule(&mut rules, &data[start..], line_no)?;
+        if rules.len() > MAX_RULES {
+            return Err(RulesError::TooManyRules);
+        }
     }
-    Ok(RuleSet { rules })
+    let mut always = Vec::new();
+    let mut literals = Vec::new();
+    let mut literal_rule = Vec::new();
+    for (index, rule) in rules.iter().enumerate() {
+        let rule_literals = required_literals(rule.regex.as_str());
+        if rule_literals.is_empty() {
+            always.push(index);
+            continue;
+        }
+        for literal in rule_literals {
+            literal_rule.push(index);
+            literals.push(literal);
+        }
+    }
+    let mut literal_batches = Vec::new();
+    for start in (0..literals.len()).step_by(LITERAL_BATCH_SIZE) {
+        let end = (start + LITERAL_BATCH_SIZE).min(literals.len());
+        // Each literal came from a pattern `push_rule` already compiled,
+        // so building a plain substring search over them cannot fail.
+        let filter = AhoCorasick::builder()
+            .ascii_case_insensitive(true)
+            .build(&literals[start..end])
+            .expect("literals from already-valid patterns");
+        literal_batches.push(LiteralBatch {
+            filter,
+            rule: literal_rule[start..end].to_vec(),
+        });
+    }
+    Ok(RuleSet {
+        rules,
+        always,
+        literal_batches,
+    })
 }
+
+/// Byte strings that must be present, somewhere, in any line this pattern
+/// matches, so their absence rules the pattern out. Empty when no such
+/// literal could be derived (the rule must then always be tried): a class
+/// or repeat too open-ended (`.`, `[A-Z]`), a pattern that can match the
+/// empty string, or one whose required literal is itself empty.
+///
+/// Candidates: the pattern's prefix, its suffix (`.*foo`, `\dfoo`), and the
+/// prefix of each of the first `INNER_LITERAL_STARTS` tails of a top-level
+/// concatenation (`.*foo.*`): any match of the whole contains a match of
+/// every tail, so a tail's literals are required too. The candidate with the
+/// highest `strength` wins: with one literal that is its length, with several
+/// (e.g. `(?i)` variants) the length of the shortest member. On a tie the
+/// later candidate wins, so a prefix (which comes first, and is the part
+/// rules are likeliest to share) loses to an equally strong later one. Rules sharing an inexact
+/// prefix (`^ERROR .*code=7`) are thus told apart by their rarer part instead
+/// of all becoming candidates for every line with that prefix.
+fn required_literals(pattern: &str) -> Vec<Vec<u8>> {
+    // `pattern` already compiled via `Regex::new` in `push_rule`, with the
+    // same default syntax, so parsing it again here cannot fail.
+    let hir = regex_syntax::parse(pattern).expect("already valid as a Regex");
+    let prefix = Extractor::new();
+    let mut tail_extractor = Extractor::new();
+    tail_extractor.limit_total(TAIL_LIMIT_TOTAL);
+    let mut suffix = Extractor::new();
+    suffix.kind(ExtractKind::Suffix);
+    let mut best: Option<Vec<Vec<u8>>> = None;
+    let mut consider = |found: Option<Vec<Vec<u8>>>| {
+        if let Some(found) = found {
+            if best
+                .as_ref()
+                .is_none_or(|kept| strength(&found) >= strength(kept))
+            {
+                best = Some(found);
+            }
+        }
+    };
+    consider(usable_literals(&prefix, &hir));
+    consider(usable_literals(&suffix, &hir));
+    if let HirKind::Concat(parts) = hir.kind() {
+        for start in 1..parts.len().min(INNER_LITERAL_STARTS + 1) {
+            let tail = Hir::concat(parts[start..].to_vec());
+            consider(usable_literals(&tail_extractor, &tail));
+        }
+    }
+    best.unwrap_or_default()
+}
+
+/// How selective a literal set is: the length of its shortest member, since
+/// any one of them may be the one that has to occur. A longer literal is
+/// rarer in log lines, so fewer rules become candidates.
+fn strength(literals: &[Vec<u8>]) -> usize {
+    literals.iter().map(Vec::len).min().unwrap_or(0)
+}
+
+/// Tails of a top-level concatenation tried for an inner literal. Bounded
+/// so a pattern with very many top-level parts cannot cost quadratic time
+/// at load.
+const INNER_LITERAL_STARTS: usize = 16;
+
+fn usable_literals(extractor: &Extractor, hir: &Hir) -> Option<Vec<Vec<u8>>> {
+    let sequence = extractor.extract(hir);
+    let literals = sequence.literals()?;
+    if literals.is_empty() || literals.iter().any(|literal| literal.as_bytes().is_empty()) {
+        return None;
+    }
+    // `(?i)` arrives as every ASCII case variant of the literal (up to 128
+    // per rule). Fold them to lowercase and drop duplicates: the filter
+    // matches ASCII-case-insensitively, so one literal covers them all.
+    let mut folded: Vec<Vec<u8>> = literals
+        .iter()
+        .map(|literal| literal.as_bytes().to_ascii_lowercase())
+        .collect();
+    folded.sort_unstable();
+    folded.dedup();
+    // Still many (e.g. non-ASCII case variants): too costly to keep in the
+    // filter, so this strategy is not usable and the rule falls through.
+    if folded.len() > MAX_LITERALS_PER_RULE {
+        return None;
+    }
+    Some(folded)
+}
+
+/// Literals an inner tail may expand to before extraction gives up on it;
+/// more than `MAX_LITERALS_PER_RULE` would be dropped anyway, and with
+/// `(?i)` the full expansion of every tail dominated the load time.
+const TAIL_LIMIT_TOTAL: usize = 16;
+/// Most literals one rule may add to the filter after case folding.
+const MAX_LITERALS_PER_RULE: usize = 8;
 
 fn push_rule(rules: &mut Vec<Compiled>, raw: &[u8], line_no: u64) -> Result<(), RulesError> {
     let raw = raw.strip_suffix(b"\r").unwrap_or(raw);
@@ -400,15 +571,58 @@ impl RuleSet {
         }
     }
 
-    /// First rule that matches the raw line. `None` when none matches.
+    /// Rules (ascending, no duplicates) whose literal occurs in `raw`.
+    fn found(&self, raw: &str) -> Vec<usize> {
+        let mut found: Vec<usize> = Vec::new();
+        // Overlapping, not `find_iter`: one rule's literal can be a prefix
+        // of another's (`user` inside `user 1`), and a plain leftmost-first
+        // non-overlapping search would consume one and skip the other.
+        for batch in &self.literal_batches {
+            for literal in batch.filter.find_overlapping_iter(raw) {
+                found.push(batch.rule[literal.pattern().as_usize()]);
+            }
+        }
+        found.sort_unstable();
+        found.dedup();
+        found
+    }
+
+    /// First rule that matches the raw line. `None` when none matches. Only
+    /// `always` plus the rules `literal_batches` found a literal for in
+    /// `raw` are tried, in ascending order and stopping at the first match, so a rule whose required
+    /// literal is absent from `raw` is never tried: cost no longer depends
+    /// on how many such rules come before the one that matches.
     fn hit(&self, raw: &str) -> Option<Hit<'_>> {
-        self.rules
-            .iter()
-            .find(|rule| rule.regex.is_match(raw))
-            .map(|rule| match &rule.kind {
-                Kind::Drop => Hit::Drop(rule.line_no),
-                Kind::Sample(fraction) => Hit::Sample(rule.line_no, fraction),
-            })
+        let found = self.found(raw);
+        // `always` is already sorted and disjoint from `found`: merge the two
+        // in ascending order and stop at the first match, without copying
+        // or sorting `always` per line.
+        let (mut a, mut f) = (0, 0);
+        let rule = loop {
+            let index = match (self.always.get(a), found.get(f)) {
+                (Some(&x), Some(&y)) if x < y => {
+                    a += 1;
+                    x
+                }
+                (_, Some(&y)) => {
+                    f += 1;
+                    y
+                }
+                (Some(&x), None) => {
+                    a += 1;
+                    x
+                }
+                (None, None) => return None,
+            };
+            let rule = &self.rules[index];
+            if rule.regex.is_match(raw) {
+                break rule;
+            }
+        };
+        Some(match &rule.kind {
+            Kind::Drop => Hit::Drop(rule.line_no),
+            Kind::Sample(fraction) => Hit::Sample(rule.line_no, fraction),
+        })
     }
 }
 
@@ -587,7 +801,7 @@ fn finish_groups(groups: BTreeMap<String, Acc>, stats: &Stats) -> Effect {
 
 #[cfg(test)]
 mod tests {
-    use super::{effect, parse_rules, RulesError};
+    use super::{effect, parse_rules, strength, RuleSet, RulesError, MAX_RULES};
     use crate::pattern::group;
     use crate::read::Line;
 
@@ -597,6 +811,18 @@ mod tests {
             raw: text.to_owned(),
             bytes,
         }
+    }
+
+    #[test]
+    fn too_large_and_too_many_rules_messages() {
+        assert_eq!(
+            RulesError::TooLarge.to_string(),
+            "rules file is larger than 8 MiB"
+        );
+        assert_eq!(
+            RulesError::TooManyRules.to_string(),
+            format!("rules file has more than {MAX_RULES} rules")
+        );
     }
 
     #[test]
@@ -1140,5 +1366,243 @@ mod tests {
             outcome.old_bytes - outcome.new_bytes,
             16_602_069_666_338_596_454
         );
+    }
+
+    /// Before `RuleSet::hit` filtered rules by required literal, it tried
+    /// each rule's own regex in turn and stopped at the first match: a line
+    /// whose only matching rule sits after many thousands of non-matching
+    /// rules paid for all of them, every time. Placing the matching rule
+    /// last must cost about the same as placing it first.
+    #[test]
+    fn rule_position_does_not_change_hit_cost() {
+        fn rules_with_match_at(n: usize, matching_first: bool) -> RuleSet {
+            let mut source = String::new();
+            if matching_first {
+                source.push_str("drop ^weg\x24\n");
+            }
+            for index in 0..n {
+                source.push_str(&format!("drop ^nomatch-pattern-{index}\x24\n"));
+            }
+            if !matching_first {
+                source.push_str("drop ^weg\x24\n");
+            }
+            parse_rules(source.as_bytes()).unwrap()
+        }
+
+        fn timed(rules: &RuleSet, reps: usize) -> std::time::Duration {
+            let start = std::time::Instant::now();
+            for _ in 0..reps {
+                assert!(rules.keep("weg").is_zero());
+            }
+            start.elapsed()
+        }
+
+        let n = 3_000;
+        let reps = 300;
+        let first = rules_with_match_at(n, true);
+        let last = rules_with_match_at(n, false);
+        // Warm up so the first timed call does not pay for page faults.
+        timed(&first, 10);
+        timed(&last, 10);
+        let first_time = (0..3).map(|_| timed(&first, reps)).min().unwrap();
+        let last_time = (0..3).map(|_| timed(&last, reps)).min().unwrap();
+        let ratio = last_time.as_secs_f64() / first_time.as_secs_f64().max(1e-9);
+        // Order-independent: ratio stays near 1. A per-rule linear scan
+        // grows close to `n` (thousands) here.
+        assert!(
+            ratio < 5.0,
+            "matching rule last cost {ratio:.1}x matching rule first ({first_time:?} vs {last_time:?}, n={n})"
+        );
+    }
+
+    /// Rules with no literal prefix (`.*foo`, `\dfoo`, `[a-z]+ foo`) still
+    /// keep first-rule-wins order among themselves and with prefix rules.
+    #[test]
+    fn rules_without_literal_prefix_keep_first_match() {
+        let rules = parse_rules(
+            b"drop .*nomatch\x24\nsample 0.5 \\dfoo\ndrop [a-z]+ foo\ndrop ^9foo\ndrop .*foo.*bar.*\n",
+        )
+        .unwrap();
+        let line = |raw: &str| match rules.hit(raw) {
+            Some(super::Hit::Drop(line)) | Some(super::Hit::Sample(line, _)) => Some(line),
+            None => None,
+        };
+        assert_eq!(line("9foo"), Some(2));
+        assert_eq!(line("abc foo"), Some(3));
+        assert_eq!(line("x nomatch"), Some(1));
+        assert_eq!(line("x nomatch 9foo"), Some(2));
+        assert_eq!(line("zz foo bar"), Some(3));
+        assert_eq!(line("FOO-bar"), None);
+        assert_eq!(line("Xfoo Ybar"), Some(5));
+        assert_eq!(line("weg"), None);
+    }
+
+    /// Rules without a literal prefix used to sit in `always`, which
+    /// `RuleSet::hit` copied and sorted on every log line: linear in the
+    /// rule count even with the matching rule first, and a full regex scan
+    /// with it last. Both must now cost about the same as one rule alone.
+    #[test]
+    fn rules_without_literal_prefix_do_not_scale_hit_cost() {
+        fn rules_with_match_at(shape: &str, n: usize, matching_first: bool) -> RuleSet {
+            let mut source = String::new();
+            if matching_first {
+                source.push_str("drop ^weg\x24\n");
+            }
+            for index in 0..n {
+                source.push_str(&format!(
+                    "drop {}\n",
+                    shape.replace("{i}", &index.to_string())
+                ));
+            }
+            if !matching_first {
+                source.push_str("drop ^weg\x24\n");
+            }
+            parse_rules(source.as_bytes()).unwrap()
+        }
+
+        fn timed(rules: &RuleSet, reps: usize) -> std::time::Duration {
+            timed_best(|| {
+                for _ in 0..reps {
+                    assert!(rules.keep("weg").is_zero());
+                }
+            })
+        }
+
+        fn timed_best(mut run: impl FnMut()) -> std::time::Duration {
+            run();
+            (0..3)
+                .map(|_| {
+                    let start = std::time::Instant::now();
+                    run();
+                    start.elapsed()
+                })
+                .min()
+                .unwrap()
+        }
+
+        let n = 20_000;
+        let reps = 100;
+        let alone = timed(&rules_with_match_at("", 0, true), reps);
+        for shape in [
+            ".*nomatch-pattern-{i}\x24",
+            "\\dnomatch-pattern-{i}",
+            "[a-z]+ nomatch-pattern-{i}",
+            ".*nomatch.*pattern-{i}.*",
+        ] {
+            for matching_first in [true, false] {
+                let rules = rules_with_match_at(shape, n, matching_first);
+                let time = timed(&rules, reps);
+                let ratio = time.as_secs_f64() / alone.as_secs_f64().max(1e-9);
+                // A per-line copy/sort or regex scan over `n` rules is
+                // hundreds of times one rule's cost here.
+                assert!(
+                    ratio < 10.0,
+                    "{shape} first={matching_first}: {ratio:.1}x one rule ({time:?} vs {alone:?}, n={n})"
+                );
+            }
+        }
+    }
+
+    /// `(?i)` used to be written out as every case variant of its literal
+    /// (up to 128 per rule), which cost hundreds of MB at 20,000 rules.
+    /// One folded literal per rule must do, matched ASCII-case-insensitively.
+    #[test]
+    fn case_insensitive_rules_need_one_literal() {
+        for pattern in [
+            "(?i)nomatch-pattern-1",
+            ".*(?i)nomatch-pattern-1",
+            ".*(?i)nomatch.*pattern-1.*",
+        ] {
+            let literals = super::required_literals(pattern);
+            assert_eq!(literals.len(), 1, "{pattern}: {literals:?}");
+        }
+    }
+
+    #[test]
+    fn case_insensitive_rules_keep_first_match() {
+        let rules =
+            parse_rules(b"drop (?i)error\nsample 0.5 .*(?i)warn.*\ndrop (?i)Stra\xc3\x9fe\n")
+                .unwrap();
+        let line = |raw: &str| match rules.hit(raw) {
+            Some(super::Hit::Drop(line)) | Some(super::Hit::Sample(line, _)) => Some(line),
+            None => None,
+        };
+        assert_eq!(line("an ERROR here"), Some(1));
+        assert_eq!(line("eRrOr and WaRn"), Some(1));
+        assert_eq!(line("x WARN y"), Some(2));
+        assert_eq!(line("STRA\u{1e9e}E"), Some(3));
+        assert_eq!(line("nothing"), None);
+    }
+
+    /// Rules sharing an inexact prefix (`^ERROR .*code=<i>` gives "ERROR ")
+    /// all became candidates for every "ERROR ..." line. Each rule must be
+    /// filtered by its most distinctive literal instead.
+    #[test]
+    fn shared_prefix_rules_are_not_all_candidates() {
+        let n = 2_000;
+        let mut source = String::from("drop ^ERROR .*code=weg\x24\n");
+        for index in 0..n {
+            source.push_str(&format!("drop ^ERROR .*code={index}\x24\n"));
+        }
+        let rules = parse_rules(source.as_bytes()).unwrap();
+        let found = rules.found("ERROR boom code=weg");
+        assert!(found.len() < 10, "{} candidates of {}", found.len(), n + 1);
+        assert!(rules.keep("ERROR boom code=weg").is_zero());
+        assert!(rules.keep("ERROR boom code=7").is_zero());
+        assert!(rules.hit("ERROR boom code=2000").is_none());
+    }
+
+    /// Same shape, timed: the matching rule first or last costs about the
+    /// same, and neither grows with the number of rules sharing the prefix.
+    #[test]
+    fn shared_prefix_rules_do_not_scale_hit_cost() {
+        fn rules_with_match_at(n: usize, matching_first: bool) -> RuleSet {
+            let mut source = String::new();
+            if matching_first {
+                source.push_str("drop ^ERROR .*code=weg\x24\n");
+            }
+            for index in 0..n {
+                source.push_str(&format!("drop ^ERROR .*code={index}x\x24\n"));
+            }
+            if !matching_first {
+                source.push_str("drop ^ERROR .*code=weg\x24\n");
+            }
+            parse_rules(source.as_bytes()).unwrap()
+        }
+
+        fn timed(rules: &RuleSet, reps: usize) -> std::time::Duration {
+            let run = || {
+                for _ in 0..reps {
+                    assert!(rules.keep("ERROR boom code=weg").is_zero());
+                }
+            };
+            run();
+            (0..3)
+                .map(|_| {
+                    let start = std::time::Instant::now();
+                    run();
+                    start.elapsed()
+                })
+                .min()
+                .unwrap()
+        }
+
+        let reps = 100;
+        let alone = timed(&rules_with_match_at(0, true), reps);
+        for matching_first in [true, false] {
+            let time = timed(&rules_with_match_at(20_000, matching_first), reps);
+            let ratio = time.as_secs_f64() / alone.as_secs_f64().max(1e-9);
+            assert!(
+                ratio < 10.0,
+                "first={matching_first}: {ratio:.1}x one rule ({time:?} vs {alone:?}, n=20000)"
+            );
+        }
+    }
+    #[test]
+    fn strength_is_the_length_of_the_shortest_literal() {
+        let lit = |text: &str| text.as_bytes().to_vec();
+        assert_eq!(strength(&[]), 0);
+        assert_eq!(strength(&[lit("error")]), 5);
+        assert_eq!(strength(&[lit("warning"), lit("err"), lit("failure")]), 3);
     }
 }

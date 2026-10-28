@@ -122,6 +122,22 @@ fn secrets_in_a_long_line_stay_masked() {
     }
 }
 
+/// A line cut at 1 MiB keeps a `\r` that ends up last in the kept part: the
+/// cut is not a line end, so that `\r` is content and must not be trimmed.
+/// A `$` rule sees it only if it is kept.
+#[test]
+fn cut_line_keeps_its_trailing_cr() {
+    let dir = temp("cut-cr");
+    let rules = write(&dir, "cr.rules", b"drop ^sample .*\\r$\n");
+    let mut data = b"sample ".to_vec();
+    data.resize(MIB - 1, b' ');
+    data.extend_from_slice(b"\rtail\n");
+    let path = write(&dir, "cr.log", &data);
+    let (code, out, err) = run(&["scan", "--rules", &rules, &path]);
+    assert_eq!(code, 0, "{err}");
+    assert!(out.contains("-> 0 lines, 0 bytes"), "{out}");
+}
+
 /// A JSON line over 1 MiB is refused with exit 2, the line number and no path
 /// or content; at exactly 1 MiB it is still read.
 #[test]
