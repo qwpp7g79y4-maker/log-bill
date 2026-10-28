@@ -1570,34 +1570,46 @@ mod tests {
             parse_rules(source.as_bytes()).unwrap()
         }
 
-        fn timed(rules: &RuleSet, reps: usize) -> std::time::Duration {
-            let run = || {
-                for _ in 0..reps {
-                    assert!(rules.keep("ERROR boom code=weg").is_zero());
-                }
-            };
-            run();
-            (0..3)
-                .map(|_| {
-                    let start = std::time::Instant::now();
-                    run();
-                    start.elapsed()
-                })
-                .min()
-                .unwrap()
+        fn timed_once(rules: &RuleSet, reps: usize) -> std::time::Duration {
+            let start = std::time::Instant::now();
+            for _ in 0..reps {
+                assert!(rules.keep("ERROR boom code=weg").is_zero());
+            }
+            start.elapsed()
         }
 
-        let reps = 100;
-        let alone = timed(&rules_with_match_at(0, true), reps);
-        for matching_first in [true, false] {
-            let time = timed(&rules_with_match_at(20_000, matching_first), reps);
+        // One lone rule costs ~1us a hit, so a short run is mostly runner noise
+        // (a shared CI machine gave 10.6x at 100 reps). Run long enough that a
+        // measurement is milliseconds, interleave the three cases so a noisy
+        // stretch hits all of them, and keep the best of several rounds.
+        let reps = 2_000;
+        let cases = [
+            rules_with_match_at(0, true),
+            rules_with_match_at(20_000, true),
+            rules_with_match_at(20_000, false),
+        ];
+        for rules in &cases {
+            timed_once(rules, reps);
+        }
+        let mut best = [std::time::Duration::MAX; 3];
+        for _ in 0..7 {
+            for (slot, rules) in best.iter_mut().zip(&cases) {
+                *slot = (*slot).min(timed_once(rules, reps));
+            }
+        }
+        let alone = best[0];
+        // Scanning every rule sharing the prefix would cost ~20000x one rule, so
+        // 25x still catches any linear growth while leaving room for noise.
+        for (matching_first, time) in [(true, best[1]), (false, best[2])] {
             let ratio = time.as_secs_f64() / alone.as_secs_f64().max(1e-9);
+            eprintln!("hit-cost first={matching_first}: {ratio:.2}x ({time:?} vs {alone:?})");
             assert!(
-                ratio < 10.0,
+                ratio < 25.0,
                 "first={matching_first}: {ratio:.1}x one rule ({time:?} vs {alone:?}, n=20000)"
             );
         }
     }
+
     #[test]
     fn strength_is_the_length_of_the_shortest_literal() {
         let lit = |text: &str| text.as_bytes().to_vec();
