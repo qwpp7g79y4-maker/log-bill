@@ -188,6 +188,36 @@ fn invalid_percentage_exit_3() {
 }
 
 #[test]
+fn percentage_above_100_exit_3() {
+    // 100 and 100.0 stay valid. Anything above is refused, not clamped.
+    let message = "invalid percentage: must be at most 100\n";
+    let (old, new_sample) = old_and_new();
+    let old_path = old.to_str().expect("path");
+    let new_path = new_sample.to_str().expect("path");
+    for pct in ["100.01", "100.0001", "101", "1000", "100000000000000000000"] {
+        for extra in [vec![], vec!["--json"], vec!["--explain"]] {
+            let mut args = vec!["diff"];
+            args.extend(extra.iter().copied());
+            args.extend(["--max-new-share", pct, old_path, new_path]);
+            let (code, out, err) = run_exit(&args);
+            assert_eq!(code, 3, "{args:?}");
+            assert!(out.is_empty(), "{args:?}: {out}");
+            assert_eq!(err, message, "{args:?}");
+        }
+    }
+    for pct in ["100", "100.0", "100.00"] {
+        let (code, _, err) = run_exit(&["diff", "--max-new-share", pct, old_path, new_path]);
+        assert_eq!(code, 0, "{pct}");
+        assert!(err.is_empty(), "{pct}: {err}");
+    }
+    // The scan check still comes first.
+    let (code, out, err) = run_exit(&["scan", "--max-new-share", "1000", "missing.log"]);
+    assert_eq!(code, 3);
+    assert!(out.is_empty(), "{out}");
+    assert_eq!(err, "--max-new-share only works with diff\n");
+}
+
+#[test]
 fn scan_ignores_a_valid_threshold() {
     // A valid threshold does not apply to scan. Stop before reading.
     let message = "--max-new-share only works with diff\n";
