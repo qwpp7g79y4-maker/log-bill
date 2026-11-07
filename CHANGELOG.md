@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased]
+
+### Build
+
+- The FIFO test in `tests/stdin.rs` runs on Unix only, so the test suite passes on Windows.
+- CI skips draft pull requests, cancels superseded runs, caches dependencies and sets job timeouts.
+
 ## [0.2.0] - 2026-10-24
 
 ### Added
