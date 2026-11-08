@@ -7,7 +7,7 @@ This page shows how each release of log-bill was checked, what we found, and wha
 | | |
 |---|---|
 | Commit checked | `6c2ffd0` |
-| Tests | `cargo test --no-fail-fast` in debug mode: 351 passed, 0 failed, 0 ignored |
+| Tests | `cargo test --no-fail-fast` in debug mode: 353 passed, 0 failed, 0 ignored |
 | Lints | `cargo clippy --all-targets -- -D warnings` and `cargo fmt --check`: both clean |
 
 Only this check was run for this entry. The release-mode, Rust 1.85 and fuzz runs in the entry below belong to the earlier commit named there.
@@ -18,7 +18,7 @@ Only this check was run for this entry. The release-mode, Rust 1.85 and fuzz run
 |---|---|
 | Commit checked | [`8ea5157`](https://github.com/qwpp7g79y4-maker/log-bill/commit/8ea5157) |
 | Date | 2026-10-17 |
-| Tests | 351 automated tests, run in debug mode, release mode, and on Rust 1.85 (all three: 351 passed, 0 failed) |
+| Tests | 353 automated tests, run in debug mode, release mode, and on Rust 1.85 (all three: 353 passed, 0 failed) |
 
 ### What was added
 
@@ -39,8 +39,8 @@ Only this check was run for this entry. The release-mode, Rust 1.85 and fuzz run
 
 ### How we checked
 
-- `cargo test` and `cargo test --release`: 351 passed, 0 failed, both exit 0.
-- `cargo +1.85 test` (oldest supported Rust version): 351 passed, 0 failed, exit 0.
+- `cargo test` and `cargo test --release`: 353 passed, 0 failed, both exit 0.
+- `cargo +1.85 test` (oldest supported Rust version): 353 passed, 0 failed, exit 0.
 - `cargo clippy --all-targets -- -D warnings`: exit 0, no warnings, in the main crate and in `fuzz/`.
 - `cargo fmt --check`: exit 0, in the main crate and in `fuzz/`.
 - `cargo +nightly fuzz build --target x86_64-unknown-linux-gnu`: exit 0, all six targets build.
