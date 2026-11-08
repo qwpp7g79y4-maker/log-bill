@@ -4,11 +4,18 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- Error messages now say what to do next, for example `file is not readable; check the path and the read permission`. Exit codes are unchanged.
+- The README files have Example and Options sections; every option in `--help` is listed in both.
+- `examples/` has two synthetic inputs with their expected output, compared by a golden test (`tests/golden.rs`).
+- The copyright line in `LICENSE-MIT` and `LICENSE-APACHE` reads 2025-2026 PEPAI / Pepijn de Jonge.
+
 ### Build
 
 - The FIFO test in `tests/stdin.rs` runs on Unix only, so the test suite passes on Windows.
 - CI skips draft pull requests, cancels superseded runs, caches dependencies and sets job timeouts.
-- The README now states the measured test count: 337 tests, all passing.
+- The README now states the measured test count: 339 tests, all passing.
 
 ## [0.2.0] - 2026-10-24
 

@@ -351,22 +351,22 @@ fn stderr_paths() {
     error(
         "text as jsonl",
         &["scan", "--format", "jsonl", TEXT_PATH],
-        "invalid JSON on line 1\n",
+        "invalid JSON on line 1; each line must be one JSON object, or use --format text\n",
     );
     error(
         "broken json",
         &["scan", "--format", "jsonl", BROKEN],
-        "invalid JSON on line 2\n",
+        "invalid JSON on line 2; each line must be one JSON object, or use --format text\n",
     );
     error(
         "broken json with json and explain",
         &["scan", "--format", "jsonl", "--json", "--explain", BROKEN],
-        "invalid JSON on line 2\n",
+        "invalid JSON on line 2; each line must be one JSON object, or use --format text\n",
     );
     error(
         "invalid rules file",
         &["scan", "--rules", RULES_BAD, TEXT_PATH],
-        "invalid rule on line 2 of the rules file\n",
+        "invalid rule on line 2 of the rules file; fix or remove that line\n",
     );
     error(
         "invalid rules file with json and explain",
@@ -378,7 +378,7 @@ fn stderr_paths() {
             RULES_BAD,
             TEXT_PATH,
         ],
-        "invalid rule on line 2 of the rules file\n",
+        "invalid rule on line 2 of the rules file; fix or remove that line\n",
     );
 }
 
@@ -524,7 +524,7 @@ fn canary_key_with_prefix_or_suffix() {
     error(
         "keys as jsonl",
         &["scan", "--format", "jsonl", KEY_LOG],
-        "invalid JSON on line 1\n",
+        "invalid JSON on line 1; each line must be one JSON object, or use --format text\n",
     );
 
     // Basic/Foo keep the token when only the first word becomes `<SECRET>`.
@@ -592,7 +592,7 @@ fn canary_key_with_prefix_or_suffix() {
     error(
         "auth text as jsonl",
         &["scan", "--format", "jsonl", AUTH_LOG],
-        "invalid JSON on line 1\n",
+        "invalid JSON on line 1; each line must be one JSON object, or use --format text\n",
     );
 }
 

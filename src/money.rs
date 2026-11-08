@@ -22,7 +22,7 @@ pub struct WindowError;
 
 impl fmt::Display for WindowError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("invalid window")
+        f.write_str("invalid window; use a whole number and a unit s, m, h or d, for example 15m")
     }
 }
 
@@ -71,7 +71,7 @@ pub struct CalcError;
 
 impl fmt::Display for CalcError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("calculation overflow")
+        f.write_str("calculation overflow; use a smaller window, price or days per month")
     }
 }
 
@@ -185,17 +185,17 @@ pub enum PriceError {
 impl fmt::Display for PriceError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let text = match self {
-            PriceError::Unreadable => "price file is not readable",
-            PriceError::NotJson => "price file is not JSON",
-            PriceError::MissingField => "price file is missing a field",
-            PriceError::EmptyField => "price file has an empty field",
-            PriceError::Negative => "price file has a negative price",
-            PriceError::NotNumeric => "price file has a price that is not a number",
-            PriceError::UnknownField => "price file has an unknown field",
-            PriceError::DuplicateKey => "price file has a duplicate key",
-            PriceError::GbBytes => "gb_bytes must be a whole number greater than 0",
-            PriceError::NotRegular => "price file is not a regular file",
-            PriceError::TooDeep => "price file is nested too deeply",
+            PriceError::Unreadable => "price file is not readable; check the path and the read permission",
+            PriceError::NotJson => "price file is not JSON; check it for a missing quote, comma or brace",
+            PriceError::MissingField => "price file is missing a field; add every price field, see the price file section of the documentation",
+            PriceError::EmptyField => "price file has an empty field; give each field a value",
+            PriceError::Negative => "price file has a negative price; use zero or a positive number",
+            PriceError::NotNumeric => "price file has a price that is not a number; write prices as JSON numbers",
+            PriceError::UnknownField => "price file has an unknown field; remove it or check the spelling",
+            PriceError::DuplicateKey => "price file has a duplicate key; keep one of them",
+            PriceError::GbBytes => "gb_bytes must be a whole number greater than 0; for example 1000000000",
+            PriceError::NotRegular => "price file is not a regular file; pass a regular file, not a directory or device",
+            PriceError::TooDeep => "price file is nested too deeply; flatten it",
         };
         f.write_str(text)
     }
@@ -376,7 +376,7 @@ fn number_text<'a>(numbers: &'a [(String, String)], key: &str) -> Option<&'a str
 }
 
 /// Nested arrays and objects past this depth are refused. serde_json errors
-/// on the 128th nested value, which would become `price file is not JSON`.
+/// on the 128th nested value, which would become `price file is not JSON; check it for a missing quote, comma or brace`.
 /// Stay below that so a file at the bound is `nested too deeply`.
 const MAX_PRICE_DEPTH: usize = 127;
 
@@ -1443,7 +1443,10 @@ mod tests {
 
         // 2s × maximum gb_bytes does not fit in u128. No silent 0.
         let narrow = extrapolate(1, parse_window("2s").unwrap(), 30, u128::MAX);
-        assert_eq!(narrow.unwrap_err().to_string(), "calculation overflow");
+        assert_eq!(
+            narrow.unwrap_err().to_string(),
+            "calculation overflow; use a smaller window, price or days per month"
+        );
     }
 
     #[test]
@@ -1731,7 +1734,10 @@ mod tests {
         let cents = concat!("0.", "01");
         let err = parse_prices(body.as_bytes()).expect_err("duplicate");
         assert_eq!(err, PriceError::DuplicateKey);
-        assert_eq!(err.to_string(), "price file has a duplicate key");
+        assert_eq!(
+            err.to_string(),
+            "price file has a duplicate key; keep one of them"
+        );
         assert!(!err.to_string().contains("99"));
         assert!(!err.to_string().contains(cents));
     }
@@ -1741,14 +1747,29 @@ mod tests {
         expected(
             "{CANARY-PRICE-0001",
             PriceError::NotJson,
-            "price file is not JSON",
+            "price file is not JSON; check it for a missing quote, comma or brace",
         );
-        expected("", PriceError::NotJson, "price file is not JSON");
-        expected("[]", PriceError::NotJson, "price file is not JSON");
-        expected("null", PriceError::NotJson, "price file is not JSON");
+        expected(
+            "",
+            PriceError::NotJson,
+            "price file is not JSON; check it for a missing quote, comma or brace",
+        );
+        expected(
+            "[]",
+            PriceError::NotJson,
+            "price file is not JSON; check it for a missing quote, comma or brace",
+        );
+        expected(
+            "null",
+            PriceError::NotJson,
+            "price file is not JSON; check it for a missing quote, comma or brace",
+        );
         let err = parse_prices(&[0xff]).expect_err("should fail");
         assert_eq!(err, PriceError::NotJson);
-        assert_eq!(err.to_string(), "price file is not JSON");
+        assert_eq!(
+            err.to_string(),
+            "price file is not JSON; check it for a missing quote, comma or brace"
+        );
     }
 
     #[test]
@@ -1773,14 +1794,14 @@ mod tests {
             expected(
                 &format!("{{{body}}}"),
                 PriceError::MissingField,
-                "price file is missing a field",
+                "price file is missing a field; add every price field, see the price file section of the documentation",
             );
         }
     }
 
     #[test]
     fn empty_field() {
-        let text_body = "price file has an empty field";
+        let text_body = "price file has an empty field; give each field a value";
         expected(
             r#"{"currency":"","source":"CANARY-PRICE-0003","date":"2026-10-08","ingest_per_gb":1}"#,
             PriceError::EmptyField,
@@ -1820,7 +1841,7 @@ mod tests {
 
     #[test]
     fn negative_price() {
-        let text_body = "price file has a negative price";
+        let text_body = "price file has a negative price; use zero or a positive number";
         expected(
             r#"{"currency":"EUR","source":"CANARY-PRICE-0004","date":"2026-10-08","ingest_per_gb":-2}"#,
             PriceError::Negative,
@@ -1840,7 +1861,7 @@ mod tests {
 
     #[test]
     fn gb_bytes_must_be_an_integer_greater_than_zero() {
-        let text_body = "gb_bytes must be a whole number greater than 0";
+        let text_body = "gb_bytes must be a whole number greater than 0; for example 1000000000";
         for json in [
             r#"{"currency":"EUR","source":"s","date":"2026-10-08","ingest_per_gb":1,"gb_bytes":0.5}"#,
             r#"{"currency":"EUR","source":"s","date":"2026-10-08","ingest_per_gb":1,"gb_bytes":1.5}"#,
@@ -1855,7 +1876,7 @@ mod tests {
 
     #[test]
     fn price_is_not_a_number() {
-        let text_body = "price file has a price that is not a number";
+        let text_body = "price file has a price that is not a number; write prices as JSON numbers";
         expected(
             r#"{"currency":"EUR","source":"s","date":"2026-10-08","ingest_per_gb":"CANARY-PRICE-0005"}"#,
             PriceError::NotNumeric,
@@ -1883,7 +1904,7 @@ mod tests {
         expected(
             r#"{"currency":"EUR","source":"s","date":"2026-10-08","ingest_per_gb":1,"CANARY-PRICE-0006":1}"#,
             PriceError::UnknownField,
-            "price file has an unknown field",
+            "price file has an unknown field; remove it or check the spelling",
         );
     }
 
@@ -1901,7 +1922,7 @@ mod tests {
         assert_eq!(err, PriceError::NotNumeric);
         assert_eq!(
             err.to_string(),
-            "price file has a price that is not a number"
+            "price file has a price that is not a number; write prices as JSON numbers"
         );
         assert!(!err.to_string().contains(&price));
     }
@@ -1911,7 +1932,10 @@ mod tests {
         let err =
             parse_prices(nested_price(super::MAX_PRICE_DEPTH + 5).as_bytes()).expect_err("deep");
         assert_eq!(err, PriceError::TooDeep);
-        assert_eq!(err.to_string(), "price file is nested too deeply");
+        assert_eq!(
+            err.to_string(),
+            "price file is nested too deeply; flatten it"
+        );
         let arrays = {
             let n = super::MAX_PRICE_DEPTH + 5;
             let mut json = String::new();
@@ -1930,17 +1954,26 @@ mod tests {
     fn nested_price_file_at_127_128_129() {
         let err = parse_prices(nested_price(127).as_bytes()).expect_err("127");
         assert_eq!(err, PriceError::UnknownField);
-        assert_eq!(err.to_string(), "price file has an unknown field");
+        assert_eq!(
+            err.to_string(),
+            "price file has an unknown field; remove it or check the spelling"
+        );
         assert!(!err.to_string().contains("not JSON"));
 
         let err = parse_prices(nested_price(128).as_bytes()).expect_err("128");
         assert_eq!(err, PriceError::TooDeep);
-        assert_eq!(err.to_string(), "price file is nested too deeply");
+        assert_eq!(
+            err.to_string(),
+            "price file is nested too deeply; flatten it"
+        );
         assert!(!err.to_string().contains("not JSON"));
 
         let err = parse_prices(nested_price(129).as_bytes()).expect_err("129");
         assert_eq!(err, PriceError::TooDeep);
-        assert_eq!(err.to_string(), "price file is nested too deeply");
+        assert_eq!(
+            err.to_string(),
+            "price file is nested too deeply; flatten it"
+        );
     }
 
     fn nested_price(depth: usize) -> String {
@@ -1960,7 +1993,10 @@ mod tests {
         let err = load_prices(std::path::Path::new("CANARY-PRICE-0007/missing.json"))
             .expect_err("should fail");
         assert_eq!(err, PriceError::Unreadable);
-        assert_eq!(err.to_string(), "price file is not readable");
+        assert_eq!(
+            err.to_string(),
+            "price file is not readable; check the path and the read permission"
+        );
         assert!(!err.to_string().contains("CANARY"));
     }
 

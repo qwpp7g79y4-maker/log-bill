@@ -1,0 +1,7 @@
+{"ts":"2026-03-01T10:00:01Z","level":"info","message":"request GET /items/101 took 12 ms"}
+{"ts":"2026-03-01T10:00:02Z","level":"info","message":"request GET /items/102 took 9 ms"}
+{"ts":"2026-03-01T10:00:03Z","level":"info","message":"request GET /items/103 took 31 ms"}
+{"ts":"2026-03-01T10:00:04Z","level":"warn","message":"cache miss for key item:104"}
+{"ts":"2026-03-01T10:00:05Z","level":"error","message":"upstream returned status 502"}
+{"ts":"2026-03-01T10:00:06Z","level":"info","message":"request POST /items took 48 ms"}
+{"ts":"2026-03-01T10:00:07Z","level":"error","message":"upstream returned status 503"}

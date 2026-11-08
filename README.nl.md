@@ -34,7 +34,7 @@ Ondersteunde systemen voor de kant-en-klare binaries:
 - **Windows x86_64 (`x86_64-pc-windows-msvc`).**
 - **macOS Intel (`x86_64-apple-darwin`) en Apple Silicon (`aarch64-apple-darwin`).**
 
-De suite heeft 337 automatische tests (337 geslaagd, 0 mislukt). Ze draaien in CI op Linux, Windows, macOS op Apple Silicon en macOS op Intel, en op Rust 1.85. Andere systemen kunnen werken met `cargo install`, maar zijn niet getest.
+De suite heeft 339 automatische tests (339 geslaagd, 0 mislukt). Ze draaien in CI op Linux, Windows, macOS op Apple Silicon en macOS op Intel, en op Rust 1.85. Andere systemen kunnen werken met `cargo install`, maar zijn niet getest.
 
 Voor de nieuwste `main`: `cargo install --locked --git https://github.com/qwpp7g79y4-maker/log-bill`.
 
@@ -167,6 +167,60 @@ estimate: extrapolation of one sample with your own prices; not an official rate
 
 Prijzen komen alleen uit een JSON-bestand dat je meegeeft met `--prices` (samen met `--window`); zie [het prijsbestand](docs/reference.nl.md#prijsbestand). Elke prijs wordt als exact decimaal getal gelezen. Een breuk die niet past, een getal buiten het bereik van een binaire float, of een bestand dat meer dan 128 arrays of objecten diep is, wordt geweigerd, en een sleutel die twee keer voorkomt ook. Elke tekstuitvoer met bedragen per GB eindigt met `estimate: extrapolation of one sample with your own prices; not an official rate` ("schatting: extrapolatie van één steekproef met je eigen prijzen; geen officieel tarief"). Een schatting van geïndexeerde events heeft het label `list price, estimate`, of `custom price, estimate` als je `--indexed-price` meegeeft. Alle opties, exitcodes en foutmeldingen staan in de [referentie](docs/reference.nl.md) en in `log-bill --help`.
 
+## Voorbeeld
+
+In `examples/` staan twee realistische, synthetische invoerbestanden met de verwachte uitvoer. Een test vergelijkt ze.
+
+```console
+$ log-bill scan --window 10s examples/checkout.log
+total: 10 lines, 596 bytes
+P7a54079609e7d5dd  4 lines  281 bytes  47.1%  <TS> INFO order <NUM> created by user <NUM> from <IP>
+P2bc39ad92e6fb19a  2 lines  132 bytes  22.1%  <TS> ERROR payment provider timeout after <NUM> ms
+P8478ba88805cb2a8  3 lines  126 bytes  21.1%  <TS> INFO health check ok
+Pe0490a0a122e06db  1 line  57 bytes  9.6%  <TS> WARN payment retry <NUM> for order <NUM>
+factor: 8640
+per day: 5149440 bytes, 0.005 GB
+per month: 154483200 bytes, 0.154 GB
+```
+
+Hetzelfde voor een JSON-lines-log:
+
+```console
+$ log-bill scan --format jsonl --window 10s examples/api.jsonl
+total: 7 lines, 619 bytes
+P8230e69a7d8ae820  3 lines  272 bytes  43.9%  request GET <VAR> took <NUM> ms
+Pea2e06d6ab60f0cd  2 lines  174 bytes  28.1%  upstream returned status <NUM>
+P37c0c3f4a77935a0  1 line  88 bytes  14.2%  request POST /items took <NUM> ms
+Pac3bc0ca004bcd76  1 line  85 bytes  13.7%  cache miss for key <VAR>
+factor: 8640
+per day: 5348160 bytes, 0.005 GB
+per month: 160444800 bytes, 0.160 GB
+```
+
+## Opties
+
+Deze opties werken bij `scan` en `diff`; `-h` en `-V` werken ook los. Dezelfde lijst staat in `log-bill --help`.
+
+| Optie | Betekenis |
+|---|---|
+| `--format <FORMAT>` | Invoerformaat: `text` (standaard) of `jsonl`. |
+| `--message-field <NAME>` | JSON-veld met het bericht. |
+| `--window <WINDOW>` | Tijdvenster van het monster, bijvoorbeeld `15m`. |
+| `--days-per-month <DAYS>` | Dagen per maand voor de extrapolatie (standaard 30). |
+| `--prices <FILE>` | Prijsbestand (JSON). |
+| `--rules <FILE>` | Bestand met drop- en sample-regels. |
+| `--top <N>` | Toon de N grootste patronen; de rest als other. |
+| `--explain` | Toon de maskers en de berekening per patroon. |
+| `--json` | Schrijf JSON in plaats van tekst. |
+| `--budget-month <AMOUNT>` | Maandbudget; stop met exitcode 1 als de schatting hoger is. |
+| `--max-new-share <PCT>` | Maximaal aandeel nieuwe patronen, in procenten. |
+| `--retention <DAYS>` | Bewaartermijn van geïndexeerde logs in dagen: 3, 7, 15 of 30. |
+| `--billing <PLAN>` | Factureringsplan voor geïndexeerde logs: `annual`, `monthly` of `ondemand`. |
+| `--indexed-price <USD>` | Prijs voor geïndexeerde logs in USD per 1M events. Vervangt de lijstprijs. |
+| `--index-rules <FILE>` | Regels voor uitsluiting uit de index (drop en sample), na `--rules`. |
+| `-h, --help` | Toon hulp. |
+| `-V, --version` | Toon versie. |
+
 ## Hoe het rekent
 
 Elk getal is terug te voeren op deze regels. De volledige maskerregels staan in de [referentie](docs/reference.nl.md#maskering).
@@ -232,7 +286,7 @@ Naar keuze onder een van deze licenties:
 - Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
 - MIT license ([LICENSE-MIT](LICENSE-MIT))
 
-Copyright 2026 PEPAI.
+Copyright 2025-2026 PEPAI / Pepijn de Jonge.
 
 ## Contact
 

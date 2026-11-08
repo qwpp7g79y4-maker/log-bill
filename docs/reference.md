@@ -45,7 +45,7 @@ Prices come only from a JSON file you pass with `--prices` (together with `--win
 }
 ```
 
-`index_per_gb` and `gb_bytes` are optional. Without `gb_bytes` a GB is 1000000000 bytes. `gb_bytes` must be a whole number greater than 0. A price is that exact decimal, not a binary floating-point value. A fraction that does not fit in the accumulator is not a number: exit 2, `price file has a price that is not a number`. A number outside the range of a binary float, such as `1e400`, `-1e400`, `1E+400` or a `1` followed by 309 zeros, is not invalid JSON. On a price that is the same message. On `gb_bytes` it is `gb_bytes must be a whole number greater than 0`. 128 or more nested arrays or objects is exit 2: `price file is nested too deeply`. The same key twice is exit 2: `price file has a duplicate key`.
+`index_per_gb` and `gb_bytes` are optional. Without `gb_bytes` a GB is 1000000000 bytes. `gb_bytes` must be a whole number greater than 0. A price is that exact decimal, not a binary floating-point value. A fraction that does not fit in the accumulator is not a number: exit 2, `price file has a price that is not a number; write prices as JSON numbers`. A number outside the range of a binary float, such as `1e400`, `-1e400`, `1E+400` or a `1` followed by 309 zeros, is not invalid JSON. On a price that is the same message. On `gb_bytes` it is `gb_bytes must be a whole number greater than 0; for example 1000000000`. 128 or more nested arrays or objects is exit 2: `price file is nested too deeply; flatten it`. The same key twice is exit 2: `price file has a duplicate key; keep one of them`.
 
 ## How it counts
 
@@ -98,7 +98,7 @@ With `--explain`, a `<SECRET>` count is marked `possible secret`. In `--json` su
 
 If the output cannot be written, for example because the disk is full, the exit code is 3 and stderr is `could not write output`. `--help` and `--version` use that same code; they do not exit 0 when their text cannot be written.
 
-A log file, price file or rules file must be a regular file, except the log file argument given as `-` (see [Options](#options)), which reads standard input instead. A FIFO, a directory or anything else is refused with exit 2 without waiting for a writer to open it. A `gb_bytes` that is a fraction such as `0.5`, 0 or negative, or a number outside the binary-float range, is exit 2; a price that is text instead of a number, a fraction that does not fit, or a price outside that range, gives `price file has a price that is not a number`. 128 or more nested arrays or objects gives `price file is nested too deeply`. The same key twice gives `price file has a duplicate key`. `sample 0,1` is not a valid fraction: exit 2 with `invalid rule on line 1 of the rules file`, without showing the line. The regular-file messages do not include the path, and no error message contains a raw log line.
+A log file, price file or rules file must be a regular file, except the log file argument given as `-` (see [Options](#options)), which reads standard input instead. A FIFO, a directory or anything else is refused with exit 2 without waiting for a writer to open it. A `gb_bytes` that is a fraction such as `0.5`, 0 or negative, or a number outside the binary-float range, is exit 2; a price that is text instead of a number, a fraction that does not fit, or a price outside that range, gives `price file has a price that is not a number; write prices as JSON numbers`. 128 or more nested arrays or objects gives `price file is nested too deeply; flatten it`. The same key twice gives `price file has a duplicate key; keep one of them`. `sample 0,1` is not a valid fraction: exit 2 with `invalid rule on line 1 of the rules file; fix or remove that line`, without showing the line. The regular-file messages do not include the path, and no error message contains a raw log line.
 
 Every row below was run against the binary, and a test keeps it that way. A row with exit 3 has empty stdout. The message is the complete stderr; the binary adds a newline. `\n` in the last column is a newline inside the message. `--json` does not change a message. For `diff`, `--explain` is checked before `--top`, `--window`, `--days-per-month` and a valid index option, so its message wins. An invalid amount, an invalid percentage, an invalid retention, billing plan or indexed price, and `--prices` without a window are checked before `--explain`. On `scan`, a valid index option without `--window` is rejected before the index-rules file is opened.
 
@@ -110,10 +110,10 @@ Every row below was run against the binary, and a test keeps it that way. A row 
 | `--message-field` | scan | `--json` is not the input format jsonl. | `scan --json --message-field message file.log` | 3 | `--message-field only works with --format jsonl` |
 | `--window` | diff | Without `--prices` and without `--json`. | `diff --window 1m OLD NEW` | 3 | `--window with diff only works together with --prices or --json` |
 | `--window` | diff | `--explain` is checked first. | `diff --explain --window 1m OLD NEW` | 3 | `--explain only works with scan` |
-| `--window` | scan | 0m is invalid. | `scan --window 0m file.log` | 3 | `invalid window` |
-| `--window` | scan | 5x is invalid. | `scan --window 5x file.log` | 3 | `invalid window` |
-| `--window` | scan | The unit is not one of `s`, `m`, `h`, `d`. | `scan --window 1é file.log` | 3 | `invalid window` |
-| `--window` | diff | 0m is invalid, before the diff check. | `diff --window 0m OLD NEW` | 3 | `invalid window` |
+| `--window` | scan | 0m is invalid. | `scan --window 0m file.log` | 3 | `invalid window; use a whole number and a unit s, m, h or d, for example 15m` |
+| `--window` | scan | 5x is invalid. | `scan --window 5x file.log` | 3 | `invalid window; use a whole number and a unit s, m, h or d, for example 15m` |
+| `--window` | scan | The unit is not one of `s`, `m`, `h`, `d`. | `scan --window 1é file.log` | 3 | `invalid window; use a whole number and a unit s, m, h or d, for example 15m` |
+| `--window` | diff | 0m is invalid, before the diff check. | `diff --window 0m OLD NEW` | 3 | `invalid window; use a whole number and a unit s, m, h or d, for example 15m` |
 | `--days-per-month` | scan | Without a window. | `scan --days-per-month 31 file.log` | 3 | `--days-per-month only works together with --window` |
 | `--days-per-month` | diff | Without a window. | `diff --days-per-month 31 OLD NEW` | 3 | `--days-per-month only works together with --window` |
 | `--days-per-month` | diff | `--json` does not change the message. | `diff --json --days-per-month 31 OLD NEW` | 3 | `--days-per-month only works together with --window` |
@@ -155,18 +155,18 @@ Every row below was run against the binary, and a test keeps it that way. A row 
 | `--index-rules` | scan | Without a window. The file is not opened. | `scan --index-rules rules.txt file.log` | 3 | `--index-rules only works together with --window` |
 | `--index-rules` | diff | Not for diff. | `diff --index-rules rules.txt OLD NEW` | 3 | `--index-rules only works with scan` |
 | `--index-rules` | diff | `--explain` wins over the index-rules file. | `diff --explain --index-rules rules.txt OLD NEW` | 3 | `--explain only works with scan` |
-| `--index-rules` | scan | The file cannot be read. The path is not shown. |  | 2 | `index rules file is not readable` |
-| `--index-rules` | scan | Not a regular file. |  | 2 | `index rules file is not a regular file` |
-| `--index-rules` | scan | A rule is invalid. The line is not shown. |  | 2 | `invalid rule on line 1 of the index rules file` |
-| log file | scan and diff | Not a regular file (FIFO, directory). Refused without waiting. |  | 2 | `file is not a regular file` |
+| `--index-rules` | scan | The file cannot be read. The path is not shown. |  | 2 | `index rules file is not readable; check the path and the read permission` |
+| `--index-rules` | scan | Not a regular file. |  | 2 | `index rules file is not a regular file; pass a regular file, not a directory or device` |
+| `--index-rules` | scan | A rule is invalid. The line is not shown. |  | 2 | `invalid rule on line 1 of the index rules file; fix or remove that line` |
+| log file | scan and diff | Not a regular file (FIFO, directory). Refused without waiting. |  | 2 | `file is not a regular file; pass a regular file, not a directory or device` |
 | log file | scan and diff | A JSON line longer than 1 MiB (a text line that long is cut at 1 MiB and still counts every byte). |  | 2 | `line N is longer than 1 MiB; JSON lines that long are not read` |
 | log file | scan and diff | UTF-16 or UTF-32, with or without a byte order mark. The name is `UTF-16LE`, `UTF-16BE`, `UTF-32LE` or `UTF-32BE`. |  | 2 | `file is UTF-16LE, not UTF-8; convert it first, for example with iconv -f UTF-16LE -t UTF-8, or in PowerShell with Out-File -Encoding utf8` |
-| `--prices` | scan and diff | Price file is not a regular file. |  | 2 | `price file is not a regular file` |
-| `--rules` | scan and diff | Rules file is not a regular file. |  | 2 | `rules file is not a regular file` |
-| `--prices` | scan and diff | `gb_bytes` is not a whole number greater than 0 (a fraction, 0, negative, or a number outside the binary-float range). |  | 2 | `gb_bytes must be a whole number greater than 0` |
-| `--prices` | scan and diff | The same key appears twice. |  | 2 | `price file has a duplicate key` |
-| `--prices` | scan and diff | A price fraction does not fit, or the number is outside the binary-float range. |  | 2 | `price file has a price that is not a number` |
-| `--prices` | scan and diff | 128 or more nested arrays or objects. |  | 2 | `price file is nested too deeply` |
+| `--prices` | scan and diff | Price file is not a regular file. |  | 2 | `price file is not a regular file; pass a regular file, not a directory or device` |
+| `--rules` | scan and diff | Rules file is not a regular file. |  | 2 | `rules file is not a regular file; pass a regular file, not a directory or device` |
+| `--prices` | scan and diff | `gb_bytes` is not a whole number greater than 0 (a fraction, 0, negative, or a number outside the binary-float range). |  | 2 | `gb_bytes must be a whole number greater than 0; for example 1000000000` |
+| `--prices` | scan and diff | The same key appears twice. |  | 2 | `price file has a duplicate key; keep one of them` |
+| `--prices` | scan and diff | A price fraction does not fit, or the number is outside the binary-float range. |  | 2 | `price file has a price that is not a number; write prices as JSON numbers` |
+| `--prices` | scan and diff | 128 or more nested arrays or objects. |  | 2 | `price file is nested too deeply; flatten it` |
 
 ## Privacy and safety
 

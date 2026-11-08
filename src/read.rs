@@ -58,8 +58,8 @@ pub enum ReadError {
 impl fmt::Display for ReadError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ReadError::Unreadable => f.write_str("file is not readable"),
-            ReadError::NotRegular => f.write_str("file is not a regular file"),
+            ReadError::Unreadable => f.write_str("file is not readable; check the path and the read permission"),
+            ReadError::NotRegular => f.write_str("file is not a regular file; pass a regular file, not a directory or device"),
             ReadError::NotUtf8 { encoding } => {
                 let name = encoding.name();
                 write!(
@@ -67,10 +67,10 @@ impl fmt::Display for ReadError {
                     "file is {name}, not UTF-8; convert it first, for example with iconv -f {name} -t UTF-8, or in PowerShell with Out-File -Encoding utf8"
                 )
             }
-            ReadError::InvalidJson { line } => write!(f, "invalid JSON on line {line}"),
+            ReadError::InvalidJson { line } => write!(f, "invalid JSON on line {line}; each line must be one JSON object, or use --format text"),
             ReadError::LineTooLong { line } => write!(
                 f,
-                "line {line} is longer than 1 MiB; JSON lines that long are not read"
+                "line {line} is longer than 1 MiB; JSON lines that long are not read; shorten or remove that line"
             ),
         }
     }
@@ -1200,7 +1200,10 @@ mod tests {
         // Empty line 2 still counts for the number. The text of line 3 stays out.
         let raw = b"{\"message\":\"ok\"}\n\n{DO-NOT-SHOW-0001\n";
         let err = json_lines(raw, None).unwrap_err();
-        assert_eq!(err.to_string(), "invalid JSON on line 3");
+        assert_eq!(
+            err.to_string(),
+            "invalid JSON on line 3; each line must be one JSON object, or use --format text"
+        );
         assert!(!err.to_string().contains("DO-NOT-SHOW"));
     }
 

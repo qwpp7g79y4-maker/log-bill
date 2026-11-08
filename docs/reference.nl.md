@@ -45,7 +45,7 @@ Prijzen komen alleen uit een JSON-bestand dat je meegeeft met `--prices` (samen 
 }
 ```
 
-`index_per_gb` en `gb_bytes` zijn optioneel. Zonder `gb_bytes` is een GB 1000000000 bytes. `gb_bytes` moet een geheel getal groter dan 0 zijn. Een prijs is dat exacte decimale getal, niet een binaire drijvende-kommawaarde. Een breuk die niet in de accumulator past is geen getal: exit 2, `price file has a price that is not a number`. Een getal buiten het bereik van een binaire float, zoals `1e400`, `-1e400`, `1E+400` of een `1` gevolgd door 309 nullen, is geen ongeldige JSON. Bij een prijs is dat dezelfde melding. Bij `gb_bytes` is het `gb_bytes must be a whole number greater than 0`. 128 of meer geneste arrays of objecten is exit 2: `price file is nested too deeply`. Dezelfde sleutel twee keer is exit 2: `price file has a duplicate key`.
+`index_per_gb` en `gb_bytes` zijn optioneel. Zonder `gb_bytes` is een GB 1000000000 bytes. `gb_bytes` moet een geheel getal groter dan 0 zijn. Een prijs is dat exacte decimale getal, niet een binaire drijvende-kommawaarde. Een breuk die niet in de accumulator past is geen getal: exit 2, `price file has a price that is not a number; write prices as JSON numbers`. Een getal buiten het bereik van een binaire float, zoals `1e400`, `-1e400`, `1E+400` of een `1` gevolgd door 309 nullen, is geen ongeldige JSON. Bij een prijs is dat dezelfde melding. Bij `gb_bytes` is het `gb_bytes must be a whole number greater than 0; for example 1000000000`. 128 of meer geneste arrays of objecten is exit 2: `price file is nested too deeply; flatten it`. Dezelfde sleutel twee keer is exit 2: `price file has a duplicate key; keep one of them`.
 
 ## Hoe het rekent
 
@@ -98,7 +98,7 @@ Met `--explain` krijgt een telling van `<SECRET>` de tekst `possible secret` ("m
 
 Als de uitvoer niet geschreven kan worden, bijvoorbeeld omdat de schijf vol is, is de exitcode 3 en is stderr `could not write output`. `--help` en `--version` gebruiken diezelfde code; ze eindigen niet met 0 als hun tekst niet weg kan.
 
-Een logbestand, prijsbestand of regelsbestand moet een gewoon bestand zijn, behalve het logbestand-argument als dat `-` is (zie [Opties](#opties)): dat leest dan standaardinvoer. Een FIFO, een map of iets anders wordt geweigerd met exit 2, zonder te wachten tot een schrijver opent. Een `gb_bytes` die een breuk is zoals `0.5`, 0 of negatief, of een getal buiten het bereik van een binaire float, is exit 2; een prijs die tekst is in plaats van een getal, een breuk die niet past, of een prijs buiten dat bereik, geeft `price file has a price that is not a number`. 128 of meer geneste arrays of objecten geeft `price file is nested too deeply`. Dezelfde sleutel twee keer geeft `price file has a duplicate key`. `sample 0,1` is geen geldige fractie: exit 2 met `invalid rule on line 1 of the rules file`, zonder de regel te tonen. De meldingen over gewone bestanden noemen het pad niet, en geen foutmelding bevat een ruwe logregel.
+Een logbestand, prijsbestand of regelsbestand moet een gewoon bestand zijn, behalve het logbestand-argument als dat `-` is (zie [Opties](#opties)): dat leest dan standaardinvoer. Een FIFO, een map of iets anders wordt geweigerd met exit 2, zonder te wachten tot een schrijver opent. Een `gb_bytes` die een breuk is zoals `0.5`, 0 of negatief, of een getal buiten het bereik van een binaire float, is exit 2; een prijs die tekst is in plaats van een getal, een breuk die niet past, of een prijs buiten dat bereik, geeft `price file has a price that is not a number; write prices as JSON numbers`. 128 of meer geneste arrays of objecten geeft `price file is nested too deeply; flatten it`. Dezelfde sleutel twee keer geeft `price file has a duplicate key; keep one of them`. `sample 0,1` is geen geldige fractie: exit 2 met `invalid rule on line 1 of the rules file; fix or remove that line`, zonder de regel te tonen. De meldingen over gewone bestanden noemen het pad niet, en geen foutmelding bevat een ruwe logregel.
 
 Elke rij hieronder is op de binary gedraaid, en een test houdt dat zo. Een rij met exit 3 heeft een lege stdout. De melding is de hele stderr; de binary zet er een regeleinde achter. `\n` in de laatste kolom is een regeleinde in die melding. `--json` verandert een melding niet. Bij `diff` wordt `--explain` eerder getoetst dan `--top`, `--window`, `--days-per-month` en een geldige index-optie, en die melding wint dan. Een ongeldig bedrag, een ongeldig percentage, een ongeldige retentie, billing of indexed-prijs, en `--prices` zonder venster worden eerder getoetst dan `--explain`. Bij `scan` wordt een geldige index-optie zonder `--window` geweigerd voordat het index-regelsbestand wordt geopend.
 
@@ -110,10 +110,10 @@ Elke rij hieronder is op de binary gedraaid, en een test houdt dat zo. Een rij m
 | `--message-field` | scan | `--json` is geen invoerformaat jsonl. | `scan --json --message-field message file.log` | 3 | `--message-field only works with --format jsonl` |
 | `--window` | diff | Zonder `--prices` en zonder `--json`. | `diff --window 1m OLD NEW` | 3 | `--window with diff only works together with --prices or --json` |
 | `--window` | diff | `--explain` wordt eerder getoetst. | `diff --explain --window 1m OLD NEW` | 3 | `--explain only works with scan` |
-| `--window` | scan | 0m is ongeldig. | `scan --window 0m file.log` | 3 | `invalid window` |
-| `--window` | scan | 5x is ongeldig. | `scan --window 5x file.log` | 3 | `invalid window` |
-| `--window` | scan | De eenheid is niet `s`, `m`, `h` of `d`. | `scan --window 1é file.log` | 3 | `invalid window` |
-| `--window` | diff | 0m is ongeldig, vóór de diff-toets. | `diff --window 0m OLD NEW` | 3 | `invalid window` |
+| `--window` | scan | 0m is ongeldig. | `scan --window 0m file.log` | 3 | `invalid window; use a whole number and a unit s, m, h or d, for example 15m` |
+| `--window` | scan | 5x is ongeldig. | `scan --window 5x file.log` | 3 | `invalid window; use a whole number and a unit s, m, h or d, for example 15m` |
+| `--window` | scan | De eenheid is niet `s`, `m`, `h` of `d`. | `scan --window 1é file.log` | 3 | `invalid window; use a whole number and a unit s, m, h or d, for example 15m` |
+| `--window` | diff | 0m is ongeldig, vóór de diff-toets. | `diff --window 0m OLD NEW` | 3 | `invalid window; use a whole number and a unit s, m, h or d, for example 15m` |
 | `--days-per-month` | scan | Zonder venster. | `scan --days-per-month 31 file.log` | 3 | `--days-per-month only works together with --window` |
 | `--days-per-month` | diff | Zonder venster. | `diff --days-per-month 31 OLD NEW` | 3 | `--days-per-month only works together with --window` |
 | `--days-per-month` | diff | `--json` verandert de melding niet. | `diff --json --days-per-month 31 OLD NEW` | 3 | `--days-per-month only works together with --window` |
@@ -155,18 +155,18 @@ Elke rij hieronder is op de binary gedraaid, en een test houdt dat zo. Een rij m
 | `--index-rules` | scan | Zonder venster. Het bestand wordt niet geopend. | `scan --index-rules rules.txt file.log` | 3 | `--index-rules only works together with --window` |
 | `--index-rules` | diff | Hoort niet bij diff. | `diff --index-rules rules.txt OLD NEW` | 3 | `--index-rules only works with scan` |
 | `--index-rules` | diff | `--explain` wint van het index-regelsbestand. | `diff --explain --index-rules rules.txt OLD NEW` | 3 | `--explain only works with scan` |
-| `--index-rules` | scan | Het bestand is niet leesbaar. Het pad wordt niet getoond. |  | 2 | `index rules file is not readable` |
-| `--index-rules` | scan | Geen gewoon bestand. |  | 2 | `index rules file is not a regular file` |
-| `--index-rules` | scan | Een regel is ongeldig. De regel zelf wordt niet getoond. |  | 2 | `invalid rule on line 1 of the index rules file` |
-| logbestand | scan en diff | Geen gewoon bestand (FIFO, map). Geweigerd zonder te wachten. |  | 2 | `file is not a regular file` |
+| `--index-rules` | scan | Het bestand is niet leesbaar. Het pad wordt niet getoond. |  | 2 | `index rules file is not readable; check the path and the read permission` |
+| `--index-rules` | scan | Geen gewoon bestand. |  | 2 | `index rules file is not a regular file; pass a regular file, not a directory or device` |
+| `--index-rules` | scan | Een regel is ongeldig. De regel zelf wordt niet getoond. |  | 2 | `invalid rule on line 1 of the index rules file; fix or remove that line` |
+| logbestand | scan en diff | Geen gewoon bestand (FIFO, map). Geweigerd zonder te wachten. |  | 2 | `file is not a regular file; pass a regular file, not a directory or device` |
 | logbestand | scan en diff | Een JSON-regel langer dan 1 MiB (een tekstregel van die lengte wordt bij 1 MiB afgekapt en telt alle bytes mee). |  | 2 | `line N is longer than 1 MiB; JSON lines that long are not read` |
 | logbestand | scan en diff | UTF-16 of UTF-32, met of zonder byte order mark. De naam is `UTF-16LE`, `UTF-16BE`, `UTF-32LE` of `UTF-32BE`. |  | 2 | `file is UTF-16LE, not UTF-8; convert it first, for example with iconv -f UTF-16LE -t UTF-8, or in PowerShell with Out-File -Encoding utf8` |
-| `--prices` | scan en diff | Prijsbestand is geen gewoon bestand. |  | 2 | `price file is not a regular file` |
-| `--rules` | scan en diff | Regelsbestand is geen gewoon bestand. |  | 2 | `rules file is not a regular file` |
-| `--prices` | scan en diff | `gb_bytes` is geen geheel getal groter dan 0 (een breuk, 0, negatief, of een getal buiten het bereik van een binaire float). |  | 2 | `gb_bytes must be a whole number greater than 0` |
-| `--prices` | scan en diff | Dezelfde sleutel komt twee keer voor. |  | 2 | `price file has a duplicate key` |
-| `--prices` | scan en diff | Een prijsbreuk past niet, of het getal ligt buiten het bereik van een binaire float. |  | 2 | `price file has a price that is not a number` |
-| `--prices` | scan en diff | 128 of meer geneste arrays of objecten. |  | 2 | `price file is nested too deeply` |
+| `--prices` | scan en diff | Prijsbestand is geen gewoon bestand. |  | 2 | `price file is not a regular file; pass a regular file, not a directory or device` |
+| `--rules` | scan en diff | Regelsbestand is geen gewoon bestand. |  | 2 | `rules file is not a regular file; pass a regular file, not a directory or device` |
+| `--prices` | scan en diff | `gb_bytes` is geen geheel getal groter dan 0 (een breuk, 0, negatief, of een getal buiten het bereik van een binaire float). |  | 2 | `gb_bytes must be a whole number greater than 0; for example 1000000000` |
+| `--prices` | scan en diff | Dezelfde sleutel komt twee keer voor. |  | 2 | `price file has a duplicate key; keep one of them` |
+| `--prices` | scan en diff | Een prijsbreuk past niet, of het getal ligt buiten het bereik van een binaire float. |  | 2 | `price file has a price that is not a number; write prices as JSON numbers` |
+| `--prices` | scan en diff | 128 of meer geneste arrays of objecten. |  | 2 | `price file is nested too deeply; flatten it` |
 
 ## Privacy en veiligheid
 

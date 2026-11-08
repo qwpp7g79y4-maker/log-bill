@@ -2,6 +2,16 @@
 
 Deze pagina laat zien hoe elke release van log-bill is gecontroleerd, wat we vonden en wat we hebben opgelost. Het beschrijft onze controles. Het is geen garantie dat de software foutloos of veilig is.
 
+## Controle voor de release
+
+| | |
+|---|---|
+| Gecontroleerde commit | `COMMIT` |
+| Tests | `cargo test --no-fail-fast` in debugmodus: 339 geslaagd, 0 mislukt, 0 genegeerd |
+| Lints | `cargo clippy --all-targets -- -D warnings` en `cargo fmt --check`: beide schoon |
+
+Alleen deze controle is voor dit onderdeel gedraaid. De runs in releasemodus, op Rust 1.85 en met fuzzing in het onderdeel hieronder horen bij de eerdere commit die daar staat.
+
 ## Nog niet uitgebracht
 
 | | |

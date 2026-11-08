@@ -2,6 +2,16 @@
 
 This page shows how each release of log-bill was checked, what we found, and what we fixed. It describes checks we did. It is not a guarantee that the software is free of bugs or secure.
 
+## Pre-release check
+
+| | |
+|---|---|
+| Commit checked | `COMMIT` |
+| Tests | `cargo test --no-fail-fast` in debug mode: 339 passed, 0 failed, 0 ignored |
+| Lints | `cargo clippy --all-targets -- -D warnings` and `cargo fmt --check`: both clean |
+
+Only this check was run for this entry. The release-mode, Rust 1.85 and fuzz runs in the entry below belong to the earlier commit named there.
+
 ## Unreleased
 
 | | |

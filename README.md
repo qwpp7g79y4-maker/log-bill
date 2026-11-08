@@ -32,7 +32,7 @@ Supported systems for the ready-made binaries:
 - **Windows x86_64 (`x86_64-pc-windows-msvc`).**
 - **macOS Intel (`x86_64-apple-darwin`) and Apple Silicon (`aarch64-apple-darwin`).**
 
-The suite has 337 automated tests (337 passed, 0 failed). They run in CI on Linux, Windows, macOS on Apple Silicon and macOS on Intel, and on Rust 1.85. Other systems may work with `cargo install`, but are not tested.
+The suite has 339 automated tests (339 passed, 0 failed). They run in CI on Linux, Windows, macOS on Apple Silicon and macOS on Intel, and on Rust 1.85. Other systems may work with `cargo install`, but are not tested.
 
 For the latest `main`: `cargo install --locked --git https://github.com/qwpp7g79y4-maker/log-bill`.
 
@@ -165,6 +165,60 @@ estimate: extrapolation of one sample with your own prices; not an official rate
 
 Prices come only from a JSON file you pass with `--prices` (together with `--window`); see [the price file format](docs/reference.md#price-file). Each price is read as an exact decimal. A fraction that does not fit, a number outside the range of a binary float, or a file nested more than 128 arrays or objects deep, is rejected, and so is a key that appears twice. Every text output with per-GB amounts ends with `estimate: extrapolation of one sample with your own prices; not an official rate`. An indexed-event estimate is labeled `list price, estimate`, or `custom price, estimate` when you pass `--indexed-price`. All options, exit codes and error messages are listed in the [reference](docs/reference.md) and in `log-bill --help`.
 
+## Example
+
+Two realistic, synthetic inputs live in `examples/`, each with its expected output. A test compares them.
+
+```console
+$ log-bill scan --window 10s examples/checkout.log
+total: 10 lines, 596 bytes
+P7a54079609e7d5dd  4 lines  281 bytes  47.1%  <TS> INFO order <NUM> created by user <NUM> from <IP>
+P2bc39ad92e6fb19a  2 lines  132 bytes  22.1%  <TS> ERROR payment provider timeout after <NUM> ms
+P8478ba88805cb2a8  3 lines  126 bytes  21.1%  <TS> INFO health check ok
+Pe0490a0a122e06db  1 line  57 bytes  9.6%  <TS> WARN payment retry <NUM> for order <NUM>
+factor: 8640
+per day: 5149440 bytes, 0.005 GB
+per month: 154483200 bytes, 0.154 GB
+```
+
+The same for a JSON-lines log:
+
+```console
+$ log-bill scan --format jsonl --window 10s examples/api.jsonl
+total: 7 lines, 619 bytes
+P8230e69a7d8ae820  3 lines  272 bytes  43.9%  request GET <VAR> took <NUM> ms
+Pea2e06d6ab60f0cd  2 lines  174 bytes  28.1%  upstream returned status <NUM>
+P37c0c3f4a77935a0  1 line  88 bytes  14.2%  request POST /items took <NUM> ms
+Pac3bc0ca004bcd76  1 line  85 bytes  13.7%  cache miss for key <VAR>
+factor: 8640
+per day: 5348160 bytes, 0.005 GB
+per month: 160444800 bytes, 0.160 GB
+```
+
+## Options
+
+These options work on `scan` and `diff`; `-h` and `-V` also work on their own. The same list is in `log-bill --help`.
+
+| Option | Meaning |
+|---|---|
+| `--format <FORMAT>` | Input format: `text` (default) or `jsonl`. |
+| `--message-field <NAME>` | JSON field that holds the message. |
+| `--window <WINDOW>` | Time window of the sample, for example `15m`. |
+| `--days-per-month <DAYS>` | Days in a month for the extrapolation (default 30). |
+| `--prices <FILE>` | Price file (JSON). |
+| `--rules <FILE>` | File with drop and sample rules. |
+| `--top <N>` | Show the N largest patterns; the rest as other. |
+| `--explain` | Show the masks and the calculation per pattern. |
+| `--json` | Write JSON instead of text. |
+| `--budget-month <AMOUNT>` | Monthly budget; exit with code 1 if the estimate is above it. |
+| `--max-new-share <PCT>` | Maximum share of new patterns, in percent. |
+| `--retention <DAYS>` | Indexed-log retention in days: 3, 7, 15 or 30. |
+| `--billing <PLAN>` | Indexed-log billing plan: `annual`, `monthly` or `ondemand`. |
+| `--indexed-price <USD>` | Indexed-log price in USD per 1M events. Overrides the list price. |
+| `--index-rules <FILE>` | Index exclusion rules (drop and sample), applied after `--rules`. |
+| `-h, --help` | Print help. |
+| `-V, --version` | Print version. |
+
 ## How it counts
 
 Every number can be traced back to these rules. The full masking rules are in the [reference](docs/reference.md#masking).
@@ -230,7 +284,7 @@ Licensed under either of
 - Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
 - MIT license ([LICENSE-MIT](LICENSE-MIT))
 
-at your option. Copyright 2026 PEPAI.
+at your option. Copyright 2025-2026 PEPAI / Pepijn de Jonge.
 
 Release archives include THIRD-PARTY-LICENSES.html with the licenses of the third-party crates in the binary.
 

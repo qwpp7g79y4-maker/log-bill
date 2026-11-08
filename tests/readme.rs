@@ -306,8 +306,8 @@ fn english_and_dutch_pages_match() {
 
 #[test]
 fn licenses_and_manifest_name_pepai() {
-    assert!(read("LICENSE-MIT").contains("Copyright (c) 2026 PEPAI"));
-    assert!(read("LICENSE-APACHE").contains("Copyright 2026 PEPAI"));
+    assert!(read("LICENSE-MIT").contains("Copyright (c) 2025-2026 PEPAI / Pepijn de Jonge"));
+    assert!(read("LICENSE-APACHE").contains("Copyright 2025-2026 PEPAI / Pepijn de Jonge"));
     let cargo = read("Cargo.toml");
     assert!(cargo.contains("PEPAI <pep_ai@icloud.com>"), "{cargo}");
 }
@@ -555,7 +555,7 @@ fn option_and_error_tables_match_the_binary() {
             "budget requires a window\n",
             "budget requires a price file\n",
             "--window with diff only works together with --prices or --json\n",
-            "invalid window\n",
+            "invalid window; use a whole number and a unit s, m, h or d, for example 15m\n",
             "invalid budget\n",
             "invalid percentage\n",
         ] {
@@ -617,13 +617,13 @@ fn reference_describes_masks_and_input_errors() {
         "`std::fs::read`",
         "`13:55:36`",
         "`<NO-MESSAGE>`",
-        "gb_bytes must be a whole number greater than 0",
-        "price file has a price that is not a number",
-        "price file has a duplicate key",
-        "invalid rule on line 1 of the rules file",
-        "`file is not a regular file`",
-        "`price file is not a regular file`",
-        "`rules file is not a regular file`",
+        "gb_bytes must be a whole number greater than 0; for example 1000000000",
+        "price file has a price that is not a number; write prices as JSON numbers",
+        "price file has a duplicate key; keep one of them",
+        "invalid rule on line 1 of the rules file; fix or remove that line",
+        "`file is not a regular file; pass a regular file, not a directory or device`",
+        "`price file is not a regular file; pass a regular file, not a directory or device`",
+        "`rules file is not a regular file; pass a regular file, not a directory or device`",
         "without waiting for a writer to open it",
         "`file is UTF-16LE, not UTF-8; convert it first, for example with iconv -f UTF-16LE -t UTF-8, or in PowerShell with Out-File -Encoding utf8`",
         "One UTF-8 byte order mark at the start of the file is skipped for parsing",

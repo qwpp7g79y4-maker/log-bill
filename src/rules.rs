@@ -53,10 +53,17 @@ pub enum RulesError {
 impl std::fmt::Display for RulesError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            RulesError::Unreadable => f.write_str("rules file is not readable"),
-            RulesError::NotRegular => f.write_str("rules file is not a regular file"),
+            RulesError::Unreadable => {
+                f.write_str("rules file is not readable; check the path and the read permission")
+            }
+            RulesError::NotRegular => f.write_str(
+                "rules file is not a regular file; pass a regular file, not a directory or device",
+            ),
             RulesError::Invalid { line } => {
-                write!(f, "invalid rule on line {line} of the rules file")
+                write!(
+                    f,
+                    "invalid rule on line {line} of the rules file; fix or remove that line"
+                )
             }
         }
     }
@@ -814,7 +821,7 @@ mod tests {
         assert_eq!(unknown, RulesError::Invalid { line: 2 });
         assert_eq!(
             unknown.to_string(),
-            "invalid rule on line 2 of the rules file"
+            "invalid rule on line 2 of the rules file; fix or remove that line"
         );
         assert!(!unknown.to_string().contains("CANARY"));
         assert!(!unknown.to_string().contains("keep"));
@@ -1107,7 +1114,10 @@ mod tests {
             let err = parse_rules(source.as_bytes()).unwrap_err();
             assert_eq!(err, RulesError::Invalid { line: 1 }, "{source}");
             let text_body = err.to_string();
-            assert_eq!(text_body, "invalid rule on line 1 of the rules file");
+            assert_eq!(
+                text_body,
+                "invalid rule on line 1 of the rules file; fix or remove that line"
+            );
             assert!(!text_body.contains("CANARY"));
             assert!(!text_body.contains("1.5"));
             assert!(!text_body.contains("sample"));

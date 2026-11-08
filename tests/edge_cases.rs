@@ -120,7 +120,10 @@ fn raw_nul_byte_inside_a_json_string_is_invalid_json() {
     let log = tmp("edge-raw-nul.jsonl", &raw);
     let (code, _out, err) = run(&["scan", "--format", "jsonl", "--json", file_path(&log)]);
     assert_eq!(code, 2, "{err}");
-    assert_eq!(err, "invalid JSON on line 1\n");
+    assert_eq!(
+        err,
+        "invalid JSON on line 1; each line must be one JSON object, or use --format text\n"
+    );
 }
 
 #[test]
@@ -154,7 +157,7 @@ fn duplicate_key_nested_inside_a_price_object_is_rejected() {
         file_path(&log),
     ]);
     assert_eq!(code, 2, "{err}");
-    assert_eq!(err, "price file has a duplicate key\n");
+    assert_eq!(err, "price file has a duplicate key; keep one of them\n");
 }
 
 #[test]
@@ -174,7 +177,10 @@ fn negative_zero_price_is_rejected_not_treated_as_zero() {
         file_path(&log),
     ]);
     assert_eq!(code, 2, "{err}");
-    assert_eq!(err, "price file has a negative price\n");
+    assert_eq!(
+        err,
+        "price file has a negative price; use zero or a positive number\n"
+    );
 }
 
 #[test]

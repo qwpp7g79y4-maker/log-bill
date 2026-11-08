@@ -399,7 +399,10 @@ fn sample_one_is_rejected_without_the_rule_line() {
     let (code, out, err) = run(&["scan", "--window", "1s", "--index-rules", &rules, &log]);
     assert_eq!(code, Some(2), "{err}");
     assert!(out.is_empty(), "{out}");
-    assert_eq!(err, "invalid rule on line 1 of the index rules file\n");
+    assert_eq!(
+        err,
+        "invalid rule on line 1 of the index rules file; fix or remove that line\n"
+    );
     assert!(!err.contains(CANARY), "{err}");
     assert!(!err.contains("sample 1"), "{err}");
 }

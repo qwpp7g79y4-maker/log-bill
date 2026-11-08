@@ -50,7 +50,10 @@ fn invalid_window_exit_3() {
         assert_eq!(output.status.code(), Some(3), "{window:?}");
         assert!(output.stdout.is_empty(), "{window:?}");
         let err = String::from_utf8(output.stderr).expect("stderr is utf-8");
-        assert_eq!(err, "invalid window\n", "{window:?}");
+        assert_eq!(
+            err, "invalid window; use a whole number and a unit s, m, h or d, for example 15m\n",
+            "{window:?}"
+        );
     }
 }
 
@@ -72,7 +75,10 @@ fn missing_file_exit_2() {
     assert_eq!(output.status.code(), Some(2));
     assert!(output.stdout.is_empty());
     let err = String::from_utf8(output.stderr).expect("stderr is utf-8");
-    assert_eq!(err, "file is not readable\n");
+    assert_eq!(
+        err,
+        "file is not readable; check the path and the read permission\n"
+    );
 }
 
 #[test]
@@ -88,7 +94,10 @@ fn broken_json_line_exit_2() {
     assert_eq!(output.status.code(), Some(2));
     assert!(output.stdout.is_empty());
     let err = String::from_utf8(output.stderr).expect("stderr is utf-8");
-    assert_eq!(err, "invalid JSON on line 3\n");
+    assert_eq!(
+        err,
+        "invalid JSON on line 3; each line must be one JSON object, or use --format text\n"
+    );
     assert!(!err.contains("DO-NOT-SHOW"));
 }
 
@@ -115,7 +124,10 @@ fn invalid_price_file_exit_2_without_content() {
         assert_eq!(output.status.code(), Some(2), "{args:?}");
         assert!(output.stdout.is_empty(), "{args:?}");
         let err = String::from_utf8(output.stderr).expect("stderr is utf-8");
-        assert_eq!(err, "price file is not JSON\n", "{args:?}");
+        assert_eq!(
+            err, "price file is not JSON; check it for a missing quote, comma or brace\n",
+            "{args:?}"
+        );
         assert!(!err.contains("CANARY"), "{args:?}");
     }
     let _ = std::fs::remove_file(&path);
@@ -150,7 +162,10 @@ fn large_window_and_gb_bytes_exit_3() {
     assert_eq!(output.status.code(), Some(3));
     assert!(output.stdout.is_empty());
     let err = String::from_utf8(output.stderr).expect("stderr is utf-8");
-    assert_eq!(err, "calculation overflow\n");
+    assert_eq!(
+        err,
+        "calculation overflow; use a smaller window, price or days per month\n"
+    );
 }
 
 /// `scan m2.log > /dev/full`, and the same for `--version` and `--help`.
@@ -265,7 +280,10 @@ fn gb_bytes_fraction_exit_2() {
     assert_eq!(output.status.code(), Some(2));
     assert!(output.stdout.is_empty());
     let err = String::from_utf8(output.stderr).expect("stderr");
-    assert_eq!(err, "gb_bytes must be a whole number greater than 0\n");
+    assert_eq!(
+        err,
+        "gb_bytes must be a whole number greater than 0; for example 1000000000\n"
+    );
 }
 
 /// A price or `gb_bytes` outside the f64 range is a price error, not invalid JSON.
@@ -280,9 +298,9 @@ fn price_number_outside_f64_exit_2() {
     let prices_path = prices.to_str().expect("path");
     let huge = format!("1{}", "0".repeat(309));
     let negative_huge = format!("-{huge}");
-    let not_number = "price file has a price that is not a number\n";
-    let not_json = "price file is not JSON\n";
-    let gb_bytes = "gb_bytes must be a whole number greater than 0\n";
+    let not_number = "price file has a price that is not a number; write prices as JSON numbers\n";
+    let not_json = "price file is not JSON; check it for a missing quote, comma or brace\n";
+    let gb_bytes = "gb_bytes must be a whole number greater than 0; for example 1000000000\n";
     // `1e-400` still fits in f64 (it becomes zero) and does not fit the
     // accumulator, so every field says the price is not a number.
     let numbers = [
@@ -363,7 +381,7 @@ fn price_number_outside_f64_exit_2() {
         .expect("start binary");
     let err = String::from_utf8(output.stderr).expect("stderr");
     assert_eq!(output.status.code(), Some(2));
-    assert_eq!(err, "price file has a duplicate key\n");
+    assert_eq!(err, "price file has a duplicate key; keep one of them\n");
     let _ = std::fs::remove_file(&log);
     let _ = std::fs::remove_file(&prices);
 }
@@ -438,32 +456,47 @@ fn fifo_exit_2_within_two_seconds() {
     let (code, output_2, err) = within(&["scan", fifo_path]);
     assert_eq!(code, 2, "{err}");
     assert!(output_2.is_empty());
-    assert_eq!(err, "file is not a regular file\n");
+    assert_eq!(
+        err,
+        "file is not a regular file; pass a regular file, not a directory or device\n"
+    );
     assert!(!err.contains("CANARY"));
 
     let (code, output_2, err) = within(&["diff", fifo_path, log_path]);
     assert_eq!(code, 2, "{err}");
     assert!(output_2.is_empty());
-    assert_eq!(err, "file is not a regular file\n");
+    assert_eq!(
+        err,
+        "file is not a regular file; pass a regular file, not a directory or device\n"
+    );
 
     let (code, output_2, err) =
         within(&["scan", "--window", "1d", "--prices", fifo_path, log_path]);
     assert_eq!(code, 2, "{err}");
     assert!(output_2.is_empty());
-    assert_eq!(err, "price file is not a regular file\n");
+    assert_eq!(
+        err,
+        "price file is not a regular file; pass a regular file, not a directory or device\n"
+    );
     assert!(!err.contains("CANARY"));
 
     let (code, output_2, err) = within(&["scan", "--rules", fifo_path, log_path]);
     assert_eq!(code, 2, "{err}");
     assert!(output_2.is_empty());
-    assert_eq!(err, "rules file is not a regular file\n");
+    assert_eq!(
+        err,
+        "rules file is not a regular file; pass a regular file, not a directory or device\n"
+    );
 
     let map = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
     let dir_path = map.to_str().expect("path");
     let (code, output_2, err) = within(&["scan", dir_path]);
     assert_eq!(code, 2, "{err}");
     assert!(output_2.is_empty());
-    assert_eq!(err, "file is not a regular file\n");
+    assert_eq!(
+        err,
+        "file is not a regular file; pass a regular file, not a directory or device\n"
+    );
 
     // A symlink to the FIFO. Opening must not wait for a writer.
     let link = dir.join("link-to-fifo");
@@ -472,7 +505,10 @@ fn fifo_exit_2_within_two_seconds() {
     let (code, output_2, err) = within(&["scan", link_path]);
     assert_eq!(code, 2, "{err}");
     assert!(output_2.is_empty());
-    assert_eq!(err, "file is not a regular file\n");
+    assert_eq!(
+        err,
+        "file is not a regular file; pass a regular file, not a directory or device\n"
+    );
     assert!(!err.contains("CANARY"));
 
     let _ = std::fs::remove_dir_all(&dir);
@@ -504,7 +540,10 @@ fn sample_fraction_longer_than_80_characters_exits_2() {
     assert_eq!(output.status.code(), Some(2));
     assert!(output.stdout.is_empty());
     let err = String::from_utf8(output.stderr).expect("stderr");
-    assert_eq!(err, "invalid rule on line 1 of the rules file\n");
+    assert_eq!(
+        err,
+        "invalid rule on line 1 of the rules file; fix or remove that line\n"
+    );
     assert!(!err.contains(&fraction));
     let _ = std::fs::remove_dir_all(&dir);
 }

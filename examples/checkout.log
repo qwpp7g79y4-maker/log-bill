@@ -1,0 +1,10 @@
+2026-03-01T10:00:01Z INFO order 1001 created by user 17 from 10.0.0.5
+2026-03-01T10:00:02Z INFO order 1002 created by user 23 from 10.0.0.9
+2026-03-01T10:00:03Z WARN payment retry 1 for order 1002
+2026-03-01T10:00:04Z INFO order 1003 created by user 17 from 10.0.0.5
+2026-03-01T10:00:05Z ERROR payment provider timeout after 3000 ms
+2026-03-01T10:00:06Z INFO health check ok
+2026-03-01T10:00:07Z INFO health check ok
+2026-03-01T10:00:08Z INFO health check ok
+2026-03-01T10:00:09Z INFO order 1004 created by user 41 from 10.0.0.12
+2026-03-01T10:00:10Z ERROR payment provider timeout after 3100 ms

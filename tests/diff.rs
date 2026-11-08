@@ -315,7 +315,10 @@ fn unreadable_file_exit_2() {
         let (code, out, err) = run_exit(&args);
         assert_eq!(code, 2, "{args:?}");
         assert!(out.is_empty(), "{args:?}");
-        assert_eq!(err, "file is not readable\n", "{args:?}");
+        assert_eq!(
+            err, "file is not readable; check the path and the read permission\n",
+            "{args:?}"
+        );
     }
 }
 
@@ -569,7 +572,10 @@ fn overflow_diff_matches_scan() {
     for (name, (code, out, err)) in [("scan", scan), ("diff", diff)] {
         assert_eq!(code, 3, "{name}");
         assert!(out.is_empty(), "{name}: {out}");
-        assert_eq!(err, "calculation overflow\n", "{name}");
+        assert_eq!(
+            err, "calculation overflow; use a smaller window, price or days per month\n",
+            "{name}"
+        );
         assert!(!err.contains("ok"), "{name}");
     }
 }
@@ -591,7 +597,10 @@ fn broken_rules_file_on_diff_exit_2() {
     let _ = std::fs::remove_file(&line_list);
     assert_eq!(code, 2);
     assert!(out.is_empty(), "{out}");
-    assert_eq!(err, "invalid rule on line 2 of the rules file\n");
+    assert_eq!(
+        err,
+        "invalid rule on line 2 of the rules file; fix or remove that line\n"
+    );
     assert!(!err.contains("INVALID-REGEX"));
     assert!(!err.contains("drop"));
     assert!(!err.contains('['));

@@ -637,7 +637,9 @@ fn sample_fraction_outside_0_to_1_exit_2() {
         assert!(out.is_empty(), "{item_name}");
         assert_eq!(
             err,
-            format!("invalid rule on line {sample_line} of the rules file\n")
+            format!(
+                "invalid rule on line {sample_line} of the rules file; fix or remove that line\n"
+            )
         );
         assert!(!err.contains("CANARY"), "{err}");
         assert!(!err.contains("1.5"), "{err}");
@@ -668,7 +670,10 @@ fn rules_exit_2_without_content() {
     ]);
     assert_eq!(code, 2);
     assert!(out.is_empty());
-    assert_eq!(err, "invalid rule on line 2 of the rules file\n");
+    assert_eq!(
+        err,
+        "invalid rule on line 2 of the rules file; fix or remove that line\n"
+    );
     assert!(!err.contains("CANARY"));
     assert!(!err.contains("keep"));
     let _ = std::fs::remove_file(&unknown);
@@ -682,7 +687,10 @@ fn rules_exit_2_without_content() {
     ]);
     assert_eq!(code, 2);
     assert!(out.is_empty());
-    assert_eq!(err, "invalid rule on line 2 of the rules file\n");
+    assert_eq!(
+        err,
+        "invalid rule on line 2 of the rules file; fix or remove that line\n"
+    );
     assert!(!err.contains("CANARY"));
     let _ = std::fs::remove_file(&regex);
 
@@ -695,7 +703,10 @@ fn rules_exit_2_without_content() {
     ]);
     assert_eq!(code, 2);
     assert!(out.is_empty());
-    assert_eq!(err, "invalid rule on line 1 of the rules file\n");
+    assert_eq!(
+        err,
+        "invalid rule on line 1 of the rules file; fix or remove that line\n"
+    );
     assert!(!err.contains("drop"));
     let _ = std::fs::remove_file(&empty);
 
@@ -707,7 +718,10 @@ fn rules_exit_2_without_content() {
     ]);
     assert_eq!(code, 2);
     assert!(out.is_empty());
-    assert_eq!(err, "rules file is not readable\n");
+    assert_eq!(
+        err,
+        "rules file is not readable; check the path and the read permission\n"
+    );
     assert!(!err.contains("CANARY"));
 }
 

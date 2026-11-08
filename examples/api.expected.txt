@@ -1,0 +1,8 @@
+total: 7 lines, 619 bytes
+P8230e69a7d8ae820  3 lines  272 bytes  43.9%  request GET <VAR> took <NUM> ms
+Pea2e06d6ab60f0cd  2 lines  174 bytes  28.1%  upstream returned status <NUM>
+P37c0c3f4a77935a0  1 line  88 bytes  14.2%  request POST /items took <NUM> ms
+Pac3bc0ca004bcd76  1 line  85 bytes  13.7%  cache miss for key <VAR>
+factor: 8640
+per day: 5348160 bytes, 0.005 GB
+per month: 160444800 bytes, 0.160 GB

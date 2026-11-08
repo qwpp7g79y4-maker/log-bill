@@ -431,7 +431,10 @@ fn missing_file_and_broken_rules_stay_exit_2() {
     ]);
     assert_eq!(code, 2);
     assert!(out.is_empty(), "{out}");
-    assert_eq!(err, "file is not readable\n");
+    assert_eq!(
+        err,
+        "file is not readable; check the path and the read permission\n"
+    );
 
     let log = tmp("budget-exit2.log", b"keep\n");
     let lines = tmp("budget-exit2.txt", b"CANARY-SECRET-0001\n");
@@ -449,7 +452,10 @@ fn missing_file_and_broken_rules_stay_exit_2() {
     ]);
     assert_eq!(code, 2);
     assert!(out.is_empty(), "{out}");
-    assert_eq!(err, "invalid rule on line 1 of the rules file\n");
+    assert_eq!(
+        err,
+        "invalid rule on line 1 of the rules file; fix or remove that line\n"
+    );
     assert!(!err.contains("CANARY"), "{err}");
     let _ = std::fs::remove_file(&prices);
     let _ = std::fs::remove_file(&log);
@@ -538,7 +544,7 @@ fn duplicate_price_key_is_exit_2() {
     ]);
     assert_eq!(code, 2, "stdout: {out} stderr: {err}");
     assert!(out.is_empty(), "{out}");
-    assert_eq!(err, "price file has a duplicate key\n");
+    assert_eq!(err, "price file has a duplicate key; keep one of them\n");
     assert!(!err.contains("99"), "{err}");
     assert!(!err.contains("0.01"), "{err}");
     let _ = std::fs::remove_file(&log);
@@ -569,7 +575,10 @@ fn fraction_that_does_not_fit_exits_2() {
     ]);
     assert_eq!(code, 2, "stdout: {out} stderr: {err}");
     assert!(out.is_empty(), "{out}");
-    assert_eq!(err, "price file has a price that is not a number\n");
+    assert_eq!(
+        err,
+        "price file has a price that is not a number; write prices as JSON numbers\n"
+    );
     assert!(!err.contains(&price), "{err}");
     let _ = std::fs::remove_file(&log);
     let _ = std::fs::remove_file(&prices);
@@ -595,21 +604,24 @@ fn price_file_nested_past_128_exits_2() {
         ]);
         assert_eq!(code, 2, "{name} stdout: {out} stderr: {err}");
         assert!(out.is_empty(), "{name}: {out}");
-        assert_eq!(err, "price file is nested too deeply\n");
+        assert_eq!(err, "price file is nested too deeply; flatten it\n");
         let _ = std::fs::remove_file(&prices);
     }
     let _ = std::fs::remove_file(&log);
 }
 
 /// Depth 127 is a field error. Depth 128 and 129 are nested-too-deep, never
-/// `price file is not JSON`.
+/// `price file is not JSON; check it for a missing quote, comma or brace`.
 #[test]
 fn price_file_depth_127_128_129() {
     let log = tmp("budget-bound.log", b"disk full\n");
     let cases = [
-        (127, "price file has an unknown field\n"),
-        (128, "price file is nested too deeply\n"),
-        (129, "price file is nested too deeply\n"),
+        (
+            127,
+            "price file has an unknown field; remove it or check the spelling\n",
+        ),
+        (128, "price file is nested too deeply; flatten it\n"),
+        (129, "price file is nested too deeply; flatten it\n"),
     ];
     for (depth, want) in cases {
         let prices = prices(&format!("budget-bound-{depth}.json"), &nested(depth, true));

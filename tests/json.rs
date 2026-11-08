@@ -1123,7 +1123,10 @@ fn budget_and_errors_keep_the_same_codes() {
     let _ = std::fs::remove_file(&broken);
     assert_eq!(code, 2);
     assert!(output_2.is_empty(), "{output_2}");
-    assert_eq!(err, "invalid JSON on line 1\n");
+    assert_eq!(
+        err,
+        "invalid JSON on line 1; each line must be one JSON object, or use --format text\n"
+    );
     assert!(!err.contains("NOT-JSON-0001"));
 
     // 10^19 seconds × 10^20 gb_bytes does not fit in u128. No JSON fragment.
@@ -1156,7 +1159,10 @@ fn budget_and_errors_keep_the_same_codes() {
         let (code, output_2, err) = run_exit(&cmd);
         assert_eq!(code, 3, "{cmd:?}");
         assert!(output_2.is_empty(), "{cmd:?}: {output_2}");
-        assert_eq!(err, "calculation overflow\n", "{cmd:?}");
+        assert_eq!(
+            err, "calculation overflow; use a smaller window, price or days per month\n",
+            "{cmd:?}"
+        );
         assert!(!err.contains("ok"), "{cmd:?}");
     }
     let _ = std::fs::remove_file(&over_log);

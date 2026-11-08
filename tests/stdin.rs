@@ -219,7 +219,7 @@ fn fifo_is_still_rejected_unlike_stdin() {
     assert_eq!(output.status.code(), Some(2));
     assert_eq!(
         String::from_utf8(output.stderr).unwrap(),
-        "file is not a regular file\n"
+        "file is not a regular file; pass a regular file, not a directory or device\n"
     );
     let _ = std::fs::remove_dir_all(&dir);
 }

@@ -1,0 +1,8 @@
+total: 10 lines, 596 bytes
+P7a54079609e7d5dd  4 lines  281 bytes  47.1%  <TS> INFO order <NUM> created by user <NUM> from <IP>
+P2bc39ad92e6fb19a  2 lines  132 bytes  22.1%  <TS> ERROR payment provider timeout after <NUM> ms
+P8478ba88805cb2a8  3 lines  126 bytes  21.1%  <TS> INFO health check ok
+Pe0490a0a122e06db  1 line  57 bytes  9.6%  <TS> WARN payment retry <NUM> for order <NUM>
+factor: 8640
+per day: 5149440 bytes, 0.005 GB
+per month: 154483200 bytes, 0.154 GB

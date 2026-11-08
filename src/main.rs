@@ -547,10 +547,15 @@ fn fold_file(
 
 fn index_rules_message(error: &rules::RulesError) -> String {
     match error {
-        rules::RulesError::Unreadable => "index rules file is not readable".to_owned(),
-        rules::RulesError::NotRegular => "index rules file is not a regular file".to_owned(),
+        rules::RulesError::Unreadable => {
+            "index rules file is not readable; check the path and the read permission".to_owned()
+        }
+        rules::RulesError::NotRegular => {
+            "index rules file is not a regular file; pass a regular file, not a directory or device"
+                .to_owned()
+        }
         rules::RulesError::Invalid { line } => {
-            format!("invalid rule on line {line} of the index rules file")
+            format!("invalid rule on line {line} of the index rules file; fix or remove that line")
         }
     }
 }
