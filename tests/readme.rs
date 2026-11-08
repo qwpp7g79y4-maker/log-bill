@@ -1043,3 +1043,68 @@ fn reference_says_pattern_index_costs_can_differ_by_half_a_cent_each() {
         );
     }
 }
+
+#[test]
+fn five_minute_section_runs_literally_on_fixtures() {
+    for rel in [README, README_NL] {
+        let doc = read(rel);
+        let part = section(&doc, "## Aan de slag in 5 minuten");
+        let found = examples(part);
+        assert!(found.len() >= 3, "{rel}: too few commands");
+        for (args, expected) in found {
+            let line = args.join(" ");
+            for banned in ["/var/log", "journalctl", "http", "tui", "--follow"] {
+                assert!(!line.contains(banned), "{rel}: {line}");
+            }
+            for arg in args.iter().filter(|a| a.contains('/')) {
+                assert!(arg.starts_with("tests/fixtures/"), "{rel}: {arg}");
+            }
+            let output = bin().args(&args).output().expect("start binary");
+            assert_eq!(output.status.code(), Some(0), "{rel}: {line}");
+            assert!(output.stderr.is_empty(), "{rel}: {line}");
+            assert_eq!(String::from_utf8(output.stdout).unwrap(), expected, "{rel}");
+        }
+    }
+}
+
+#[test]
+fn exit_code_tables_match_the_binary() {
+    let run = |args: &[&str]| {
+        bin()
+            .args(args)
+            .output()
+            .expect("start binary")
+            .status
+            .code()
+    };
+    let actual = [
+        (0, run(&["--version"])),
+        (
+            1,
+            run(&[
+                "scan",
+                "--window",
+                "1m",
+                "--prices",
+                "tests/fixtures/prices.json",
+                "--budget-month",
+                "0.0001",
+                "tests/fixtures/scan-text.log",
+            ]),
+        ),
+        (2, run(&["scan", "tests/fixtures/does-not-exist.log"])),
+        (3, run(&["scan", "--no-such-option"])),
+    ];
+    for (code, got) in actual {
+        assert_eq!(got, Some(code));
+    }
+    for (rel, heading) in [(README, "## Exit codes"), (README_NL, "## Exitcodes")] {
+        let doc = read(rel);
+        let codes: Vec<&str> = section(&doc, heading)
+            .lines()
+            .filter(|l| l.starts_with("| ") && !l.starts_with("| Code") && !l.starts_with("| ---"))
+            .map(|l| l.split('|').nth(1).unwrap().trim())
+            .collect();
+        assert_eq!(codes, ["0", "1", "2", "3"], "{rel}");
+    }
+}

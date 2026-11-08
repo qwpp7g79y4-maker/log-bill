@@ -165,6 +165,63 @@ estimate: extrapolation of one sample with your own prices; not an official rate
 
 Prices come only from a JSON file you pass with `--prices` (together with `--window`); see [the price file format](docs/reference.md#price-file). Each price is read as an exact decimal. A fraction that does not fit, a number outside the range of a binary float, or a file nested more than 128 arrays or objects deep, is rejected, and so is a key that appears twice. Every text output with per-GB amounts ends with `estimate: extrapolation of one sample with your own prices; not an official rate`. An indexed-event estimate is labeled `list price, estimate`, or `custom price, estimate` when you pass `--indexed-price`. All options, exit codes and error messages are listed in the [reference](docs/reference.md) and in `log-bill --help`.
 
+## Aan de slag in 5 minuten
+
+Everything here runs from a clone of this repository on the synthetic fixtures in `tests/fixtures`: no `/var/log`, no `journalctl`, no network and no TUI. A test runs these commands literally and compares the output. Build first with `cargo build --release` and put `target/release` on your `PATH`, or run `cargo install --locked --path .`.
+
+1. Group a log file into patterns:
+
+```console
+$ log-bill scan tests/fixtures/scan-text.log
+total: 3 lines, 118 bytes
+Pe19dc70d8299c276  2 lines  108 bytes  91.5%  user <NUM> failed at <TS> from <IP>
+P46ab161881a7d411  1 line  10 bytes  8.5%  disk full
+```
+
+2. Extrapolate the one-minute sample to a day and a month and price it with your own prices (the fixture `prices.json` holds example numbers, not an official rate):
+
+```console
+$ log-bill scan --window 1m --prices tests/fixtures/prices.json tests/fixtures/scan-text.log
+total: 3 lines, 118 bytes
+Pe19dc70d8299c276  2 lines  108 bytes  91.5%  user <NUM> failed at <TS> from <IP>
+P46ab161881a7d411  1 line  10 bytes  8.5%  disk full
+factor: 1440
+per day: 169920 bytes, 0.000 GB
+per month: 5097600 bytes, 0.010 GB
+prices: EUR, source manual, date 2026-10-08
+total ingest: 0.00 EUR per day, 0.00 EUR per month
+total index: 0.00 EUR per day, 0.00 EUR per month
+Pe19dc70d8299c276 ingest: 0.00 EUR per day, 0.00 EUR per month
+Pe19dc70d8299c276 index: 0.00 EUR per day, 0.00 EUR per month
+P46ab161881a7d411 ingest: 0.00 EUR per day, 0.00 EUR per month
+P46ab161881a7d411 index: 0.00 EUR per day, 0.00 EUR per month
+estimate: extrapolation of one sample with your own prices; not an official rate
+```
+
+3. Compare two samples:
+
+```console
+$ log-bill diff tests/fixtures/diff-old.log tests/fixtures/diff-new.log
+total: 3 lines, 17 bytes -> 2 lines, 12 bytes, change -1 line, -5 bytes
+new P229176bd1f6ba96a  0 -> 6 bytes, change +6 bytes, share 0.0% -> 50.0%, change +50.0 percentage points  gamma
+gone P7627619b954620a7  5 -> 0 bytes, change -5 bytes, share 29.4% -> 0.0%, change -29.4 percentage points  beta
+P8ac625bb85ed202b  12 -> 6 bytes, change -6 bytes, share 70.6% -> 50.0%, change -20.6 percentage points  alpha
+new patterns: 6 of 12 bytes, 50.0%
+```
+
+Next: [Quick start](#quick-start) for more options, and [Exit codes](#exit-codes) for what the binary returns in a script.
+
+## Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| 0 | OK. `--help` and `--version` also exit 0. |
+| 1 | `--budget-month` or `--max-new-share` exceeded. |
+| 2 | Input error: log file, JSON, price file or rules file. |
+| 3 | Usage error, or the output could not be written. |
+
+The full list with every usage error is in the [reference](docs/reference.md#exit-codes-and-usage-errors).
+
 ## Example
 
 Two realistic, synthetic inputs live in `examples/`, each with its expected output. A test compares them.

@@ -167,6 +167,63 @@ estimate: extrapolation of one sample with your own prices; not an official rate
 
 Prijzen komen alleen uit een JSON-bestand dat je meegeeft met `--prices` (samen met `--window`); zie [het prijsbestand](docs/reference.nl.md#prijsbestand). Elke prijs wordt als exact decimaal getal gelezen. Een breuk die niet past, een getal buiten het bereik van een binaire float, of een bestand dat meer dan 128 arrays of objecten diep is, wordt geweigerd, en een sleutel die twee keer voorkomt ook. Elke tekstuitvoer met bedragen per GB eindigt met `estimate: extrapolation of one sample with your own prices; not an official rate` ("schatting: extrapolatie van één steekproef met je eigen prijzen; geen officieel tarief"). Een schatting van geïndexeerde events heeft het label `list price, estimate`, of `custom price, estimate` als je `--indexed-price` meegeeft. Alle opties, exitcodes en foutmeldingen staan in de [referentie](docs/reference.nl.md) en in `log-bill --help`.
 
+## Aan de slag in 5 minuten
+
+Alles hier draait vanuit een clone van deze repository op de synthetische fixtures in `tests/fixtures`: geen `/var/log`, geen `journalctl`, geen netwerk en geen TUI. Een test draait deze commando's letterlijk en vergelijkt de uitvoer. Bouw eerst met `cargo build --release` en zet `target/release` op je `PATH`, of draai `cargo install --locked --path .`.
+
+1. Een logbestand groeperen tot patronen:
+
+```console
+$ log-bill scan tests/fixtures/scan-text.log
+total: 3 lines, 118 bytes
+Pe19dc70d8299c276  2 lines  108 bytes  91.5%  user <NUM> failed at <TS> from <IP>
+P46ab161881a7d411  1 line  10 bytes  8.5%  disk full
+```
+
+2. De steekproef van één minuut extrapoleren naar een dag en een maand en prijzen met je eigen prijzen (de fixture `prices.json` bevat voorbeeldgetallen, geen officieel tarief):
+
+```console
+$ log-bill scan --window 1m --prices tests/fixtures/prices.json tests/fixtures/scan-text.log
+total: 3 lines, 118 bytes
+Pe19dc70d8299c276  2 lines  108 bytes  91.5%  user <NUM> failed at <TS> from <IP>
+P46ab161881a7d411  1 line  10 bytes  8.5%  disk full
+factor: 1440
+per day: 169920 bytes, 0.000 GB
+per month: 5097600 bytes, 0.010 GB
+prices: EUR, source manual, date 2026-10-08
+total ingest: 0.00 EUR per day, 0.00 EUR per month
+total index: 0.00 EUR per day, 0.00 EUR per month
+Pe19dc70d8299c276 ingest: 0.00 EUR per day, 0.00 EUR per month
+Pe19dc70d8299c276 index: 0.00 EUR per day, 0.00 EUR per month
+P46ab161881a7d411 ingest: 0.00 EUR per day, 0.00 EUR per month
+P46ab161881a7d411 index: 0.00 EUR per day, 0.00 EUR per month
+estimate: extrapolation of one sample with your own prices; not an official rate
+```
+
+3. Twee steekproeven vergelijken:
+
+```console
+$ log-bill diff tests/fixtures/diff-old.log tests/fixtures/diff-new.log
+total: 3 lines, 17 bytes -> 2 lines, 12 bytes, change -1 line, -5 bytes
+new P229176bd1f6ba96a  0 -> 6 bytes, change +6 bytes, share 0.0% -> 50.0%, change +50.0 percentage points  gamma
+gone P7627619b954620a7  5 -> 0 bytes, change -5 bytes, share 29.4% -> 0.0%, change -29.4 percentage points  beta
+P8ac625bb85ed202b  12 -> 6 bytes, change -6 bytes, share 70.6% -> 50.0%, change -20.6 percentage points  alpha
+new patterns: 6 of 12 bytes, 50.0%
+```
+
+Verder: [Snel aan de slag](#snel-aan-de-slag) voor meer opties en [Exitcodes](#exitcodes) voor wat de binary in een script teruggeeft.
+
+## Exitcodes
+
+| Code | Betekenis |
+| --- | --- |
+| 0 | OK. `--help` en `--version` geven ook 0. |
+| 1 | `--budget-month` of `--max-new-share` overschreden. |
+| 2 | Invoerfout: logbestand, JSON, prijsbestand of regelbestand. |
+| 3 | Gebruiksfout, of de uitvoer kon niet geschreven worden. |
+
+De volledige lijst met elke gebruiksfout staat in de [referentie](docs/reference.nl.md#exitcodes-en-gebruiksfouten).
+
 ## Voorbeeld
 
 In `examples/` staan twee realistische, synthetische invoerbestanden met de verwachte uitvoer. Een test vergelijkt ze.
