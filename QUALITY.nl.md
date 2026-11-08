@@ -12,6 +12,30 @@ Deze pagina laat zien hoe elke release van log-bill is gecontroleerd, wat we von
 
 Alleen deze controle is voor dit onderdeel gedraaid. De runs in releasemodus, op Rust 1.85 en met fuzzing in het onderdeel hieronder horen bij de eerdere commit die daar staat.
 
+## Regeldekking (pre-release 1.0.0)
+
+| | |
+|---|---|
+| Datum | 2026-11-08 |
+| Gemeten commit | `ffe4398` (tak prep/w24-fout) |
+| Commando | `cargo llvm-cov --summary-only` |
+| Gemeten | Regels 96.01% (7974 regels, 318 gemist). Regio's 94.98%, functies 98.67%. |
+
+Het percentage is het cijfer voor regels dat het commando afdrukt. Twee runs drukten 96.06% en 96.01% af; het verschil komt door de property tests, die willekeurige invoer kiezen. Er zijn geen tests toegevoegd om het te verhogen. Er is geen test mislukt onder `cargo llvm-cov`.
+
+## Gemeten tijd op een invoer van 100 MiB (pre-release 1.0.0)
+
+| | |
+|---|---|
+| Datum | 2026-11-08 |
+| Gemeten commit | `ffe4398` (tak prep/w24-fout) |
+| Bouw | `cargo build --release` |
+| Invoer | Eén synthetisch JSON-lines-bestand, 104857600 bytes (precies 100 MiB), het formaat van `examples/api.jsonl`: 1,116,672 regels. De regels zijn bijna identiek: alleen het requestnummer en de milliseconden veranderen, zodat ze in één patroon vallen (plus één opvulregel). Het bestand wordt in `/tmp` gegenereerd en niet gecommit. |
+| Commando | `/usr/bin/time -f "%e s" target/release/log-bill --format jsonl scan big.jsonl` (exit 0) |
+| Gemeten | 4.86 s, 4.85 s, 4.83 s (drie runs, verstreken wall-clock-seconden) |
+
+Dit is één machine en één invoervorm. Bij veel verschillende patronen kan de tijd verschillen. Er wordt geen doorvoergetal gegeven.
+
 ## Nog niet uitgebracht
 
 | | |
