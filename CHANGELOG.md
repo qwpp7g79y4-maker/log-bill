@@ -11,6 +11,10 @@ All notable changes to this project are documented in this file.
 - `man/log-bill.1` is a manual page generated from the command line (`log-bill man > man/log-bill.1`). `log-bill completions bash|zsh` writes a shell completion script. Both subcommands are hidden from `--help`. They use `clap_mangen` and `clap_complete` (rust-version 1.85, same as this package). Tests in `tests/man_completions.rs`.
 - `scan --format jsonl --group-by FIELD` adds a block (and a `sources` array in `--json`) with lines, bytes and share per value of that JSON field. With `--window` and `--prices` it also shows the cost per value. `examples/services.jsonl` is a synthetic input.
 
+### Fixed
+
+- A log input larger than 256 MiB (268435456 bytes) is refused with exit 2 (`file is larger than 256 MiB; split it or pass a smaller sample`), for a file and for standard input. An input of exactly that size is still read. A file is refused from its size, so it is not read into memory. Tests in `tests/long_lines.rs`.
+
 ### Build
 
 - The README and the quality report state the re-measured test count: 358 tests, all passing.

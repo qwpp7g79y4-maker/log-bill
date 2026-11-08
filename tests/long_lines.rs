@@ -154,8 +154,8 @@ fn json_line_over_the_cap_is_refused() {
     }
 }
 
-/// A 512 MiB line under a 256 MiB address-space limit. Before the cut the
-/// whole line was held several times and this ran out of memory.
+/// A 512 MiB file under a 256 MiB address-space limit. The input limit
+/// refuses it from its size, so the process is not killed for lack of memory.
 #[cfg(target_os = "linux")]
 #[test]
 fn huge_line_runs_in_little_memory() {
@@ -176,13 +176,104 @@ fn huge_line_runs_in_little_memory() {
         .expect("sh");
     assert_eq!(
         output.status.code(),
-        Some(0),
+        Some(2),
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("json");
+    let err = String::from_utf8_lossy(&output.stderr);
+    assert!(err.contains("file is larger than 256 MiB"), "{err}");
+    assert!(output.stdout.is_empty(), "stdout is not empty");
+}
+
+const LIMIT_MESSAGE: &str = "file is larger than 256 MiB; split it or pass a smaller sample";
+
+fn sparse(dir: &TempDir, name: &str, len: u64) -> String {
+    let path = dir.0.join(name);
+    let file = std::fs::File::create(&path).expect("create");
+    file.set_len(len).expect("sparse file");
+    path.to_str().expect("utf-8 path").to_string()
+}
+
+fn run_stdin(args: &[&str], input: &str) -> (i32, String, String) {
+    let file = std::fs::File::open(input).expect("open stdin");
+    let output = Command::new(env!("CARGO_BIN_EXE_log-bill"))
+        .args(args)
+        .stdin(file)
+        .output()
+        .expect("start binary");
+    (
+        output.status.code().unwrap_or(101),
+        String::from_utf8_lossy(&output.stdout).into_owned(),
+        String::from_utf8_lossy(&output.stderr).into_owned(),
+    )
+}
+
+/// The limit is 268435456 bytes. The measured 100 MiB sample stays under it.
+/// The wording lives in both READMEs and both references.
+#[test]
+fn input_limit_is_256_mib_and_documented() {
+    assert_eq!(log_bill::read::MAX_INPUT_BYTES, 268_435_456);
+    const {
+        assert!(104_857_600 < log_bill::read::MAX_INPUT_BYTES);
+    }
+    for name in [
+        "README.md",
+        "README.nl.md",
+        "docs/reference.md",
+        "docs/reference.nl.md",
+    ] {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(name);
+        let text = std::fs::read_to_string(&path).unwrap_or_else(|_| panic!("read {name}"));
+        assert!(
+            text.contains("268435456"),
+            "{name} does not state the byte limit"
+        );
+        assert!(
+            text.contains(LIMIT_MESSAGE),
+            "{name} does not state the error"
+        );
+    }
+}
+
+/// One byte over the limit is exit 2, with an empty report and no path.
+/// The file is sparse and lives in the temporary directory, so it is not committed.
+#[test]
+fn input_over_the_limit_is_refused() {
+    let dir = temp("over-input");
+    let over = sparse(&dir, "over.log", log_bill::read::MAX_INPUT_BYTES + 1);
+    let small = write(&dir, "small.log", b"disk full\n");
+    for args in [
+        vec!["scan", over.as_str()],
+        vec!["scan", "--format", "jsonl", over.as_str()],
+        vec!["diff", small.as_str(), over.as_str()],
+    ] {
+        let (code, out, err) = run(&args);
+        assert_eq!(code, 2, "{args:?} {err}");
+        assert!(out.is_empty(), "{args:?} stdout {out}");
+        assert!(err.contains(LIMIT_MESSAGE), "{args:?} {err}");
+        assert!(!err.contains("over.log"), "{args:?} path in {err}");
+        assert!(!err.contains(&small), "{args:?} path in {err}");
+    }
+}
+
+/// Exactly 268435456 bytes is still read. One byte more is not.
+/// Standard input has no size up front, so the same file through `-` is refused
+/// only after the limit is passed, and the report stays empty.
+#[test]
+fn input_at_the_limit_is_read_and_stdin_over_is_refused() {
+    let dir = temp("at-input");
+    let at = sparse(&dir, "at.log", log_bill::read::MAX_INPUT_BYTES);
+    let (code, out, err) = run(&["scan", "--json", &at]);
+    assert_eq!(code, 0, "{err}");
+    let value: serde_json::Value = serde_json::from_str(&out).expect("json");
     assert_eq!(
         value["totals"]["bytes"].as_u64(),
-        Some(512 * MIB as u64 + 1)
+        Some(log_bill::read::MAX_INPUT_BYTES + 1)
     );
+    let over = sparse(&dir, "over-stdin.log", log_bill::read::MAX_INPUT_BYTES + 1);
+    let (code, out, err) = run_stdin(&["scan", "-"], &over);
+    assert_eq!(code, 2, "{err}");
+    assert!(out.is_empty(), "{out}");
+    assert!(err.contains(LIMIT_MESSAGE), "{err}");
+    assert!(!err.contains("over-stdin.log"), "{err}");
 }

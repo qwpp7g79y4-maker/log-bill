@@ -53,6 +53,9 @@ pub enum ReadError {
     LineTooLong {
         line: u64,
     },
+    /// The log input is larger than [`MAX_INPUT_BYTES`]. Nothing of it is
+    /// included. The path is not included.
+    InputTooLarge,
 }
 
 impl fmt::Display for ReadError {
@@ -72,6 +75,9 @@ impl fmt::Display for ReadError {
                 f,
                 "line {line} is longer than 1 MiB; JSON lines that long are not read; shorten or remove that line"
             ),
+            ReadError::InputTooLarge => f.write_str(
+                "file is larger than 256 MiB; split it or pass a smaller sample",
+            ),
         }
     }
 }
@@ -86,6 +92,7 @@ impl ReadError {
             Self::NotUtf8 { .. } => "convert the file to UTF-8 and run again",
             Self::InvalidJson { .. } => "fix that line, or use --format text",
             Self::LineTooLong { .. } => "shorten or remove that line",
+            Self::InputTooLarge => "split it or pass a smaller sample",
         }
     }
 }
@@ -98,11 +105,13 @@ impl std::error::Error for ReadError {}
 /// One UTF-8 byte order mark at the start is skipped for the line text and
 /// still counts in the bytes of the first line. UTF-16 and UTF-32 are
 /// refused, see [`detect_wide`]. The whole file is not held in memory.
+/// More than [`MAX_INPUT_BYTES`] is refused before the file is read.
 pub fn visit_text(path: &Path, visit: impl FnMut(Line)) -> Result<(), ReadError> {
     visit_file(path, false, None, visit)
 }
 
 /// [`visit_text`] on standard input, for the input path `-`.
+/// Reading stops with an error once more than [`MAX_INPUT_BYTES`] are seen.
 pub fn visit_text_stdin(visit: impl FnMut(Line)) -> Result<(), ReadError> {
     visit_reader(io::stdin().lock(), false, None, visit)
 }
@@ -116,7 +125,8 @@ const NO_MESSAGE: &str = "<NO-MESSAGE>";
 /// not fit in a binary float and a value nested hundreds of times. Invalid
 /// JSON stops with the line number, without the line. One UTF-8 byte order
 /// mark at the start is skipped for parsing but still counts in the bytes of
-/// the first line. UTF-16 and UTF-32 are refused.
+/// the first line. UTF-16 and UTF-32 are refused. More than [`MAX_INPUT_BYTES`]
+/// is refused before the file is read.
 pub fn visit_jsonl(
     path: &Path,
     message_field: Option<&str>,
@@ -126,6 +136,7 @@ pub fn visit_jsonl(
 }
 
 /// [`visit_jsonl`] on standard input, for the input path `-`.
+/// Reading stops with an error once more than [`MAX_INPUT_BYTES`] are seen.
 pub fn visit_jsonl_stdin(
     message_field: Option<&str>,
     visit: impl FnMut(Line),
@@ -210,7 +221,20 @@ fn visit_file(
         Err(OpenError::Unreadable) => return Err(ReadError::Unreadable),
         Err(OpenError::NotRegular) => return Err(ReadError::NotRegular),
     };
+    refuse_oversized(&file)?;
     visit_reader(file, jsonl, message_field, visit)
+}
+
+/// A regular file larger than [`MAX_INPUT_BYTES`] is refused from its size,
+/// so the bytes are not read. A stream has no size; [`add_input`] stops that.
+fn refuse_oversized(file: &File) -> Result<(), ReadError> {
+    if file
+        .metadata()
+        .is_ok_and(|meta| meta.len() > MAX_INPUT_BYTES)
+    {
+        return Err(ReadError::InputTooLarge);
+    }
+    Ok(())
 }
 
 /// Sniffs the first [`SNIFF_BYTES`] for a wide encoding, then streams the
@@ -254,6 +278,25 @@ fn read_prefix(reader: &mut impl Read) -> Result<Vec<u8>, ReadError> {
 /// A longer JSON line is refused, because cut JSON cannot be parsed.
 pub const MAX_LINE_BYTES: usize = 1 << 20;
 
+/// Largest log input that is read: 256 MiB. The measured sample of 100 MiB
+/// (104857600 bytes) still fits. Exactly this many bytes is still read.
+/// One byte more is [`ReadError::InputTooLarge`], exit 2, not a new code.
+pub const MAX_INPUT_BYTES: u64 = 268_435_456;
+
+/// Counts bytes actually read. A missing final newline does not add a byte:
+/// that extra byte belongs to the line weight, not to the file size.
+fn add_input(seen: &mut u64, content: u64, newline: bool) -> Result<(), ReadError> {
+    let next = seen
+        .checked_add(content)
+        .and_then(|sum| sum.checked_add(u64::from(newline)))
+        .ok_or(ReadError::InputTooLarge)?;
+    if next > MAX_INPUT_BYTES {
+        return Err(ReadError::InputTooLarge);
+    }
+    *seen = next;
+    Ok(())
+}
+
 /// Reads one line up to the next `\n`, which is consumed but not stored.
 /// At most [`MAX_LINE_BYTES`] of it go into `buf`; the rest is skipped, so a
 /// huge line cannot fill memory. Returns the content bytes of the whole line
@@ -289,6 +332,11 @@ fn read_capped(
             newline = true;
             break;
         }
+        // Stop a line that already passed the input limit. The caller refuses
+        // it, and the rest of a huge stream is not read.
+        if content > MAX_INPUT_BYTES {
+            break;
+        }
     }
     Ok((content, newline, cut))
 }
@@ -297,12 +345,14 @@ fn stream_text(source: impl Read, mut visit: impl FnMut(Line)) -> Result<(), Rea
     let mut reader = std::io::BufReader::new(source);
     let mut buf = Vec::new();
     let mut line_no = 0u64;
+    let mut seen = 0u64;
     loop {
         buf.clear();
         let (content, newline, cut) = read_capped(&mut reader, &mut buf)?;
         if content == 0 && !newline {
             break;
         }
+        add_input(&mut seen, content, newline)?;
         line_no += 1;
         // A cut line keeps its `\r` out of reach; nothing is stripped then.
         if let Some(line) = text_line_weighed(&buf, newline && !cut, line_no, content + 1) {
@@ -320,12 +370,14 @@ fn stream_json(
     let mut reader = std::io::BufReader::new(source);
     let mut buf = Vec::new();
     let mut line_no = 0u64;
+    let mut seen = 0u64;
     loop {
         buf.clear();
         let (content, newline, cut) = read_capped(&mut reader, &mut buf)?;
         if content == 0 && !newline {
             break;
         }
+        add_input(&mut seen, content, newline)?;
         line_no += 1;
         if cut {
             return Err(ReadError::LineTooLong { line: line_no });
@@ -971,7 +1023,29 @@ struct Frame {
 
 #[cfg(test)]
 mod tests {
-    use super::{detect_wide, json_lines, text_lines, Line, WideEncoding};
+    use super::{
+        add_input, detect_wide, json_lines, text_lines, Line, ReadError, WideEncoding,
+        MAX_INPUT_BYTES,
+    };
+
+    #[test]
+    fn input_limit_allows_the_measured_100_mib_and_refuses_one_extra_byte() {
+        assert_eq!(MAX_INPUT_BYTES, 268_435_456);
+        const {
+            assert!(104_857_600 < MAX_INPUT_BYTES);
+        }
+        let mut seen = MAX_INPUT_BYTES - 1;
+        add_input(&mut seen, 1, false).expect("one byte under the limit");
+        assert_eq!(seen, MAX_INPUT_BYTES);
+        let mut on_limit = MAX_INPUT_BYTES;
+        let error = add_input(&mut on_limit, 0, true).expect_err("one byte over");
+        assert!(matches!(error, ReadError::InputTooLarge));
+        assert_eq!(
+            error.to_string(),
+            "file is larger than 256 MiB; split it or pass a smaller sample"
+        );
+        assert_eq!(on_limit, MAX_INPUT_BYTES);
+    }
 
     #[test]
     fn wide_encodings_by_bom() {
