@@ -1105,6 +1105,6 @@ fn exit_code_tables_match_the_binary() {
             .filter(|l| l.starts_with("| ") && !l.starts_with("| Code") && !l.starts_with("| ---"))
             .map(|l| l.split('|').nth(1).unwrap().trim())
             .collect();
-        assert_eq!(codes, ["0", "1", "2", "3"], "{rel}");
+        assert_eq!(codes, ["0", "1", "2", "3", "130"], "{rel}");
     }
 }

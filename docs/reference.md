@@ -100,6 +100,9 @@ With `--explain`, a `<SECRET>` count is marked `possible secret`. In `--json` su
 | 1 | Budget (`--budget-month`) or threshold (`--max-new-share`) exceeded |
 | 2 | Input error: log file, JSON, price file or rules file |
 | 3 | Usage error, or the output could not be written |
+| 130 | Interrupted with SIGINT (Ctrl-C). Nothing is written. An existing `--output` file is left unchanged. |
+
+SIGINT stops the process before the report is published. The exit code is 130. Stdout and stderr stay empty. With `--output`, a new file is not created and an existing file is not truncated. The final write, once started, runs to the end, so a report is not left half written. Exit codes 0, 1, 2 and 3 are unchanged.
 
 If the output cannot be written, for example because the disk is full, the exit code is 3 and stderr is `could not write output; free disk space or check the output target, then run again`. `--help` and `--version` use that same code; they do not exit 0 when their text cannot be written. `--output PATH` writes that same report to the file and leaves stdout empty. An existing file is replaced. A missing parent directory is exit 3, not exit 1, and the directory is not created.
 

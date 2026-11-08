@@ -6,6 +6,7 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- SIGINT (Ctrl-C) stops before the report is published and exits 130. Stdout and stderr stay empty. With `--output`, a new file is not created and an existing file is left unchanged. The final write is not cut off. Exit codes 0, 1, 2 and 3 are unchanged. Tests in `tests/interrupt.rs`.
 - `--output PATH` writes the report to a file instead of stdout. An existing file is replaced. A missing parent directory is exit 3 and is not created. Exit codes stay 0, 1, 2 and 3. Tests in `tests/output_path.rs`.
 - `--quiet` and `--verbose`. A pipe prints no hint and no context line. `--verbose` adds that context on stderr. The report and the exit codes are unchanged. `--quiet` together with `--verbose` is exit 3. Tests in `tests/verbosity.rs`.
 - `man/log-bill.1` is a manual page generated from the command line (`log-bill man > man/log-bill.1`). `log-bill completions bash|zsh` writes a shell completion script. Both subcommands are hidden from `--help`. They use `clap_mangen` and `clap_complete` (rust-version 1.85, same as this package). Tests in `tests/man_completions.rs`.
@@ -17,7 +18,7 @@ All notable changes to this project are documented in this file.
 
 ### Build
 
-- The README and the quality report state the re-measured test count: 358 tests, all passing.
+- The README states the current test count: 376 tests, all passing. The quality report still records the count measured at `ffe4398`.
 
 ## [1.0.0] - 2026-11-08
 

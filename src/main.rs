@@ -163,7 +163,11 @@ enum InputFormat {
     Jsonl,
 }
 
+/// 128 + SIGINT. The same code other tools use when Ctrl-C stops them.
+const EXIT_INTERRUPTED: i32 = 130;
+
 fn main() {
+    read::install_interrupt_handler();
     let code = match Cli::command().try_get_matches() {
         Ok(matches) => {
             // `days_per_month` has a default. Only an explicitly set flag counts.
@@ -240,6 +244,12 @@ fn flush_stream(stderr: bool) -> io::Result<()> {
 /// report to the file and leaves stdout empty. An existing file is replaced.
 /// A missing parent directory is the same exit 3, not exit 1, and is not created.
 fn emit(path: Option<&Path>, text: &str) -> i32 {
+    // A signal before the report is published writes nothing and exits 130.
+    // A signal during the write is held until the write finishes, so the
+    // file is never left half written; that finished report keeps its usual code.
+    if read::stop_requested() {
+        return EXIT_INTERRUPTED;
+    }
     if write_report(path, text).is_err() {
         let message = match path {
             Some(path) => format!(
@@ -254,13 +264,69 @@ fn emit(path: Option<&Path>, text: &str) -> i32 {
 }
 
 /// Write `text` to `--output`, or to stdout when that flag is absent.
+///
+/// SIGINT is held for the whole write. The destination is replaced only
+/// while the signal cannot cut the write off.
 fn write_report(path: Option<&Path>, text: &str) -> io::Result<()> {
+    let _hold = hold_sigint();
     let Some(path) = path else {
         return write_stdout(text);
     };
     let mut file = std::fs::File::create(path)?;
     file.write_all(text.as_bytes())?;
     file.flush()
+}
+
+/// Blocks SIGINT until dropped, then puts the previous mask back.
+#[cfg(unix)]
+struct SigintHold {
+    previous: libc::sigset_t,
+    armed: bool,
+}
+
+#[cfg(not(unix))]
+struct SigintHold;
+
+fn hold_sigint() -> SigintHold {
+    #[cfg(unix)]
+    {
+        // Blocking SIGINT across the write keeps `File::create` from truncating
+        // the report and then returning on EINTR. The handler runs on drop.
+        unsafe {
+            let mut block = std::mem::zeroed();
+            if libc::sigemptyset(&mut block) != 0 || libc::sigaddset(&mut block, libc::SIGINT) != 0
+            {
+                return SigintHold {
+                    previous: std::mem::zeroed(),
+                    armed: false,
+                };
+            }
+            let mut previous = std::mem::zeroed();
+            let armed = libc::sigprocmask(libc::SIG_BLOCK, &block, &mut previous) == 0;
+            SigintHold { previous, armed }
+        }
+    }
+    #[cfg(not(unix))]
+    SigintHold
+}
+
+#[cfg(unix)]
+impl Drop for SigintHold {
+    fn drop(&mut self) {
+        if self.armed {
+            unsafe {
+                libc::sigprocmask(libc::SIG_SETMASK, &self.previous, std::ptr::null_mut());
+            }
+        }
+    }
+}
+
+/// SIGINT exits 130 and prints nothing. Every other read error stays exit 2.
+fn from_read(error: read::ReadError) -> i32 {
+    if matches!(error, read::ReadError::Interrupted) {
+        return EXIT_INTERRUPTED;
+    }
+    fail_hint(&error.to_string(), Some(error.hint()), 2)
 }
 
 /// Writes `message` to stderr and returns `code`.
@@ -564,7 +630,7 @@ fn execute(cli: &Cli, days_explicit: bool) -> i32 {
                     }
                     0
                 }
-                Err(error) => fail_hint(&error.to_string(), Some(error.hint()), 2),
+                Err(error) => from_read(error),
             }
         }
         Cmd::Diff { old, new } => {
@@ -604,11 +670,11 @@ fn execute(cli: &Cli, days_explicit: bool) -> i32 {
             let new_path = path_text(new);
             let old = match fold_file(cli, old, rules.as_ref(), None, false, None) {
                 Ok(folded) => sampled_from(folded.stats, folded.effect),
-                Err(error) => return fail_hint(&error.to_string(), Some(error.hint()), 2),
+                Err(error) => return from_read(error),
             };
             let new = match fold_file(cli, new, rules.as_ref(), None, false, None) {
                 Ok(folded) => sampled_from(folded.stats, folded.effect),
-                Err(error) => return fail_hint(&error.to_string(), Some(error.hint()), 2),
+                Err(error) => return from_read(error),
             };
             // Match is on the pattern text. `--top` would give the rest one id, `other`.
             // Counting matches scan: the diff is taken after the rules.
@@ -667,6 +733,9 @@ fn execute(cli: &Cli, days_explicit: bool) -> i32 {
             let over = max_new_share
                 .as_ref()
                 .is_some_and(|percent| percent.exceeded_by(report.added_bytes, report.new_bytes));
+            if read::stop_requested() {
+                return EXIT_INTERRUPTED;
+            }
             if over
                 && notice(
                     "new patterns above the threshold",
@@ -721,6 +790,9 @@ fn fold_file(
     tally_index: bool,
     top: Option<u32>,
 ) -> Result<Folded, read::ReadError> {
+    if read::stop_requested() {
+        return Err(read::ReadError::Interrupted);
+    }
     let mut grouped = pattern::Grouper::default();
     let mut folded = rules.map(|_| rules::Folder::default());
     let mut tally = tally_index.then(indexed::Tally::default);

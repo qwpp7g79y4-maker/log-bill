@@ -100,6 +100,9 @@ Met `--explain` krijgt een telling van `<SECRET>` de tekst `possible secret` ("m
 | 1 | Budget (`--budget-month`) of drempel (`--max-new-share`) overschreden |
 | 2 | Invoerfout: logbestand, JSON, prijsbestand of regelsbestand |
 | 3 | Gebruiksfout, of de uitvoer kon niet geschreven worden |
+| 130 | Afgebroken met SIGINT (Ctrl-C). Er wordt niets geschreven. Een bestaand `--output`-bestand blijft ongewijzigd. |
+
+SIGINT stopt het proces voordat het rapport er is. De exitcode is 130. Stdout en stderr blijven leeg. Met `--output` wordt geen nieuw bestand gemaakt en een bestaand bestand niet afgekapt. Het laatste schrijven, eenmaal begonnen, maakt het af, zodat een rapport niet half blijft staan. Exitcodes 0, 1, 2 en 3 blijven ongewijzigd.
 
 Als de uitvoer niet geschreven kan worden, bijvoorbeeld omdat de schijf vol is, is de exitcode 3 en is stderr `could not write output; free disk space or check the output target, then run again`. `--help` en `--version` gebruiken diezelfde code; ze eindigen niet met 0 als hun tekst niet weg kan. `--output PATH` schrijft datzelfde rapport naar het bestand en laat stdout leeg. Een bestaand bestand wordt vervangen. Een ontbrekende map is exit 3, niet exit 1, en de map wordt niet aangemaakt.
 

@@ -34,7 +34,7 @@ Ondersteunde systemen voor de kant-en-klare binaries:
 - **Windows x86_64 (`x86_64-pc-windows-msvc`).**
 - **macOS Intel (`x86_64-apple-darwin`) en Apple Silicon (`aarch64-apple-darwin`).**
 
-De suite heeft 358 automatische tests (358 geslaagd, 0 mislukt). Ze draaien in CI op Linux, Windows, macOS op Apple Silicon en macOS op Intel, en op Rust 1.85. Andere systemen kunnen werken met `cargo install`, maar zijn niet getest.
+De suite heeft 376 automatische tests (376 geslaagd, 0 mislukt). Ze draaien in CI op Linux, Windows, macOS op Apple Silicon en macOS op Intel, en op Rust 1.85. Andere systemen kunnen werken met `cargo install`, maar zijn niet getest.
 
 Voor de nieuwste `main`: `cargo install --locked --git https://github.com/qwpp7g79y4-maker/log-bill`.
 
@@ -221,8 +221,9 @@ Verder: [Snel aan de slag](#snel-aan-de-slag) voor meer opties en [Exitcodes](#e
 | 1 | `--budget-month` of `--max-new-share` overschreden. |
 | 2 | Invoerfout: logbestand, JSON, prijsbestand of regelbestand. |
 | 3 | Gebruiksfout, of de uitvoer kon niet geschreven worden. |
+| 130 | Afgebroken met SIGINT (Ctrl-C). Er wordt niets geschreven. Een bestaand `--output`-bestand blijft ongewijzigd. |
 
-De volledige lijst met elke gebruiksfout staat in de [referentie](docs/reference.nl.md#exitcodes-en-gebruiksfouten).
+De volledige lijst met elke gebruiksfout staat in de [referentie](docs/reference.nl.md#exitcodes-en-gebruiksfouten). Ctrl-C voordat het rapport er is, eindigt met 130 en hernummert 0, 1, 2 of 3 niet.
 
 ## Voorbeeld
 
@@ -363,6 +364,7 @@ Een eerlijke vergelijking met vijf producten. De pagina's zijn nagelezen op 8 ok
 - Alleen gewone bestanden worden gelezen, behalve het logbestand-argument van `scan` en `diff` als dat `-` is: dat leest dan standaardinvoer. Een FIFO, een symlink naar een FIFO, een map of een apparaat wordt geweigerd met exit 2, zonder op een schrijver te wachten.
 - Invoer moet UTF-8 zijn. UTF-16 en UTF-32 (bijvoorbeeld van `Out-File` of `>` in Windows PowerShell 5.1), met of zonder byte order mark, worden geweigerd met exit 2 en een melding die zegt hoe je ze omzet: `iconv -f UTF-16LE -t UTF-8 in.log > out.log`, of in PowerShell `Get-Content in.log | Out-File -Encoding utf8 out.log`. Hun NUL-bytes zouden anders een sleutel als `password` zo opknippen dat de maskering hem mist. Zonder byte order mark wordt de codering herkend aan de NUL-bytes in de eerste 4096 bytes; UTF-16-tekst die grotendeels geen ASCII is, wordt mogelijk niet herkend. NUL-bytes in UTF-8-tekst worden vóór het maskeren weggehaald, zodat ook die geen sleutel kunnen verbergen; de bytes tellen wel mee. Een UTF-8-byte order mark aan het begin van een tekstbestand wordt overgeslagen en telt mee in de bytes van de eerste regel, zodat dezelfde regel met en zonder dat teken één patroon is. Stuurtekens in een logregel en in de valuta, de bron en de datum van een prijsbestand worden niet ruw geschreven. Tekstuitvoer toont ze als `\u00XX` (ESC is `\u001b`) en escaped bidi-stuurtekens op dezelfde manier (U+202E is `\u202e`). JSON houdt het teken (een stuurteken wordt door JSON ge-escaped; een bidi-teken blijft UTF-8), zodat de uitvoer geldige JSON blijft.
 - Als het resultaat niet geschreven kan worden, is de exitcode 3 en de melding `could not write output; free disk space or check the output target, then run again`. `--help` en `--version` gebruiken diezelfde code als hun tekst niet weg kan.
+- SIGINT (Ctrl-C) stopt het proces voordat het rapport er is en eindigt met 130. Stdout en stderr blijven leeg. Met `--output` wordt geen nieuw bestand gemaakt en een bestaand bestand niet gewijzigd. Is het laatste schrijven eenmaal begonnen, dan maakt het het af, zodat het rapport niet half blijft staan. Exitcodes 0, 1, 2 en 3 blijven zoals ze zijn.
 - In `--json` toont `inputs.paths` elk pad als tekst. Een bestandsnaam die geen geldige UTF-8 is (kan op Linux) wordt wel gelezen, maar getoond met U+FFFD voor de ongeldige bytes.
 
 ## Privacy

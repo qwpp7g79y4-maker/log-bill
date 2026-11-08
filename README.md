@@ -32,7 +32,7 @@ Supported systems for the ready-made binaries:
 - **Windows x86_64 (`x86_64-pc-windows-msvc`).**
 - **macOS Intel (`x86_64-apple-darwin`) and Apple Silicon (`aarch64-apple-darwin`).**
 
-The suite has 358 automated tests (358 passed, 0 failed). They run in CI on Linux, Windows, macOS on Apple Silicon and macOS on Intel, and on Rust 1.85. Other systems may work with `cargo install`, but are not tested.
+The suite has 376 automated tests (376 passed, 0 failed). They run in CI on Linux, Windows, macOS on Apple Silicon and macOS on Intel, and on Rust 1.85. Other systems may work with `cargo install`, but are not tested.
 
 For the latest `main`: `cargo install --locked --git https://github.com/qwpp7g79y4-maker/log-bill`.
 
@@ -219,8 +219,9 @@ Next: [Quick start](#quick-start) for more options, and [Exit codes](#exit-codes
 | 1 | `--budget-month` or `--max-new-share` exceeded. |
 | 2 | Input error: log file, JSON, price file or rules file. |
 | 3 | Usage error, or the output could not be written. |
+| 130 | Interrupted with SIGINT (Ctrl-C). Nothing is written. An existing `--output` file is left unchanged. |
 
-The full list with every usage error is in the [reference](docs/reference.md#exit-codes-and-usage-errors).
+The full list with every usage error is in the [reference](docs/reference.md#exit-codes-and-usage-errors). Ctrl-C before the report is published exits 130 and does not renumber 0, 1, 2 or 3.
 
 ## Example
 
@@ -361,6 +362,7 @@ An honest comparison with five products. The pages were checked on 8 October 202
 - Only regular files are read, except the log file argument of `scan` and `diff` given as `-`, which reads standard input instead. A FIFO, a symlink to a FIFO, a directory or a device is refused with exit 2, without waiting for a writer.
 - Input must be UTF-8. UTF-16 and UTF-32 (for example from Windows PowerShell 5.1 `Out-File` or `>`), with or without a byte order mark, are refused with exit 2 and a message that says how to convert them: `iconv -f UTF-16LE -t UTF-8 in.log > out.log`, or in PowerShell `Get-Content in.log | Out-File -Encoding utf8 out.log`. Their NUL bytes would otherwise split a key such as `password` so that masking misses it. Without a byte order mark the encoding is recognised by the NUL bytes in the first 4096 bytes; UTF-16 text that is mostly not ASCII may not be recognised. NUL bytes inside UTF-8 text are removed before masking, so they cannot hide a key either; the bytes still count. A UTF-8 byte order mark at the start of a text file is skipped and still counts in the bytes of the first line, so the same line with and without that mark is one pattern. Control characters in a log line and in the currency, source and date of a price file are not written raw. Text output shows them as `\u00XX` (ESC is `\u001b`) and escapes bidi controls the same way (U+202E is `\u202e`). JSON keeps the character (a control is escaped by JSON; a bidi mark stays UTF-8), so the output stays valid JSON.
 - If the result cannot be written, the exit code is 3 and the message is `could not write output; free disk space or check the output target, then run again`. `--help` and `--version` use that same code when their text cannot be written.
+- SIGINT (Ctrl-C) stops the process before the report is published and exits 130. Stdout and stderr stay empty. With `--output`, a new file is not created and an existing file is not changed. Once the final write has started, it finishes, so the report is not left half written. Exit codes 0, 1, 2 and 3 stay as they are.
 - In `--json`, `inputs.paths` shows each path as text. A file name that is not valid UTF-8 (possible on Linux) is still read, but shown with U+FFFD for the invalid bytes.
 
 ## Privacy

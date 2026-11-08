@@ -2,12 +2,63 @@
 //!
 //! Text and JSON lines are accepted. More than [`MAX_INPUT_BYTES`] is refused
 //! before the file is read. UTF-16 and UTF-32 are refused. The reader does
-//! not keep the lines.
+//! not keep the lines. SIGINT stops the read with [`ReadError::Interrupted`].
 
 use std::fmt;
 use std::fs::File;
 use std::io::{self, BufRead, Cursor, Read};
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// Set from the SIGINT handler. The read loops notice it and stop.
+static STOP: AtomicBool = AtomicBool::new(false);
+
+/// `true` after SIGINT. The program then exits 130 and does not write a report.
+pub fn stop_requested() -> bool {
+    STOP.load(Ordering::Relaxed)
+}
+
+/// Asks the in-progress read to stop. A signal handler may call this.
+/// It only stores a flag.
+#[cfg(unix)]
+fn request_stop() {
+    STOP.store(true, Ordering::Relaxed);
+}
+
+#[cfg(unix)]
+extern "C" fn on_sigint(_signal: i32) {
+    request_stop();
+}
+
+/// Installs the SIGINT handler. Without `SA_RESTART`, a blocked read returns
+/// so the flag is noticed. On Windows this does nothing.
+#[cfg(unix)]
+pub fn install_interrupt_handler() {
+    // The handler only stores an atomic. `sigaction` without `SA_RESTART`
+    // makes a blocked read return `EINTR` instead of running to the end.
+    unsafe {
+        let mut action: libc::sigaction = std::mem::zeroed();
+        action.sa_sigaction = on_sigint as *const () as libc::sighandler_t;
+        action.sa_flags = 0;
+        libc::sigemptyset(&mut action.sa_mask);
+        libc::sigaction(libc::SIGINT, &action, std::ptr::null_mut());
+    }
+}
+
+/// No SIGINT handler on this platform. Reads run to the end.
+#[cfg(not(unix))]
+pub fn install_interrupt_handler() {}
+
+fn interrupted_read(error: &std::io::Error) -> Option<Result<(), ReadError>> {
+    if error.kind() != std::io::ErrorKind::Interrupted {
+        return None;
+    }
+    if stop_requested() {
+        Some(Err(ReadError::Interrupted))
+    } else {
+        Some(Ok(()))
+    }
+}
 
 /// One line. `bytes` is the raw count, not the length of `text`.
 /// `text` is the message (for JSON the field, otherwise the line). `raw` is the
@@ -75,6 +126,9 @@ pub enum ReadError {
     /// The log input is larger than [`MAX_INPUT_BYTES`]. Nothing of it is
     /// included. The path is not included.
     InputTooLarge,
+    /// SIGINT asked the read to stop. Nothing further is written. This is
+    /// not an input error: the program exits 130, not 2.
+    Interrupted,
 }
 
 impl fmt::Display for ReadError {
@@ -97,6 +151,7 @@ impl fmt::Display for ReadError {
             ReadError::InputTooLarge => f.write_str(
                 "file is larger than 256 MiB; split it or pass a smaller sample",
             ),
+            ReadError::Interrupted => f.write_str("interrupted; the report was not written"),
         }
     }
 }
@@ -112,6 +167,7 @@ impl ReadError {
             Self::InvalidJson { .. } => "fix that line, or use --format text",
             Self::LineTooLong { .. } => "shorten or remove that line",
             Self::InputTooLarge => "split it or pass a smaller sample",
+            Self::Interrupted => "run the command again",
         }
     }
 }
@@ -284,11 +340,17 @@ fn read_prefix(reader: &mut impl Read) -> Result<Vec<u8>, ReadError> {
     let mut buf = vec![0u8; SNIFF_BYTES];
     let mut filled = 0;
     while filled < buf.len() {
+        if stop_requested() {
+            return Err(ReadError::Interrupted);
+        }
         match reader.read(&mut buf[filled..]) {
             Ok(0) => break,
             Ok(n) => filled += n,
-            Err(err) if err.kind() == std::io::ErrorKind::Interrupted => continue,
-            Err(_) => return Err(ReadError::Unreadable),
+            Err(err) => match interrupted_read(&err) {
+                Some(Ok(())) => continue,
+                Some(Err(error)) => return Err(error),
+                None => return Err(ReadError::Unreadable),
+            },
         }
     }
     buf.truncate(filled);
@@ -332,10 +394,16 @@ fn read_capped(
     let mut cut = false;
     let mut newline = false;
     loop {
+        if stop_requested() {
+            return Err(ReadError::Interrupted);
+        }
         let chunk = match reader.fill_buf() {
             Ok(chunk) => chunk,
-            Err(err) if err.kind() == std::io::ErrorKind::Interrupted => continue,
-            Err(_) => return Err(ReadError::Unreadable),
+            Err(err) => match interrupted_read(&err) {
+                Some(Ok(())) => continue,
+                Some(Err(error)) => return Err(error),
+                None => return Err(ReadError::Unreadable),
+            },
         };
         if chunk.is_empty() {
             break;
@@ -369,6 +437,9 @@ fn stream_text(source: impl Read, mut visit: impl FnMut(Line)) -> Result<(), Rea
     let mut line_no = 0u64;
     let mut seen = 0u64;
     loop {
+        if stop_requested() {
+            return Err(ReadError::Interrupted);
+        }
         buf.clear();
         let (content, newline, cut) = read_capped(&mut reader, &mut buf)?;
         if content == 0 && !newline {
@@ -380,6 +451,9 @@ fn stream_text(source: impl Read, mut visit: impl FnMut(Line)) -> Result<(), Rea
         if let Some(line) = text_line_weighed(&buf, newline && !cut, line_no, content + 1) {
             visit(line);
         }
+    }
+    if stop_requested() {
+        return Err(ReadError::Interrupted);
     }
     Ok(())
 }
@@ -394,6 +468,9 @@ fn stream_json(
     let mut line_no = 0u64;
     let mut seen = 0u64;
     loop {
+        if stop_requested() {
+            return Err(ReadError::Interrupted);
+        }
         buf.clear();
         let (content, newline, cut) = read_capped(&mut reader, &mut buf)?;
         if content == 0 && !newline {
@@ -407,6 +484,9 @@ fn stream_json(
         if let Some(line) = json_line(&buf, newline, line_no, message_field)? {
             visit(line);
         }
+    }
+    if stop_requested() {
+        return Err(ReadError::Interrupted);
     }
     Ok(())
 }
