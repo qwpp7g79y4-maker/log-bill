@@ -12,6 +12,19 @@ This page shows how each release of log-bill was checked, what we found, and wha
 
 Only this check was run for this entry. The release-mode, Rust 1.85 and fuzz runs in the entry below belong to the earlier commit named there.
 
+## Measured time on a 100 MiB input (pre-release 1.0.0)
+
+| | |
+|---|---|
+| Date | 2026-11-08 |
+| Commit measured | `54a2220` (branch prep/w24-fout) |
+| Build | `cargo build --release` |
+| Input | One synthetic JSON lines file, 104857600 bytes (exactly 100 MiB), the format of `examples/api.jsonl`: 1,116,672 lines. The lines are almost identical: only the request number and the milliseconds change, so they fall into one pattern (plus one padding line). The file is generated in `/tmp` and is not committed. |
+| Command | `/usr/bin/time -f "%e s" target/release/log-bill --format jsonl scan big.jsonl` (exit 0) |
+| Measured | 4.86 s, 4.85 s, 4.83 s (three runs, elapsed wall-clock seconds) |
+
+This is one machine and one input shape. With many different patterns the time can differ. No throughput figure is given.
+
 ## Unreleased
 
 | | |
