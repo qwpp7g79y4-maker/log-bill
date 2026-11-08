@@ -18,7 +18,7 @@ Only this check was run for this entry. The release-mode, Rust 1.85 and fuzz run
 |---|---|
 | Commit checked | [`8ea5157`](https://github.com/qwpp7g79y4-maker/log-bill/commit/8ea5157) |
 | Date | 2026-10-17 |
-| Tests | 337 automated tests, run in debug mode, release mode, and on Rust 1.85 (all three: 337 passed, 0 failed) |
+| Tests | 339 automated tests, run in debug mode, release mode, and on Rust 1.85 (all three: 339 passed, 0 failed) |
 
 ### What was added
 
@@ -39,8 +39,8 @@ Only this check was run for this entry. The release-mode, Rust 1.85 and fuzz run
 
 ### How we checked
 
-- `cargo test` and `cargo test --release`: 337 passed, 0 failed, both exit 0.
-- `cargo +1.85 test` (oldest supported Rust version): 337 passed, 0 failed, exit 0.
+- `cargo test` and `cargo test --release`: 339 passed, 0 failed, both exit 0.
+- `cargo +1.85 test` (oldest supported Rust version): 339 passed, 0 failed, exit 0.
 - `cargo clippy --all-targets -- -D warnings`: exit 0, no warnings, in the main crate and in `fuzz/`.
 - `cargo fmt --check`: exit 0, in the main crate and in `fuzz/`.
 - `cargo +nightly fuzz build --target x86_64-unknown-linux-gnu`: exit 0, all six targets build.

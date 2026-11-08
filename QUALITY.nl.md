@@ -18,7 +18,7 @@ Alleen deze controle is voor dit onderdeel gedraaid. De runs in releasemodus, op
 |---|---|
 | Gecontroleerde commit | [`8ea5157`](https://github.com/qwpp7g79y4-maker/log-bill/commit/8ea5157) |
 | Datum | 2026-10-17 |
-| Tests | 337 automatische tests, gedraaid in debugmodus, releasemodus en op Rust 1.85 (alle drie: 337 geslaagd, 0 mislukt) |
+| Tests | 339 automatische tests, gedraaid in debugmodus, releasemodus en op Rust 1.85 (alle drie: 339 geslaagd, 0 mislukt) |
 
 ### Wat is toegevoegd
 
@@ -39,8 +39,8 @@ Alleen deze controle is voor dit onderdeel gedraaid. De runs in releasemodus, op
 
 ### Hoe we controleerden
 
-- `cargo test` en `cargo test --release`: 337 geslaagd, 0 mislukt, beide exit 0.
-- `cargo +1.85 test` (oudste ondersteunde Rust-versie): 337 geslaagd, 0 mislukt, exit 0.
+- `cargo test` en `cargo test --release`: 339 geslaagd, 0 mislukt, beide exit 0.
+- `cargo +1.85 test` (oudste ondersteunde Rust-versie): 339 geslaagd, 0 mislukt, exit 0.
 - `cargo clippy --all-targets -- -D warnings`: exit 0, geen waarschuwingen, in de hoofdcrate en in `fuzz/`.
 - `cargo fmt --check`: exit 0, in de hoofdcrate en in `fuzz/`.
 - `cargo +nightly fuzz build --target x86_64-unknown-linux-gnu`: exit 0, alle zes doelen bouwen.
