@@ -183,7 +183,11 @@ fn invalid_percentage_exit_3() {
         let (code, out, err) = run_exit(&["diff", arg, "old.log", "new.log"]);
         assert_eq!(code, 3, "{arg}");
         assert!(out.is_empty(), "{arg}");
-        assert_eq!(err, "invalid percentage\n", "{arg}");
+        assert_eq!(
+            err,
+            "invalid percentage; use a non-negative number with a period, with a period as the decimal mark\n",
+            "{arg}"
+        );
     }
 }
 

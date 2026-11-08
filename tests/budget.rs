@@ -81,7 +81,10 @@ fn example_4_32_equal_is_exit_0_above_is_exit_1() {
             log_path,
         ]);
         assert_eq!(code, 1, "{amount}");
-        assert_eq!(err, "monthly cost above budget\n", "{amount}");
+        assert_eq!(
+            err, "monthly cost above budget; reduce the log volume or raise --budget-month\n",
+            "{amount}"
+        );
         assert!(out.contains("4.32 EUR per month\n"), "{out}");
         assert!(out.contains(ESTIMATE), "{out}");
         assert!(!out.contains('q'), "{out}");
@@ -133,7 +136,10 @@ fn ingest_plus_index_15_12() {
     );
     let (code, out, err) = run(&[&basis[..], &["15.11", file_path(&log)]].concat());
     assert_eq!(code, 1, "{out}");
-    assert_eq!(err, "monthly cost above budget\n");
+    assert_eq!(
+        err,
+        "monthly cost above budget; reduce the log volume or raise --budget-month\n"
+    );
     assert!(out.contains("10.80 EUR per month\n"), "{out}");
     let _ = std::fs::remove_file(&log);
     let _ = std::fs::remove_file(&prices);
@@ -195,7 +201,10 @@ fn after_rules_counts_ingest_plus_index() {
         file_path(&log),
     ]);
     assert_eq!(code, 1);
-    assert_eq!(err, "monthly cost above budget\n");
+    assert_eq!(
+        err,
+        "monthly cost above budget; reduce the log volume or raise --budget-month\n"
+    );
 
     // Without rules, 780 is above 300.
     let (code, out, err) = run(&[
@@ -209,7 +218,10 @@ fn after_rules_counts_ingest_plus_index() {
         file_path(&log),
     ]);
     assert_eq!(code, 1, "{out}");
-    assert_eq!(err, "monthly cost above budget\n");
+    assert_eq!(
+        err,
+        "monthly cost above budget; reduce the log volume or raise --budget-month\n"
+    );
     let _ = std::fs::remove_file(&log);
     let _ = std::fs::remove_file(&lines);
     let _ = std::fs::remove_file(&prices);
@@ -253,7 +265,10 @@ fn budget_compares_the_fraction_not_the_cent() {
         file_path(&log),
     ]);
     assert_eq!(code, 1);
-    assert_eq!(err, "monthly cost above budget\n");
+    assert_eq!(
+        err,
+        "monthly cost above budget; reduce the log volume or raise --budget-month\n"
+    );
 
     let (code, _, err) = run(&[
         "scan",
@@ -317,7 +332,10 @@ fn sum_of_the_fractions_not_of_the_cents() {
         file_path(&log),
     ]);
     assert_eq!(code, 1);
-    assert_eq!(err, "monthly cost above budget\n");
+    assert_eq!(
+        err,
+        "monthly cost above budget; reduce the log volume or raise --budget-month\n"
+    );
     let _ = std::fs::remove_file(&log);
     let _ = std::fs::remove_file(&prices);
 }
@@ -353,12 +371,15 @@ fn without_prices_or_window_exit_3() {
     let (code, out, err) = run(&["scan", "--budget-month", "1", missing]);
     assert_eq!(code, 3);
     assert!(out.is_empty(), "{out}");
-    assert_eq!(err, "budget requires a window\n");
+    assert_eq!(
+        err,
+        "budget requires a window; add --window, for example --window 15m\n"
+    );
 
     let (code, out, err) = run(&["scan", "--budget-month", "1", "--window", "1m", missing]);
     assert_eq!(code, 3);
     assert!(out.is_empty(), "{out}");
-    assert_eq!(err, "budget requires a price file\n");
+    assert_eq!(err, "budget requires a price file; add --prices FILE\n");
 
     let prices = prices(
         "budget-without-window.json",
@@ -374,7 +395,10 @@ fn without_prices_or_window_exit_3() {
     ]);
     assert_eq!(code, 3, "{err}");
     assert!(out.is_empty(), "{out}");
-    assert_eq!(err, "budget requires a window\n");
+    assert_eq!(
+        err,
+        "budget requires a window; add --window, for example --window 15m\n"
+    );
     let _ = std::fs::remove_file(&prices);
 }
 
@@ -394,7 +418,11 @@ fn invalid_budget_exit_3_without_the_text() {
         let (code, out, err) = run(&["scan", "--budget-month", amount, "--window", "1m", missing]);
         assert_eq!(code, 3, "{amount:?} stderr: {err}");
         assert!(out.is_empty(), "{amount:?}: {out}");
-        assert_eq!(err, "invalid budget\n", "{amount:?}");
+        assert_eq!(
+            err,
+            "invalid budget; use a non-negative number with a period, with a period as the decimal mark\n",
+            "{amount:?}"
+        );
         assert!(!err.contains("CANARY"), "{amount:?}: {err}");
         assert!(
             amount.is_empty() || !err.contains(amount),
@@ -405,12 +433,18 @@ fn invalid_budget_exit_3_without_the_text() {
     let (code, out, err) = run(&["scan", "--budget-month=-1", "--window", "1m", missing]);
     assert_eq!(code, 3);
     assert!(out.is_empty(), "{out}");
-    assert_eq!(err, "invalid budget\n");
+    assert_eq!(
+        err,
+        "invalid budget; use a non-negative number with a period, with a period as the decimal mark\n"
+    );
     assert!(!err.contains("-1"), "{err}");
     let (code, out, err) = run(&["diff", "--budget-month", concat!("4,", "32"), "a", "b"]);
     assert_eq!(code, 3);
     assert!(out.is_empty(), "{out}");
-    assert_eq!(err, "invalid budget\n");
+    assert_eq!(
+        err,
+        "invalid budget; use a non-negative number with a period, with a period as the decimal mark\n"
+    );
 }
 
 #[test]
@@ -485,7 +519,10 @@ fn exact_ingest_price_is_above_4_32() {
         file_path(&log),
     ]);
     assert_eq!(code, 1, "stdout: {out} stderr: {err}");
-    assert_eq!(err, "monthly cost above budget\n");
+    assert_eq!(
+        err,
+        "monthly cost above budget; reduce the log volume or raise --budget-month\n"
+    );
     assert!(out.contains("100 bytes"), "{out}");
     assert!(out.contains("0.1440000000000000000144"), "{out}");
     assert!(out.contains("4.320000000000000000432"), "{out}");

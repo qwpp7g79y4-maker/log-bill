@@ -194,7 +194,11 @@ fn full_stdout_is_exit_3() {
             .expect("start binary");
         let err = String::from_utf8_lossy(&output.stderr);
         assert_eq!(output.status.code(), Some(3), "{args:?} stderr: {err}");
-        assert_eq!(err, "could not write output\n", "{args:?}");
+        assert_eq!(
+            err,
+            "could not write output; free disk space or check the output target, then run again\n",
+            "{args:?}"
+        );
         assert!(!err.contains("panicked"), "{args:?}");
     }
     let _ = std::fs::remove_file(&log);

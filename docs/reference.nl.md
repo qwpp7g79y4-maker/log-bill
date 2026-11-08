@@ -97,7 +97,7 @@ Met `--explain` krijgt een telling van `<SECRET>` de tekst `possible secret` ("m
 | 2 | Invoerfout: logbestand, JSON, prijsbestand of regelsbestand |
 | 3 | Gebruiksfout, of de uitvoer kon niet geschreven worden |
 
-Als de uitvoer niet geschreven kan worden, bijvoorbeeld omdat de schijf vol is, is de exitcode 3 en is stderr `could not write output`. `--help` en `--version` gebruiken diezelfde code; ze eindigen niet met 0 als hun tekst niet weg kan.
+Als de uitvoer niet geschreven kan worden, bijvoorbeeld omdat de schijf vol is, is de exitcode 3 en is stderr `could not write output; free disk space or check the output target, then run again`. `--help` en `--version` gebruiken diezelfde code; ze eindigen niet met 0 als hun tekst niet weg kan.
 
 Een logbestand, prijsbestand of regelsbestand moet een gewoon bestand zijn, behalve het logbestand-argument als dat `-` is (zie [Opties](#opties)): dat leest dan standaardinvoer. Een FIFO, een map of iets anders wordt geweigerd met exit 2, zonder te wachten tot een schrijver opent. Een `gb_bytes` die een breuk is zoals `0.5`, 0 of negatief, of een getal buiten het bereik van een binaire float, is exit 2; een prijs die tekst is in plaats van een getal, een breuk die niet past, of een prijs buiten dat bereik, geeft `price file has a price that is not a number; write prices as JSON numbers`. 128 of meer geneste arrays of objecten geeft `price file is nested too deeply; flatten it`. Dezelfde sleutel twee keer geeft `price file has a duplicate key; keep one of them`. `sample 0,1` is geen geldige fractie: exit 2 met `invalid rule on line 1 of the rules file; fix or remove that line`, zonder de regel te tonen. De meldingen over gewone bestanden noemen het pad niet, en geen foutmelding bevat een ruwe logregel.
 
@@ -131,28 +131,28 @@ Elke rij hieronder is op de binary gedraaid, en een test houdt dat zo. Een rij m
 | `--explain` | diff | `--json` verandert de melding niet. | `diff --json --explain OLD NEW` | 3 | `--explain only works with scan` |
 | `--budget-month` | diff | Hoort niet bij diff. | `diff --budget-month 1 OLD NEW` | 3 | `the monthly budget only applies to scan` |
 | `--budget-month` | diff | `--json` en `--explain` veranderen de melding niet. | `diff --json --explain --budget-month 1 OLD NEW` | 3 | `the monthly budget only applies to scan` |
-| `--budget-month` | scan | Zonder venster. | `scan --budget-month 1 file.log` | 3 | `budget requires a window` |
-| `--budget-month` | scan | Venster wel, prijzen niet. | `scan --budget-month 1 --window 1m file.log` | 3 | `budget requires a price file` |
-| `--budget-month` | scan | Prijzen wel, venster niet. Het venster gaat vóór `--prices`. | `scan --budget-month 1 --prices no-prices.json file.log` | 3 | `budget requires a window` |
-| `--budget-month` | scan | 1,5 is geen bedrag. | `scan --budget-month 1,5 file.log` | 3 | `invalid budget` |
-| `--budget-month` | diff | abc is ongeldig, vóór de commando-toets. | `diff --budget-month abc OLD NEW` | 3 | `invalid budget` |
+| `--budget-month` | scan | Zonder venster. | `scan --budget-month 1 file.log` | 3 | `budget requires a window; add --window, for example --window 15m` |
+| `--budget-month` | scan | Venster wel, prijzen niet. | `scan --budget-month 1 --window 1m file.log` | 3 | `budget requires a price file; add --prices FILE` |
+| `--budget-month` | scan | Prijzen wel, venster niet. Het venster gaat vóór `--prices`. | `scan --budget-month 1 --prices no-prices.json file.log` | 3 | `budget requires a window; add --window, for example --window 15m` |
+| `--budget-month` | scan | 1,5 is geen bedrag. | `scan --budget-month 1,5 file.log` | 3 | `invalid budget; use a non-negative number with a period, with a period as the decimal mark` |
+| `--budget-month` | diff | abc is ongeldig, vóór de commando-toets. | `diff --budget-month abc OLD NEW` | 3 | `invalid budget; use a non-negative number with a period, with a period as the decimal mark` |
 | `--max-new-share` | scan | Hoort niet bij scan. | `scan --max-new-share 10 file.log` | 3 | `--max-new-share only works with diff` |
 | `--max-new-share` | scan | `--json` en `--explain` veranderen de melding niet. | `scan --json --explain --max-new-share 10 file.log` | 3 | `--max-new-share only works with diff` |
 | `--max-new-share` | scan | abc bij scan geeft dezelfde melding, niet ongeldig percentage. | `scan --max-new-share abc file.log` | 3 | `--max-new-share only works with diff` |
-| `--max-new-share` | diff | abc is geen percentage. | `diff --max-new-share abc OLD NEW` | 3 | `invalid percentage` |
-| `--max-new-share` | diff | `--explain` wint hier niet: het percentage wordt eerder getoetst. | `diff --explain --max-new-share abc OLD NEW` | 3 | `invalid percentage` |
-| `--max-new-share` | diff | `--json` verandert de melding niet. | `diff --json --max-new-share abc OLD NEW` | 3 | `invalid percentage` |
-| `--retention` | scan | 5 is niet 3, 7, 15 of 30. Eerder getoetst dan het venster. | `scan --retention 5 file.log` | 3 | `invalid retention` |
-| `--retention` | diff | 5 is ongeldig, vóór de commando-toets. | `diff --retention 5 OLD NEW` | 3 | `invalid retention` |
+| `--max-new-share` | diff | abc is geen percentage. | `diff --max-new-share abc OLD NEW` | 3 | `invalid percentage; use a non-negative number with a period, with a period as the decimal mark` |
+| `--max-new-share` | diff | `--explain` wint hier niet: het percentage wordt eerder getoetst. | `diff --explain --max-new-share abc OLD NEW` | 3 | `invalid percentage; use a non-negative number with a period, with a period as the decimal mark` |
+| `--max-new-share` | diff | `--json` verandert de melding niet. | `diff --json --max-new-share abc OLD NEW` | 3 | `invalid percentage; use a non-negative number with a period, with a period as the decimal mark` |
+| `--retention` | scan | 5 is niet 3, 7, 15 of 30. Eerder getoetst dan het venster. | `scan --retention 5 file.log` | 3 | `invalid retention; use 3, 7, 15 or 30` |
+| `--retention` | diff | 5 is ongeldig, vóór de commando-toets. | `diff --retention 5 OLD NEW` | 3 | `invalid retention; use 3, 7, 15 or 30` |
 | `--retention` | scan | Zonder venster. | `scan --retention 7 file.log` | 3 | `--retention only works together with --window` |
 | `--retention` | diff | Hoort niet bij diff. | `diff --retention 7 OLD NEW` | 3 | `--retention only works with scan` |
 | `--retention` | diff | `--explain` wint van een geldige retentie. | `diff --explain --retention 7 OLD NEW` | 3 | `--explain only works with scan` |
 | `--retention` | diff | `--window` zonder prijzen wordt eerder getoetst. | `diff --window 1m --retention 7 OLD NEW` | 3 | `--window with diff only works together with --prices or --json` |
-| `--billing` | scan | yearly is geen plan. | `scan --billing yearly file.log` | 3 | `invalid billing` |
+| `--billing` | scan | yearly is geen plan. | `scan --billing yearly file.log` | 3 | `invalid billing; use annual, monthly or ondemand` |
 | `--billing` | scan | Zonder venster. | `scan --billing annual file.log` | 3 | `--billing only works together with --window` |
 | `--billing` | diff | Hoort niet bij diff. | `diff --billing monthly OLD NEW` | 3 | `--billing only works with scan` |
-| `--indexed-price` | scan | nope is geen decimaal. | `scan --indexed-price nope file.log` | 3 | `invalid indexed price` |
-| `--indexed-price` | scan | Een minteken is een negatieve prijs. | `scan --indexed-price -1 --window 1s file.log` | 3 | `invalid indexed price` |
+| `--indexed-price` | scan | nope is geen decimaal. | `scan --indexed-price nope file.log` | 3 | `invalid indexed price; use a non-negative number with a period, with a period as the decimal mark` |
+| `--indexed-price` | scan | Een minteken is een negatieve prijs. | `scan --indexed-price -1 --window 1s file.log` | 3 | `invalid indexed price; use a non-negative number with a period, with a period as the decimal mark` |
 | `--indexed-price` | scan | Zonder venster. | `scan --indexed-price 1 file.log` | 3 | `--indexed-price only works together with --window` |
 | `--indexed-price` | diff | Hoort niet bij diff. | `diff --indexed-price 1 OLD NEW` | 3 | `--indexed-price only works with scan` |
 | `--index-rules` | scan | Zonder venster. Het bestand wordt niet geopend. | `scan --index-rules rules.txt file.log` | 3 | `--index-rules only works together with --window` |

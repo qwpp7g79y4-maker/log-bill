@@ -201,5 +201,8 @@ fn budget_past_the_f64_range_is_rejected_cleanly() {
         file_path(&log),
     ]);
     assert_eq!(code, 3, "{err}");
-    assert_eq!(err, "invalid budget\n");
+    assert_eq!(
+        err,
+        "invalid budget; use a non-negative number with a period, with a period as the decimal mark\n"
+    );
 }

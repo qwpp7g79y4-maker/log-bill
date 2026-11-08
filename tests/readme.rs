@@ -552,12 +552,12 @@ fn option_and_error_tables_match_the_binary() {
             "--message-field only works with --format jsonl\n",
             "--days-per-month only works together with --window\n",
             "the monthly budget only applies to scan\n",
-            "budget requires a window\n",
-            "budget requires a price file\n",
+            "budget requires a window; add --window, for example --window 15m\n",
+            "budget requires a price file; add --prices FILE\n",
             "--window with diff only works together with --prices or --json\n",
             "invalid window; use a whole number and a unit s, m, h or d, for example 15m\n",
-            "invalid budget\n",
-            "invalid percentage\n",
+            "invalid budget; use a non-negative number with a period, with a period as the decimal mark\n",
+            "invalid percentage; use a non-negative number with a period, with a period as the decimal mark\n",
         ] {
             assert!(
                 messages.contains(needed),

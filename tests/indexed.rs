@@ -500,19 +500,19 @@ fn rules_then_index_rules() {
 fn invalid_retention_billing_price_and_index_rules_without_window() {
     assert_usage(
         &["scan", "--retention", "5", "file.log"],
-        "invalid retention",
+        "invalid retention; use 3, 7, 15 or 30",
     );
     assert_usage(
         &["diff", "--retention", "5", "OLD", "NEW"],
-        "invalid retention",
+        "invalid retention; use 3, 7, 15 or 30",
     );
     assert_usage(
         &["scan", "--billing", "yearly", "file.log"],
-        "invalid billing",
+        "invalid billing; use annual, monthly or ondemand",
     );
     assert_usage(
         &["scan", "--indexed-price", "nope", "file.log"],
-        "invalid indexed price",
+        "invalid indexed price; use a non-negative number with a period, with a period as the decimal mark",
     );
     assert_usage(
         &[
@@ -523,7 +523,7 @@ fn invalid_retention_billing_price_and_index_rules_without_window() {
             "1s",
             "file.log",
         ],
-        "invalid indexed price",
+        "invalid indexed price; use a non-negative number with a period, with a period as the decimal mark",
     );
     assert_usage(
         &["scan", "--indexed-price", "1", "file.log"],
@@ -633,7 +633,10 @@ fn budget_ignores_the_indexed_estimate() {
     assert_eq!(code, Some(0), "stderr: {err}\n{out}");
     assert!(err.is_empty(), "{err}");
     assert!(out.contains("1000000.00 USD"), "{out}");
-    assert!(!out.contains("monthly cost above budget"), "{out}");
+    assert!(
+        !out.contains("monthly cost above budget; reduce the log volume or raise --budget-month"),
+        "{out}"
+    );
 }
 
 #[test]

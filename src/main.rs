@@ -125,7 +125,10 @@ fn report(error: clap::Error) -> i32 {
     let code = if to_stderr { 3 } else { 0 };
     // Help and version are buffered. Flush, or a full disk still exits 0.
     if error.print().is_err() || flush_stream(to_stderr).is_err() {
-        return fail("could not write output", 3);
+        return fail(
+            "could not write output; free disk space or check the output target, then run again",
+            3,
+        );
     }
     code
 }
@@ -141,7 +144,10 @@ fn flush_stream(stderr: bool) -> io::Result<()> {
 /// Writes the scan or diff result. A full disk is exit 3, not a panic.
 fn emit(text: &str) -> i32 {
     if write_stdout(text).is_err() {
-        return fail("could not write output", 3);
+        return fail(
+            "could not write output; free disk space or check the output target, then run again",
+            3,
+        );
     }
     0
 }
@@ -181,7 +187,10 @@ fn execute(cli: &Cli, days_explicit: bool) -> i32 {
         None => None,
         Some(text) => match money::parse_budget(text) {
             Some(budget) => Some(budget),
-            None => return fail("invalid budget", 3),
+            None => return fail(
+                "invalid budget; use a non-negative number with a period, with a period as the decimal mark",
+                3,
+            ),
         },
     };
     // Budget keeps its own message, even when --prices is set.
@@ -209,28 +218,34 @@ fn execute(cli: &Cli, days_explicit: bool) -> i32 {
         None => None,
         Some(text) => match diff::parse_percent(text) {
             Some(percent) => Some(percent),
-            None => return fail("invalid percentage", 3),
+            None => return fail(
+                "invalid percentage; use a non-negative number with a period, with a period as the decimal mark",
+                3,
+            ),
         },
     };
     let retention = match cli.retention.as_deref() {
         None => None,
         Some(text) => match indexed::parse_retention(text) {
             Some(days) => Some(days),
-            None => return fail("invalid retention", 3),
+            None => return fail("invalid retention; use 3, 7, 15 or 30", 3),
         },
     };
     let billing = match cli.billing.as_deref() {
         None => None,
         Some(text) => match indexed::parse_billing(text) {
             Some(plan) => Some(plan),
-            None => return fail("invalid billing", 3),
+            None => return fail("invalid billing; use annual, monthly or ondemand", 3),
         },
     };
     let indexed_price = match cli.indexed_price.as_deref() {
         None => None,
         Some(text) => match indexed::parse_indexed_price(text) {
             Some(price) => Some(price),
-            None => return fail("invalid indexed price", 3),
+            None => return fail(
+                "invalid indexed price; use a non-negative number with a period, with a period as the decimal mark",
+                3,
+            ),
         },
     };
     let indexing = retention.is_some()
@@ -402,7 +417,7 @@ fn execute(cli: &Cli, days_explicit: bool) -> i32 {
                         return written;
                     }
                     if over_budget {
-                        fail("monthly cost above budget", 1)
+                        fail("monthly cost above budget; reduce the log volume or raise --budget-month", 1)
                     } else {
                         0
                     }
@@ -628,9 +643,11 @@ fn sampled_from(stats: pattern::Stats, effect: Option<rules::Effect>) -> pattern
 /// Messages fixed before reading. Budget comes before `--prices`.
 fn check_before_read(cli: &Cli, has_window: bool, has_budget: bool) -> Option<&'static str> {
     match &cli.command {
-        Cmd::Scan { .. } if has_budget && !has_window => Some("budget requires a window"),
+        Cmd::Scan { .. } if has_budget && !has_window => {
+            Some("budget requires a window; add --window, for example --window 15m")
+        }
         Cmd::Scan { .. } if has_budget && cli.prices.is_none() => {
-            Some("budget requires a price file")
+            Some("budget requires a price file; add --prices FILE")
         }
         Cmd::Diff { .. } if has_budget => Some("the monthly budget only applies to scan"),
         _ if cli.prices.is_some() && !has_window => {

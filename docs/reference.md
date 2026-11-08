@@ -97,7 +97,7 @@ With `--explain`, a `<SECRET>` count is marked `possible secret`. In `--json` su
 | 2 | Input error: log file, JSON, price file or rules file |
 | 3 | Usage error, or the output could not be written |
 
-If the output cannot be written, for example because the disk is full, the exit code is 3 and stderr is `could not write output`. `--help` and `--version` use that same code; they do not exit 0 when their text cannot be written.
+If the output cannot be written, for example because the disk is full, the exit code is 3 and stderr is `could not write output; free disk space or check the output target, then run again`. `--help` and `--version` use that same code; they do not exit 0 when their text cannot be written.
 
 A log file, price file or rules file must be a regular file, except the log file argument given as `-` (see [Options](#options)), which reads standard input instead. A FIFO, a directory or anything else is refused with exit 2 without waiting for a writer to open it. A `gb_bytes` that is a fraction such as `0.5`, 0 or negative, or a number outside the binary-float range, is exit 2; a price that is text instead of a number, a fraction that does not fit, or a price outside that range, gives `price file has a price that is not a number; write prices as JSON numbers`. 128 or more nested arrays or objects gives `price file is nested too deeply; flatten it`. The same key twice gives `price file has a duplicate key; keep one of them`. `sample 0,1` is not a valid fraction: exit 2 with `invalid rule on line 1 of the rules file; fix or remove that line`, without showing the line. The regular-file messages do not include the path, and no error message contains a raw log line.
 
@@ -131,28 +131,28 @@ Every row below was run against the binary, and a test keeps it that way. A row 
 | `--explain` | diff | `--json` does not change the message. | `diff --json --explain OLD NEW` | 3 | `--explain only works with scan` |
 | `--budget-month` | diff | Not for diff. | `diff --budget-month 1 OLD NEW` | 3 | `the monthly budget only applies to scan` |
 | `--budget-month` | diff | `--json` and `--explain` do not change the message. | `diff --json --explain --budget-month 1 OLD NEW` | 3 | `the monthly budget only applies to scan` |
-| `--budget-month` | scan | Without a window. | `scan --budget-month 1 file.log` | 3 | `budget requires a window` |
-| `--budget-month` | scan | Window but no prices. | `scan --budget-month 1 --window 1m file.log` | 3 | `budget requires a price file` |
-| `--budget-month` | scan | Prices but no window. The window is checked before `--prices`. | `scan --budget-month 1 --prices no-prices.json file.log` | 3 | `budget requires a window` |
-| `--budget-month` | scan | 1,5 is not an amount. | `scan --budget-month 1,5 file.log` | 3 | `invalid budget` |
-| `--budget-month` | diff | abc is invalid, before the command check. | `diff --budget-month abc OLD NEW` | 3 | `invalid budget` |
+| `--budget-month` | scan | Without a window. | `scan --budget-month 1 file.log` | 3 | `budget requires a window; add --window, for example --window 15m` |
+| `--budget-month` | scan | Window but no prices. | `scan --budget-month 1 --window 1m file.log` | 3 | `budget requires a price file; add --prices FILE` |
+| `--budget-month` | scan | Prices but no window. The window is checked before `--prices`. | `scan --budget-month 1 --prices no-prices.json file.log` | 3 | `budget requires a window; add --window, for example --window 15m` |
+| `--budget-month` | scan | 1,5 is not an amount. | `scan --budget-month 1,5 file.log` | 3 | `invalid budget; use a non-negative number with a period, with a period as the decimal mark` |
+| `--budget-month` | diff | abc is invalid, before the command check. | `diff --budget-month abc OLD NEW` | 3 | `invalid budget; use a non-negative number with a period, with a period as the decimal mark` |
 | `--max-new-share` | scan | Not for scan. | `scan --max-new-share 10 file.log` | 3 | `--max-new-share only works with diff` |
 | `--max-new-share` | scan | `--json` and `--explain` do not change the message. | `scan --json --explain --max-new-share 10 file.log` | 3 | `--max-new-share only works with diff` |
 | `--max-new-share` | scan | abc on scan gives the same message, not invalid percentage. | `scan --max-new-share abc file.log` | 3 | `--max-new-share only works with diff` |
-| `--max-new-share` | diff | abc is not a percentage. | `diff --max-new-share abc OLD NEW` | 3 | `invalid percentage` |
-| `--max-new-share` | diff | `--explain` does not win: the percentage is checked first. | `diff --explain --max-new-share abc OLD NEW` | 3 | `invalid percentage` |
-| `--max-new-share` | diff | `--json` does not change the message. | `diff --json --max-new-share abc OLD NEW` | 3 | `invalid percentage` |
-| `--retention` | scan | 5 is not 3, 7, 15 or 30. Checked before the window. | `scan --retention 5 file.log` | 3 | `invalid retention` |
-| `--retention` | diff | 5 is invalid, before the command check. | `diff --retention 5 OLD NEW` | 3 | `invalid retention` |
+| `--max-new-share` | diff | abc is not a percentage. | `diff --max-new-share abc OLD NEW` | 3 | `invalid percentage; use a non-negative number with a period, with a period as the decimal mark` |
+| `--max-new-share` | diff | `--explain` does not win: the percentage is checked first. | `diff --explain --max-new-share abc OLD NEW` | 3 | `invalid percentage; use a non-negative number with a period, with a period as the decimal mark` |
+| `--max-new-share` | diff | `--json` does not change the message. | `diff --json --max-new-share abc OLD NEW` | 3 | `invalid percentage; use a non-negative number with a period, with a period as the decimal mark` |
+| `--retention` | scan | 5 is not 3, 7, 15 or 30. Checked before the window. | `scan --retention 5 file.log` | 3 | `invalid retention; use 3, 7, 15 or 30` |
+| `--retention` | diff | 5 is invalid, before the command check. | `diff --retention 5 OLD NEW` | 3 | `invalid retention; use 3, 7, 15 or 30` |
 | `--retention` | scan | Without a window. | `scan --retention 7 file.log` | 3 | `--retention only works together with --window` |
 | `--retention` | diff | Not for diff. | `diff --retention 7 OLD NEW` | 3 | `--retention only works with scan` |
 | `--retention` | diff | `--explain` wins over a valid retention. | `diff --explain --retention 7 OLD NEW` | 3 | `--explain only works with scan` |
 | `--retention` | diff | `--window` without prices is checked first. | `diff --window 1m --retention 7 OLD NEW` | 3 | `--window with diff only works together with --prices or --json` |
-| `--billing` | scan | yearly is not a plan. | `scan --billing yearly file.log` | 3 | `invalid billing` |
+| `--billing` | scan | yearly is not a plan. | `scan --billing yearly file.log` | 3 | `invalid billing; use annual, monthly or ondemand` |
 | `--billing` | scan | Without a window. | `scan --billing annual file.log` | 3 | `--billing only works together with --window` |
 | `--billing` | diff | Not for diff. | `diff --billing monthly OLD NEW` | 3 | `--billing only works with scan` |
-| `--indexed-price` | scan | nope is not a decimal. | `scan --indexed-price nope file.log` | 3 | `invalid indexed price` |
-| `--indexed-price` | scan | A minus sign is a negative price. | `scan --indexed-price -1 --window 1s file.log` | 3 | `invalid indexed price` |
+| `--indexed-price` | scan | nope is not a decimal. | `scan --indexed-price nope file.log` | 3 | `invalid indexed price; use a non-negative number with a period, with a period as the decimal mark` |
+| `--indexed-price` | scan | A minus sign is a negative price. | `scan --indexed-price -1 --window 1s file.log` | 3 | `invalid indexed price; use a non-negative number with a period, with a period as the decimal mark` |
 | `--indexed-price` | scan | Without a window. | `scan --indexed-price 1 file.log` | 3 | `--indexed-price only works together with --window` |
 | `--indexed-price` | diff | Not for diff. | `diff --indexed-price 1 OLD NEW` | 3 | `--indexed-price only works with scan` |
 | `--index-rules` | scan | Without a window. The file is not opened. | `scan --index-rules rules.txt file.log` | 3 | `--index-rules only works together with --window` |

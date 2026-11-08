@@ -1090,7 +1090,10 @@ fn budget_and_errors_keep_the_same_codes() {
     let _ = std::fs::remove_file(&log);
     let _ = std::fs::remove_file(&prices);
     assert_eq!(code, 1);
-    assert_eq!(err, "monthly cost above budget\n");
+    assert_eq!(
+        err,
+        "monthly cost above budget; reduce the log volume or raise --budget-month\n"
+    );
     valid_via_json_tool(&output_2);
     assert_eq!(json(&output_2)["schema_version"], 1);
     assert_eq!(json(&output_2)["estimate"], ESTIMATE);
@@ -1098,7 +1101,10 @@ fn budget_and_errors_keep_the_same_codes() {
     let (code, output_2, err) = run_exit(&["scan", "--json", "--budget-month", "1", "x.log"]);
     assert_eq!(code, 3);
     assert!(output_2.is_empty(), "{output_2}");
-    assert_eq!(err, "budget requires a window\n");
+    assert_eq!(
+        err,
+        "budget requires a window; add --window, for example --window 15m\n"
+    );
 
     let (code, output_2, err) = run_exit(&[
         "diff",
