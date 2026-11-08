@@ -51,9 +51,20 @@ fn man_page_names_every_option_of_help() {
 fn completion_scripts_for_bash_and_zsh() {
     let bash = run(&["completions", "bash"]);
     assert_eq!(bash.status.code(), Some(0));
-    assert!(String::from_utf8(bash.stdout)
-        .unwrap()
-        .contains("--budget-month"));
+    let bash_text = String::from_utf8(bash.stdout).unwrap();
+    assert!(bash_text.contains("--budget-month"));
+    let help_out = run(&["--help"]);
+    assert_eq!(help_out.status.code(), Some(0));
+    let help = String::from_utf8(help_out.stdout).unwrap();
+    let expected = long_options(&help);
+    assert!(
+        expected.contains("help") && expected.contains("version"),
+        "top-level --help should name --help and --version: {expected:?}"
+    );
+    let in_bash = long_options(&bash_text);
+    for option in &expected {
+        assert!(in_bash.contains(option), "bash completion lacks --{option}");
+    }
     let zsh = run(&["completions", "zsh"]);
     assert_eq!(zsh.status.code(), Some(0));
     assert!(String::from_utf8(zsh.stdout)
