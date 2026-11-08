@@ -87,6 +87,10 @@ struct Cli {
     /// Print the hint line, and on success one context line on stderr.
     #[arg(long, global = true, conflicts_with = "quiet")]
     verbose: bool,
+
+    /// Write the report to this file instead of stdout.
+    #[arg(long, global = true, value_name = "PATH")]
+    output: Option<PathBuf>,
 }
 
 thread_local! {
@@ -204,7 +208,7 @@ fn emit_generated(what: Generated) -> i32 {
         }
     }
     match String::from_utf8(buffer) {
-        Ok(text) => emit(&text),
+        Ok(text) => emit(None, &text),
         Err(_) => fail("generated text is not UTF-8", 3),
     }
 }
@@ -230,15 +234,33 @@ fn flush_stream(stderr: bool) -> io::Result<()> {
     }
 }
 
-/// Writes the scan or diff result. A full disk is exit 3, not a panic.
-fn emit(text: &str) -> i32 {
-    if write_stdout(text).is_err() {
-        return fail(
-            "could not write output; free disk space or check the output target, then run again",
-            3,
-        );
+/// Writes the scan or diff result.
+///
+/// A full disk is exit 3, not a panic. `--output PATH` writes that same
+/// report to the file and leaves stdout empty. An existing file is replaced.
+/// A missing parent directory is the same exit 3, not exit 1, and is not created.
+fn emit(path: Option<&Path>, text: &str) -> i32 {
+    if write_report(path, text).is_err() {
+        let message = match path {
+            Some(path) => format!(
+                "could not write the report to {}; check that the parent directory exists and is writable, the tool does not create it",
+                pattern::show_controls(&path.to_string_lossy())
+            ),
+            None => "could not write output; free disk space or check the output target, then run again".to_string(),
+        };
+        return fail(&message, 3);
     }
     0
+}
+
+/// Write `text` to `--output`, or to stdout when that flag is absent.
+fn write_report(path: Option<&Path>, text: &str) -> io::Result<()> {
+    let Some(path) = path else {
+        return write_stdout(text);
+    };
+    let mut file = std::fs::File::create(path)?;
+    file.write_all(text.as_bytes())?;
+    file.flush()
 }
 
 /// Writes `message` to stderr and returns `code`.
@@ -523,7 +545,7 @@ fn execute(cli: &Cli, days_explicit: bool) -> i32 {
                     } else {
                         false
                     };
-                    let written = emit(&text);
+                    let written = emit(cli.output.as_deref(), &text);
                     if written != 0 {
                         return written;
                     }
@@ -654,7 +676,7 @@ fn execute(cli: &Cli, days_explicit: bool) -> i32 {
             {
                 return 3;
             }
-            let written = emit(&text);
+            let written = emit(cli.output.as_deref(), &text);
             if written != 0 {
                 return written;
             }

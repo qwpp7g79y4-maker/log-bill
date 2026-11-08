@@ -28,6 +28,7 @@ Draai `log-bill --help` of `log-bill scan --help` voor de ingebouwde hulp. Combi
 | `--index-rules` | scan, alleen met `--window` | Index-uitsluitingsregels, dezelfde syntax als `--rules`, op het gewicht dat na `--rules` overblijft. |
 | `--quiet` | scan en diff | Verberg de hintregel, ook op een terminal. Geen contextregel. Stdout blijft gelijk. |
 | `--verbose` | scan en diff | Druk de hintregel ook als stderr een pipe is, en bij succes één regel `context:` op stderr. Stdout blijft gelijk. Samen met `--quiet` is dit exit 3. |
+| `--output` | scan en diff | Schrijf het rapport naar dit bestand in plaats van stdout. Een bestaand bestand wordt vervangen. Een ontbrekende map is exit 3 en wordt niet aangemaakt. Stdout blijft leeg. Exitcodes blijven 0, 1, 2 en 3. |
 | `--help` | overal | Toont de hulp en stopt met exit 0. |
 | `--version` | hoogste niveau | Toont het versienummer (`log-bill 1.0.0`) en stopt met exit 0. |
 
@@ -99,7 +100,7 @@ Met `--explain` krijgt een telling van `<SECRET>` de tekst `possible secret` ("m
 | 2 | Invoerfout: logbestand, JSON, prijsbestand of regelsbestand |
 | 3 | Gebruiksfout, of de uitvoer kon niet geschreven worden |
 
-Als de uitvoer niet geschreven kan worden, bijvoorbeeld omdat de schijf vol is, is de exitcode 3 en is stderr `could not write output; free disk space or check the output target, then run again`. `--help` en `--version` gebruiken diezelfde code; ze eindigen niet met 0 als hun tekst niet weg kan.
+Als de uitvoer niet geschreven kan worden, bijvoorbeeld omdat de schijf vol is, is de exitcode 3 en is stderr `could not write output; free disk space or check the output target, then run again`. `--help` en `--version` gebruiken diezelfde code; ze eindigen niet met 0 als hun tekst niet weg kan. `--output PATH` schrijft datzelfde rapport naar het bestand en laat stdout leeg. Een bestaand bestand wordt vervangen. Een ontbrekende map is exit 3, niet exit 1, en de map wordt niet aangemaakt.
 
 Een logbestand, prijsbestand of regelsbestand moet een gewoon bestand zijn, behalve het logbestand-argument als dat `-` is (zie [Opties](#opties)): dat leest dan standaardinvoer. Een FIFO, een map of iets anders wordt geweigerd met exit 2, zonder te wachten tot een schrijver opent. Een `gb_bytes` die een breuk is zoals `0.5`, 0 of negatief, of een getal buiten het bereik van een binaire float, is exit 2; een prijs die tekst is in plaats van een getal, een breuk die niet past, of een prijs buiten dat bereik, geeft `price file has a price that is not a number; write prices as JSON numbers`. 128 of meer geneste arrays of objecten geeft `price file is nested too deeply; flatten it`. Dezelfde sleutel twee keer geeft `price file has a duplicate key; keep one of them`. `sample 0,1` is geen geldige fractie: exit 2 met `invalid rule on line 1 of the rules file; fix or remove that line`, zonder de regel te tonen. De meldingen over gewone bestanden noemen het pad niet, en geen foutmelding bevat een ruwe logregel.
 
@@ -107,6 +108,7 @@ Elke rij hieronder is op de binary gedraaid, en een test houdt dat zo. Een rij m
 
 | Optie | Werkt bij | Geval | Verkeerd | Exit | Melding |
 | --- | --- | --- | --- | --- | --- |
+| `--output` | scan | De bovenliggende map ontbreekt. | `scan --output target/no-such-w43-dir/report.txt tests/fixtures/scan-text.log` | 3 | `could not write the report to target/no-such-w43-dir/report.txt; check that the parent directory exists and is writable, the tool does not create it` |
 | `--format` | scan en diff | Ongeldige waarde. | `scan --format nope file.log` | 3 | `error: invalid value 'nope' for '--format <FORMAT>'\n  [possible values: text, jsonl]\n\nFor more information, try '--help'.\n` |
 | `--message-field` | scan | Zonder jsonl. | `scan --message-field message file.log` | 3 | `--message-field only works with --format jsonl` |
 | `--message-field` | diff | Zonder jsonl. | `diff --message-field message OLD NEW` | 3 | `--message-field only works with --format jsonl` |

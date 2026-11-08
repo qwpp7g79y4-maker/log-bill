@@ -28,6 +28,7 @@ Run `log-bill --help` or `log-bill scan --help` for the built-in help. Combinati
 | `--index-rules` | scan, only with `--window` | Index exclusion rules, same syntax as `--rules`, applied to the weight left after `--rules`. |
 | `--quiet` | scan and diff | Hide the hint line, also on a terminal. No context line. Stdout is unchanged. |
 | `--verbose` | scan and diff | Print the hint line even when stderr is a pipe, and on success one `context:` line on stderr. Stdout is unchanged. Together with `--quiet` this is exit 3. |
+| `--output` | scan and diff | Write the report to this file instead of stdout. An existing file is replaced. A missing parent directory is exit 3 and is not created. Stdout stays empty. Exit codes stay 0, 1, 2 and 3. |
 | `--help` | everywhere | Show help and exit 0. |
 | `--version` | top level | Show the version (`log-bill 1.0.0`) and exit 0. |
 
@@ -99,7 +100,7 @@ With `--explain`, a `<SECRET>` count is marked `possible secret`. In `--json` su
 | 2 | Input error: log file, JSON, price file or rules file |
 | 3 | Usage error, or the output could not be written |
 
-If the output cannot be written, for example because the disk is full, the exit code is 3 and stderr is `could not write output; free disk space or check the output target, then run again`. `--help` and `--version` use that same code; they do not exit 0 when their text cannot be written.
+If the output cannot be written, for example because the disk is full, the exit code is 3 and stderr is `could not write output; free disk space or check the output target, then run again`. `--help` and `--version` use that same code; they do not exit 0 when their text cannot be written. `--output PATH` writes that same report to the file and leaves stdout empty. An existing file is replaced. A missing parent directory is exit 3, not exit 1, and the directory is not created.
 
 A log file, price file or rules file must be a regular file, except the log file argument given as `-` (see [Options](#options)), which reads standard input instead. A FIFO, a directory or anything else is refused with exit 2 without waiting for a writer to open it. A `gb_bytes` that is a fraction such as `0.5`, 0 or negative, or a number outside the binary-float range, is exit 2; a price that is text instead of a number, a fraction that does not fit, or a price outside that range, gives `price file has a price that is not a number; write prices as JSON numbers`. 128 or more nested arrays or objects gives `price file is nested too deeply; flatten it`. The same key twice gives `price file has a duplicate key; keep one of them`. `sample 0,1` is not a valid fraction: exit 2 with `invalid rule on line 1 of the rules file; fix or remove that line`, without showing the line. The regular-file messages do not include the path, and no error message contains a raw log line.
 
@@ -107,6 +108,7 @@ Every row below was run against the binary, and a test keeps it that way. A row 
 
 | Option | Applies to | Case | Wrong use | Exit | Message |
 | --- | --- | --- | --- | --- | --- |
+| `--output` | scan | The parent directory is missing. | `scan --output target/no-such-w43-dir/report.txt tests/fixtures/scan-text.log` | 3 | `could not write the report to target/no-such-w43-dir/report.txt; check that the parent directory exists and is writable, the tool does not create it` |
 | `--format` | scan and diff | Invalid value. | `scan --format nope file.log` | 3 | `error: invalid value 'nope' for '--format <FORMAT>'\n  [possible values: text, jsonl]\n\nFor more information, try '--help'.\n` |
 | `--message-field` | scan | Without jsonl. | `scan --message-field message file.log` | 3 | `--message-field only works with --format jsonl` |
 | `--message-field` | diff | Without jsonl. | `diff --message-field message OLD NEW` | 3 | `--message-field only works with --format jsonl` |

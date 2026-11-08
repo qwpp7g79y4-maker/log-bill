@@ -4,7 +4,7 @@
 .SH NAME
 log\-bill \- Offline estimate of log costs per pattern
 .SH SYNOPSIS
-\fBlog\-bill\fR [\fB\-\-format\fR] [\fB\-\-message\-field\fR] [\fB\-\-group\-by\fR] [\fB\-\-window\fR] [\fB\-\-days\-per\-month\fR] [\fB\-\-prices\fR] [\fB\-\-rules\fR] [\fB\-\-top\fR] [\fB\-\-explain\fR] [\fB\-\-json\fR] [\fB\-\-budget\-month\fR] [\fB\-\-max\-new\-share\fR] [\fB\-\-retention\fR] [\fB\-\-billing\fR] [\fB\-\-indexed\-price\fR] [\fB\-\-index\-rules\fR] [\fB\-\-quiet\fR] [\fB\-\-verbose\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] <\fIsubcommands\fR>
+\fBlog\-bill\fR [\fB\-\-format\fR] [\fB\-\-message\-field\fR] [\fB\-\-group\-by\fR] [\fB\-\-window\fR] [\fB\-\-days\-per\-month\fR] [\fB\-\-prices\fR] [\fB\-\-rules\fR] [\fB\-\-top\fR] [\fB\-\-explain\fR] [\fB\-\-json\fR] [\fB\-\-budget\-month\fR] [\fB\-\-max\-new\-share\fR] [\fB\-\-retention\fR] [\fB\-\-billing\fR] [\fB\-\-indexed\-price\fR] [\fB\-\-index\-rules\fR] [\fB\-\-quiet\fR] [\fB\-\-verbose\fR] [\fB\-\-output\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] <\fIsubcommands\fR>
 .SH DESCRIPTION
 Offline estimate of log costs per pattern
 .SH OPTIONS
@@ -72,6 +72,9 @@ Hide the hint line. No context line
 .TP
 \fB\-\-verbose\fR
 Print the hint line, and on success one context line on stderr
+.TP
+\fB\-\-output\fR \fI<PATH>\fR
+Write the report to this file instead of stdout
 .TP
 \fB\-h\fR, \fB\-\-help\fR
 Print help

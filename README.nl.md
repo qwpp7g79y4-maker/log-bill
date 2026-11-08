@@ -310,6 +310,7 @@ Deze opties werken bij `scan` en `diff`; `-h` en `-V` werken ook los. Dezelfde l
 | `--index-rules <FILE>` | Regels voor uitsluiting uit de index (drop en sample), na `--rules`. |
 | `--quiet` | Verberg de hintregel. Geen contextregel. Het rapport blijft hetzelfde. |
 | `--verbose` | Druk de hintregel, en bij succes één contextregel op stderr. Het rapport blijft hetzelfde. |
+| `--output <PATH>` | Schrijf het rapport naar dit bestand in plaats van stdout. Een bestaand bestand wordt vervangen. Een ontbrekende map is exit 3 en wordt niet aangemaakt. |
 | `-h, --help` | Toon hulp. |
 | `-V, --version` | Toon versie. |
 

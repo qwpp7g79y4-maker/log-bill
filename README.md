@@ -308,6 +308,7 @@ These options work on `scan` and `diff`; `-h` and `-V` also work on their own. T
 | `--index-rules <FILE>` | Index exclusion rules (drop and sample), applied after `--rules`. |
 | `--quiet` | Hide the hint line. No context line. The report stays the same. |
 | `--verbose` | Print the hint line, and on success one context line on stderr. The report stays the same. |
+| `--output <PATH>` | Write the report to this file instead of stdout. An existing file is replaced. A missing parent directory is exit 3 and is not created. |
 | `-h, --help` | Print help. |
 | `-V, --version` | Print version. |
 
