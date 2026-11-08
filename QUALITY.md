@@ -12,6 +12,17 @@ This page shows how each release of log-bill was checked, what we found, and wha
 
 Only this check was run for this entry. The release-mode, Rust 1.85 and fuzz runs in the entry below belong to the earlier commit named there.
 
+## Line coverage (pre-release 1.0.0)
+
+| | |
+|---|---|
+| Date | 2026-11-08 |
+| Commit measured | `3461187` (branch prep/w24-fout) |
+| Command | `cargo llvm-cov --summary-only` |
+| Measured | Lines 96.01% (7974 lines, 318 missed). Regions 94.98%, functions 98.67%. |
+
+The percentage is the line figure the command prints. Two runs printed 96.06% and 96.01%; the difference comes from the property tests, which pick random inputs. No tests were added to raise it. No test failed under `cargo llvm-cov`.
+
 ## Measured time on a 100 MiB input (pre-release 1.0.0)
 
 | | |
