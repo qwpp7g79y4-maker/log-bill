@@ -6,7 +6,7 @@ This page shows how each release of log-bill was checked, what we found, and wha
 
 | | |
 |---|---|
-| Commit checked | `6c2ffd0` |
+| Commit checked | `ffe4398` (branch prep/w24-fout) |
 | Tests | `cargo test --no-fail-fast` in debug mode: 358 passed, 0 failed, 0 ignored |
 | Lints | `cargo clippy --all-targets -- -D warnings` and `cargo fmt --check`: both clean |
 
@@ -17,7 +17,7 @@ Only this check was run for this entry. The release-mode, Rust 1.85 and fuzz run
 | | |
 |---|---|
 | Date | 2026-11-08 |
-| Commit measured | `3461187` (branch prep/w24-fout) |
+| Commit measured | `ffe4398` (branch prep/w24-fout) |
 | Command | `cargo llvm-cov --summary-only` |
 | Measured | Lines 96.01% (7974 lines, 318 missed). Regions 94.98%, functions 98.67%. |
 
@@ -28,7 +28,7 @@ The percentage is the line figure the command prints. Two runs printed 96.06% an
 | | |
 |---|---|
 | Date | 2026-11-08 |
-| Commit measured | `54a2220` (branch prep/w24-fout) |
+| Commit measured | `ffe4398` (branch prep/w24-fout) |
 | Build | `cargo build --release` |
 | Input | One synthetic JSON lines file, 104857600 bytes (exactly 100 MiB), the format of `examples/api.jsonl`: 1,116,672 lines. The lines are almost identical: only the request number and the milliseconds change, so they fall into one pattern (plus one padding line). The file is generated in `/tmp` and is not committed. |
 | Command | `/usr/bin/time -f "%e s" target/release/log-bill --format jsonl scan big.jsonl` (exit 0) |

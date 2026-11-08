@@ -6,7 +6,7 @@ Deze pagina laat zien hoe elke release van log-bill is gecontroleerd, wat we von
 
 | | |
 |---|---|
-| Gecontroleerde commit | `6c2ffd0` |
+| Gecontroleerde commit | `ffe4398` (tak prep/w24-fout) |
 | Tests | `cargo test --no-fail-fast` in debugmodus: 358 geslaagd, 0 mislukt, 0 genegeerd |
 | Lints | `cargo clippy --all-targets -- -D warnings` en `cargo fmt --check`: beide schoon |
 
