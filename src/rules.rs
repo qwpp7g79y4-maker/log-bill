@@ -69,6 +69,18 @@ impl std::fmt::Display for RulesError {
     }
 }
 
+impl RulesError {
+    /// Next step, shown only with extra context (`--verbose` or a terminal).
+    /// The text has no path and no bytes from the file.
+    pub fn hint(&self) -> &'static str {
+        match self {
+            Self::Unreadable => "check the path and the read permission",
+            Self::NotRegular => "pass a regular file, not a directory or device",
+            Self::Invalid { .. } => "fix or remove that line",
+        }
+    }
+}
+
 impl std::error::Error for RulesError {}
 
 /// Reads a rules file. An unreadable path yields an error without that path.

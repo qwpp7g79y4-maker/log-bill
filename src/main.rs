@@ -1,6 +1,7 @@
 use log_bill::{diff, group, indexed, mask, money, pattern, read, render, rules};
 
-use std::io::{self, Write};
+use std::cell::Cell;
+use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 
 use clap::parser::ValueSource;
@@ -78,6 +79,43 @@ struct Cli {
     /// Index exclusion rules (drop and sample), applied after --rules.
     #[arg(long, global = true, value_name = "FILE")]
     index_rules: Option<PathBuf>,
+
+    /// Hide the hint line. No context line.
+    #[arg(long, global = true, conflicts_with = "verbose")]
+    quiet: bool,
+
+    /// Print the hint line, and on success one context line on stderr.
+    #[arg(long, global = true, conflicts_with = "quiet")]
+    verbose: bool,
+}
+
+thread_local! {
+    /// Hint lines. A terminal shows them. A pipe does not, unless `--verbose`.
+    static EXTRA: Cell<bool> = const { Cell::new(false) };
+}
+
+fn set_extra(extra: bool) {
+    EXTRA.with(|cell| cell.set(extra));
+}
+
+fn extra() -> bool {
+    EXTRA.with(|cell| cell.get())
+}
+
+/// `--quiet` hides hints even on a terminal. `--verbose` shows them even on a pipe.
+/// Both flags together are a clap usage error and never reach a report.
+fn show_extra(quiet: bool, verbose: bool) -> bool {
+    show_extra_on(quiet, verbose, io::stderr().is_terminal())
+}
+
+fn show_extra_on(quiet: bool, verbose: bool, terminal: bool) -> bool {
+    if quiet {
+        false
+    } else if verbose {
+        true
+    } else {
+        terminal
+    }
 }
 
 #[derive(Subcommand)]
@@ -206,10 +244,28 @@ fn emit(text: &str) -> i32 {
 /// Writes `message` to stderr and returns `code`.
 /// If stderr itself cannot be written, the code is 3 and there is no panic.
 fn fail(message: &str, code: i32) -> i32 {
-    if write_stderr(message).is_err() {
+    fail_hint(message, None, code)
+}
+
+/// Like [`fail`], and when extra context is on, a second `hint:` line.
+///
+/// A pipe, a redirect and `--quiet` keep the first line only. `--verbose`
+/// and a terminal add the hint. The exit code is unchanged.
+fn fail_hint(message: &str, hint: Option<&str>, code: i32) -> i32 {
+    let text = match hint {
+        Some(hint) if extra() => format!("{message}\nhint: {hint}"),
+        _ => message.to_string(),
+    };
+    if write_stderr(&text).is_err() {
         return 3;
     }
     code
+}
+
+/// One stderr line. A failed write is ignored so an optional line cannot
+/// turn a finished report into exit 3.
+fn note_line(text: &str) {
+    let _ = write_stderr(text);
 }
 
 fn write_stdout(text: &str) -> io::Result<()> {
@@ -226,6 +282,7 @@ fn write_stderr(text: &str) -> io::Result<()> {
 }
 
 fn execute(cli: &Cli, days_explicit: bool) -> i32 {
+    set_extra(show_extra(cli.quiet, cli.verbose));
     let window = if let Some(text) = &cli.window {
         match money::parse_window(text) {
             Ok(window) => Some(window),
@@ -252,7 +309,7 @@ fn execute(cli: &Cli, days_explicit: bool) -> i32 {
     let prices = if let Some(path) = &cli.prices {
         match money::load_prices(path) {
             Ok(prices) => Some(prices),
-            Err(error) => return fail(&error.to_string(), 2),
+            Err(error) => return fail_hint(&error.to_string(), Some(error.hint()), 2),
         }
     } else {
         None
@@ -260,7 +317,7 @@ fn execute(cli: &Cli, days_explicit: bool) -> i32 {
     let rules = if let Some(path) = &cli.rules {
         match rules::load_rules(path) {
             Ok(rules) => Some(rules),
-            Err(error) => return fail(&error.to_string(), 2),
+            Err(error) => return fail_hint(&error.to_string(), Some(error.hint()), 2),
         }
     } else {
         None
@@ -328,7 +385,9 @@ fn execute(cli: &Cli, days_explicit: bool) -> i32 {
             let index_rules = if let Some(path) = &cli.index_rules {
                 match rules::load_rules(path) {
                     Ok(set) => Some(set),
-                    Err(error) => return fail(&index_rules_message(&error), 2),
+                    Err(error) => {
+                        return fail_hint(&index_rules_message(&error), Some(error.hint()), 2);
+                    }
                 }
             } else {
                 None
@@ -469,12 +528,21 @@ fn execute(cli: &Cli, days_explicit: bool) -> i32 {
                         return written;
                     }
                     if over_budget {
-                        fail("monthly cost above budget; reduce the log volume or raise --budget-month", 1)
-                    } else {
-                        0
+                        return fail_hint(
+                            "monthly cost above budget; reduce the log volume or raise --budget-month",
+                            Some("reduce the log volume or raise --budget-month"),
+                            1,
+                        );
                     }
+                    if cli.verbose {
+                        note_line(&format!(
+                            "context: lines {}, bytes {}",
+                            stats.total_lines, stats.total_bytes
+                        ));
+                    }
+                    0
                 }
-                Err(error) => fail(&error.to_string(), 2),
+                Err(error) => fail_hint(&error.to_string(), Some(error.hint()), 2),
             }
         }
         Cmd::Diff { old, new } => {
@@ -514,11 +582,11 @@ fn execute(cli: &Cli, days_explicit: bool) -> i32 {
             let new_path = path_text(new);
             let old = match fold_file(cli, old, rules.as_ref(), None, false, None) {
                 Ok(folded) => sampled_from(folded.stats, folded.effect),
-                Err(error) => return fail(&error.to_string(), 2),
+                Err(error) => return fail_hint(&error.to_string(), Some(error.hint()), 2),
             };
             let new = match fold_file(cli, new, rules.as_ref(), None, false, None) {
                 Ok(folded) => sampled_from(folded.stats, folded.effect),
-                Err(error) => return fail(&error.to_string(), 2),
+                Err(error) => return fail_hint(&error.to_string(), Some(error.hint()), 2),
             };
             // Match is on the pattern text. `--top` would give the rest one id, `other`.
             // Counting matches scan: the diff is taken after the rules.
@@ -577,7 +645,13 @@ fn execute(cli: &Cli, days_explicit: bool) -> i32 {
             let over = max_new_share
                 .as_ref()
                 .is_some_and(|percent| percent.exceeded_by(report.added_bytes, report.new_bytes));
-            if over && write_stderr("new patterns above the threshold").is_err() {
+            if over
+                && notice(
+                    "new patterns above the threshold",
+                    "raise --max-new-share, or reduce how much of the new sample is new",
+                )
+                .is_err()
+            {
                 return 3;
             }
             let written = emit(&text);
@@ -585,11 +659,26 @@ fn execute(cli: &Cli, days_explicit: bool) -> i32 {
                 return written;
             }
             if over {
-                1
-            } else {
-                0
+                return 1;
             }
+            if cli.verbose {
+                note_line(&format!(
+                    "context: bytes {} -> {}",
+                    report.old_bytes, report.new_bytes
+                ));
+            }
+            0
         }
+    }
+}
+
+/// Threshold line for `--max-new-share`. A pipe keeps one line. Extra context
+/// adds `hint:`. A failed write is exit 3, same as before.
+fn notice(message: &str, hint: &str) -> io::Result<()> {
+    if extra() {
+        write_stderr(&format!("{message}\nhint: {hint}"))
+    } else {
+        write_stderr(message)
     }
 }
 
@@ -737,4 +826,18 @@ fn format_name(format: InputFormat) -> &'static str {
 /// UTF-8 is shown with U+FFFD for the bytes that are not; it is read as is.
 fn path_text(path: &Path) -> String {
     path.to_string_lossy().into_owned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::show_extra_on;
+
+    #[test]
+    fn extra_context_follows_the_terminal_unless_a_flag_is_set() {
+        assert!(!show_extra_on(false, false, false));
+        assert!(show_extra_on(false, false, true));
+        assert!(show_extra_on(false, true, false));
+        assert!(!show_extra_on(true, false, true));
+        assert!(!show_extra_on(true, true, true));
+    }
 }

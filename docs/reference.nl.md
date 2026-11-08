@@ -26,6 +26,8 @@ Draai `log-bill --help` of `log-bill scan --help` voor de ingebouwde hulp. Combi
 | `--billing` | scan, alleen met `--window` | Plan voor geïndexeerde logs: `annual`, `monthly` of `ondemand`. Standaard `ondemand` als een index-optie gezet is. |
 | `--indexed-price` | scan, alleen met `--window` | USD per 1M geïndexeerde events. Overschrijft de lijstprijs. Zelfde decimale regels als een prijs in het prijsbestand. |
 | `--index-rules` | scan, alleen met `--window` | Index-uitsluitingsregels, dezelfde syntax als `--rules`, op het gewicht dat na `--rules` overblijft. |
+| `--quiet` | scan en diff | Verberg de hintregel, ook op een terminal. Geen contextregel. Stdout blijft gelijk. |
+| `--verbose` | scan en diff | Druk de hintregel ook als stderr een pipe is, en bij succes één regel `context:` op stderr. Stdout blijft gelijk. Samen met `--quiet` is dit exit 3. |
 | `--help` | overal | Toont de hulp en stopt met exit 0. |
 | `--version` | hoogste niveau | Toont het versienummer (`log-bill 1.0.0`) en stopt met exit 0. |
 

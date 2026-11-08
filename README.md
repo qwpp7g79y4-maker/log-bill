@@ -306,6 +306,8 @@ These options work on `scan` and `diff`; `-h` and `-V` also work on their own. T
 | `--billing <PLAN>` | Indexed-log billing plan: `annual`, `monthly` or `ondemand`. |
 | `--indexed-price <USD>` | Indexed-log price in USD per 1M events. Overrides the list price. |
 | `--index-rules <FILE>` | Index exclusion rules (drop and sample), applied after `--rules`. |
+| `--quiet` | Hide the hint line. No context line. The report stays the same. |
+| `--verbose` | Print the hint line, and on success one context line on stderr. The report stays the same. |
 | `-h, --help` | Print help. |
 | `-V, --version` | Print version. |
 

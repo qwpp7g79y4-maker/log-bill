@@ -201,6 +201,26 @@ impl fmt::Display for PriceError {
     }
 }
 
+impl PriceError {
+    /// Next step, shown only with extra context (`--verbose` or a terminal).
+    /// The text has no path and no bytes from the file.
+    pub fn hint(&self) -> &'static str {
+        match self {
+            Self::Unreadable => "check the path and the read permission",
+            Self::NotJson => "check the price file for a missing quote, comma or brace",
+            Self::MissingField => "add every price field; see docs/reference.md",
+            Self::EmptyField => "give each field a value",
+            Self::Negative => "use zero or a positive number",
+            Self::NotNumeric => "write prices as JSON numbers",
+            Self::UnknownField => "remove the unknown field or check the spelling",
+            Self::DuplicateKey => "keep one of the repeated keys",
+            Self::GbBytes => "set gb_bytes to a whole number greater than 0",
+            Self::NotRegular => "pass a regular file, not a directory or device",
+            Self::TooDeep => "flatten the price file",
+        }
+    }
+}
+
 impl std::error::Error for PriceError {}
 
 /// Reads a price file. An unreadable path yields an error without that path.

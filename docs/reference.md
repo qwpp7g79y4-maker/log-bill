@@ -26,6 +26,8 @@ Run `log-bill --help` or `log-bill scan --help` for the built-in help. Combinati
 | `--billing` | scan, only with `--window` | Indexed-log plan: `annual`, `monthly` or `ondemand`. Default `ondemand` when an indexed option is set. |
 | `--indexed-price` | scan, only with `--window` | USD per 1M indexed events. Overrides the list price. Same decimal rules as a price in the price file. |
 | `--index-rules` | scan, only with `--window` | Index exclusion rules, same syntax as `--rules`, applied to the weight left after `--rules`. |
+| `--quiet` | scan and diff | Hide the hint line, also on a terminal. No context line. Stdout is unchanged. |
+| `--verbose` | scan and diff | Print the hint line even when stderr is a pipe, and on success one `context:` line on stderr. Stdout is unchanged. Together with `--quiet` this is exit 3. |
 | `--help` | everywhere | Show help and exit 0. |
 | `--version` | top level | Show the version (`log-bill 1.0.0`) and exit 0. |
 

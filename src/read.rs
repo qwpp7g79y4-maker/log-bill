@@ -76,6 +76,20 @@ impl fmt::Display for ReadError {
     }
 }
 
+impl ReadError {
+    /// Next step, shown only with extra context (`--verbose` or a terminal).
+    /// The text has no path and no bytes from the file.
+    pub fn hint(&self) -> &'static str {
+        match self {
+            Self::Unreadable => "check the path and the read permission",
+            Self::NotRegular => "pass a regular file, not a directory or device",
+            Self::NotUtf8 { .. } => "convert the file to UTF-8 and run again",
+            Self::InvalidJson { .. } => "fix that line, or use --format text",
+            Self::LineTooLong { .. } => "shorten or remove that line",
+        }
+    }
+}
+
 impl std::error::Error for ReadError {}
 
 /// Reads a text file one line at a time. Each line weighs its raw bytes plus 1

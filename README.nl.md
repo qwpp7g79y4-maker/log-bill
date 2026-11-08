@@ -308,6 +308,8 @@ Deze opties werken bij `scan` en `diff`; `-h` en `-V` werken ook los. Dezelfde l
 | `--billing <PLAN>` | Factureringsplan voor geïndexeerde logs: `annual`, `monthly` of `ondemand`. |
 | `--indexed-price <USD>` | Prijs voor geïndexeerde logs in USD per 1M events. Vervangt de lijstprijs. |
 | `--index-rules <FILE>` | Regels voor uitsluiting uit de index (drop en sample), na `--rules`. |
+| `--quiet` | Verberg de hintregel. Geen contextregel. Het rapport blijft hetzelfde. |
+| `--verbose` | Druk de hintregel, en bij succes één contextregel op stderr. Het rapport blijft hetzelfde. |
 | `-h, --help` | Toon hulp. |
 | `-V, --version` | Toon versie. |
 
