@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- `scan --format jsonl --group-by FIELD` adds a block (and a `sources` array in `--json`) with lines, bytes and share per value of that JSON field. With `--window` and `--prices` it also shows the cost per value. `examples/services.jsonl` is a synthetic input.
+
+### Build
+
+- The README and the quality report state the re-measured test count: 351 tests, all passing.
+
 ## [1.0.0] - 2026-11-08
 
 The previous version is 0.2.0.

@@ -7,7 +7,7 @@ Deze pagina laat zien hoe elke release van log-bill is gecontroleerd, wat we von
 | | |
 |---|---|
 | Gecontroleerde commit | `6c2ffd0` |
-| Tests | `cargo test --no-fail-fast` in debugmodus: 339 geslaagd, 0 mislukt, 0 genegeerd |
+| Tests | `cargo test --no-fail-fast` in debugmodus: 351 geslaagd, 0 mislukt, 0 genegeerd |
 | Lints | `cargo clippy --all-targets -- -D warnings` en `cargo fmt --check`: beide schoon |
 
 Alleen deze controle is voor dit onderdeel gedraaid. De runs in releasemodus, op Rust 1.85 en met fuzzing in het onderdeel hieronder horen bij de eerdere commit die daar staat.
@@ -18,7 +18,7 @@ Alleen deze controle is voor dit onderdeel gedraaid. De runs in releasemodus, op
 |---|---|
 | Gecontroleerde commit | [`8ea5157`](https://github.com/qwpp7g79y4-maker/log-bill/commit/8ea5157) |
 | Datum | 2026-10-17 |
-| Tests | 339 automatische tests, gedraaid in debugmodus, releasemodus en op Rust 1.85 (alle drie: 339 geslaagd, 0 mislukt) |
+| Tests | 351 automatische tests, gedraaid in debugmodus, releasemodus en op Rust 1.85 (alle drie: 351 geslaagd, 0 mislukt) |
 
 ### Wat is toegevoegd
 
@@ -39,8 +39,8 @@ Alleen deze controle is voor dit onderdeel gedraaid. De runs in releasemodus, op
 
 ### Hoe we controleerden
 
-- `cargo test` en `cargo test --release`: 339 geslaagd, 0 mislukt, beide exit 0.
-- `cargo +1.85 test` (oudste ondersteunde Rust-versie): 339 geslaagd, 0 mislukt, exit 0.
+- `cargo test` en `cargo test --release`: 351 geslaagd, 0 mislukt, beide exit 0.
+- `cargo +1.85 test` (oudste ondersteunde Rust-versie): 351 geslaagd, 0 mislukt, exit 0.
 - `cargo clippy --all-targets -- -D warnings`: exit 0, geen waarschuwingen, in de hoofdcrate en in `fuzz/`.
 - `cargo fmt --check`: exit 0, in de hoofdcrate en in `fuzz/`.
 - `cargo +nightly fuzz build --target x86_64-unknown-linux-gnu`: exit 0, alle zes doelen bouwen.
@@ -131,7 +131,7 @@ Alle fixes staan in de [changelog](https://github.com/qwpp7g79y4-maker/log-bill/
 
 - Onafhankelijke codereview, door reviewers die de code niet schreven.
 - Een externe automatische codereview. Al zijn bevindingen zijn in deze versie opgelost.
-- Automatische tests in CI. Runs: [release v0.1.1](https://github.com/qwpp7g79y4-maker/log-bill/actions/runs/38164492339), [CI op main](https://github.com/qwpp7g79y4-maker/log-bill/actions/workflows/ci.yml?query=branch%3Amain).
+- Automatische tests in CI. Runs: [release v0.1.1](https://github.com/qwpp7g79y4-maker/log-bill/actions/runs/38164492351), [CI op main](https://github.com/qwpp7g79y4-maker/log-bill/actions/workflows/ci.yml?query=branch%3Amain).
 - Controle van afhankelijkheden met `cargo audit`.
 
 We noemen de reviewdiensten hier niet. Het gaat om de controles en hun uitkomst, en alles hieronder is na te gaan in de code en de changelog.
