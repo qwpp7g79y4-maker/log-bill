@@ -7,7 +7,7 @@ This page shows how each release of log-bill was checked, what we found, and wha
 | | |
 |---|---|
 | Commit checked | `6c2ffd0` |
-| Tests | `cargo test --no-fail-fast` in debug mode: 353 passed, 0 failed, 0 ignored |
+| Tests | `cargo test --no-fail-fast` in debug mode: 358 passed, 0 failed, 0 ignored |
 | Lints | `cargo clippy --all-targets -- -D warnings` and `cargo fmt --check`: both clean |
 
 Only this check was run for this entry. The release-mode, Rust 1.85 and fuzz runs in the entry below belong to the earlier commit named there.

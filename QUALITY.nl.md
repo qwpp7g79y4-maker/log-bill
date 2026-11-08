@@ -7,7 +7,7 @@ Deze pagina laat zien hoe elke release van log-bill is gecontroleerd, wat we von
 | | |
 |---|---|
 | Gecontroleerde commit | `6c2ffd0` |
-| Tests | `cargo test --no-fail-fast` in debugmodus: 353 geslaagd, 0 mislukt, 0 genegeerd |
+| Tests | `cargo test --no-fail-fast` in debugmodus: 358 geslaagd, 0 mislukt, 0 genegeerd |
 | Lints | `cargo clippy --all-targets -- -D warnings` en `cargo fmt --check`: beide schoon |
 
 Alleen deze controle is voor dit onderdeel gedraaid. De runs in releasemodus, op Rust 1.85 en met fuzzing in het onderdeel hieronder horen bij de eerdere commit die daar staat.

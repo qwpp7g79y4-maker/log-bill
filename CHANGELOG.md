@@ -11,7 +11,7 @@ All notable changes to this project are documented in this file.
 
 ### Build
 
-- The README and the quality report state the re-measured test count: 351 tests, all passing.
+- The README and the quality report state the re-measured test count: 358 tests, all passing.
 
 ## [1.0.0] - 2026-11-08
 
