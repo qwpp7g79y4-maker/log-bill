@@ -6,7 +6,7 @@ This page shows how each release of log-bill was checked, what we found, and wha
 
 | | |
 |---|---|
-| Commit checked | `COMMIT` |
+| Commit checked | `6c2ffd0` |
 | Tests | `cargo test --no-fail-fast` in debug mode: 339 passed, 0 failed, 0 ignored |
 | Lints | `cargo clippy --all-targets -- -D warnings` and `cargo fmt --check`: both clean |
 

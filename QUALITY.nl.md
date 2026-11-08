@@ -6,7 +6,7 @@ Deze pagina laat zien hoe elke release van log-bill is gecontroleerd, wat we von
 
 | | |
 |---|---|
-| Gecontroleerde commit | `COMMIT` |
+| Gecontroleerde commit | `6c2ffd0` |
 | Tests | `cargo test --no-fail-fast` in debugmodus: 339 geslaagd, 0 mislukt, 0 genegeerd |
 | Lints | `cargo clippy --all-targets -- -D warnings` en `cargo fmt --check`: beide schoon |
 
