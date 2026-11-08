@@ -1,4 +1,4 @@
-use log_bill::{diff, indexed, mask, money, pattern, read, render, rules};
+use log_bill::{diff, group, indexed, mask, money, pattern, read, render, rules};
 
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -21,6 +21,10 @@ struct Cli {
     /// JSON field that holds the message.
     #[arg(long, global = true, value_name = "NAME")]
     message_field: Option<String>,
+
+    /// Group costs per source: the value of this JSON field (scan, jsonl).
+    #[arg(long, global = true, value_name = "FIELD")]
+    group_by: Option<String>,
 
     /// Time window of the sample, for example 15m.
     #[arg(long, global = true, value_name = "WINDOW")]
@@ -271,7 +275,12 @@ fn execute(cli: &Cli, days_explicit: bool) -> i32 {
                 indexing,
                 cli.top,
             ) {
-                Ok((stats, effect, events)) => {
+                Ok(Folded {
+                    stats,
+                    effect,
+                    events,
+                    sources,
+                }) => {
                     let text = if cli.json {
                         let file_text = path_text(file);
                         let paths = [file_text.as_str()];
@@ -289,11 +298,13 @@ fn execute(cli: &Cli, days_explicit: bool) -> i32 {
                                 paths: &paths,
                                 window,
                                 explain: cli.explain,
+                                group_by: cli.group_by.as_deref(),
                             },
                             &stats,
                             rules_json,
                             prices.as_ref(),
                             index_quote.as_ref().zip(events.as_ref()),
+                            sources.as_deref(),
                         ) {
                             Ok(body) => body,
                             Err(error) => return fail(&error.to_string(), 3),
@@ -318,6 +329,17 @@ fn execute(cli: &Cli, days_explicit: bool) -> i32 {
                                 Err(error) => return fail(&error.to_string(), 3),
                             };
                             text.push_str(&render::volume_text(window, &volume));
+                        }
+                        if let (Some(field), Some(sources)) =
+                            (cli.group_by.as_deref(), sources.as_deref())
+                        {
+                            let costs = window
+                                .zip(prices.as_ref())
+                                .map(|(window, prices)| (window, cli.days_per_month, prices));
+                            match render::sources_text(field, sources, costs) {
+                                Ok(block) => text.push_str(&block),
+                                Err(error) => return fail(&error.to_string(), 3),
+                            }
                         }
                         if let Some(effect) = &effect {
                             text.push_str(&render::rules_bytes(effect));
@@ -403,6 +425,9 @@ fn execute(cli: &Cli, days_explicit: bool) -> i32 {
                     3,
                 );
             }
+            if cli.group_by.is_some() {
+                return fail("--group-by only works with scan", 3);
+            }
             if cli.retention.is_some() {
                 return fail("--retention only works with scan", 3);
             }
@@ -421,11 +446,11 @@ fn execute(cli: &Cli, days_explicit: bool) -> i32 {
             let old_path = path_text(old);
             let new_path = path_text(new);
             let old = match fold_file(cli, old, rules.as_ref(), None, false, None) {
-                Ok((stats, effect, _)) => sampled_from(stats, effect),
+                Ok(folded) => sampled_from(folded.stats, folded.effect),
                 Err(error) => return fail(&error.to_string(), 2),
             };
             let new = match fold_file(cli, new, rules.as_ref(), None, false, None) {
-                Ok((stats, effect, _)) => sampled_from(stats, effect),
+                Ok(folded) => sampled_from(folded.stats, folded.effect),
                 Err(error) => return fail(&error.to_string(), 2),
             };
             // Match is on the pattern text. `--top` would give the rest one id, `other`.
@@ -457,6 +482,7 @@ fn execute(cli: &Cli, days_explicit: bool) -> i32 {
                         paths: &paths,
                         window,
                         explain: cli.explain,
+                        group_by: None,
                     },
                     &report,
                     applied,
@@ -500,6 +526,14 @@ fn execute(cli: &Cli, days_explicit: bool) -> i32 {
     }
 }
 
+/// Everything one pass over a file produces.
+struct Folded {
+    stats: pattern::Stats,
+    effect: Option<rules::Effect>,
+    events: Option<indexed::Events>,
+    sources: Option<Vec<group::Source>>,
+}
+
 /// One pass over the file. Lines are counted and dropped, not stored.
 fn fold_file(
     cli: &Cli,
@@ -508,19 +542,16 @@ fn fold_file(
     index_rules: Option<&rules::RuleSet>,
     tally_index: bool,
     top: Option<u32>,
-) -> Result<
-    (
-        pattern::Stats,
-        Option<rules::Effect>,
-        Option<indexed::Events>,
-    ),
-    read::ReadError,
-> {
+) -> Result<Folded, read::ReadError> {
     let mut grouped = pattern::Grouper::default();
     let mut folded = rules.map(|_| rules::Folder::default());
     let mut tally = tally_index.then(indexed::Tally::default);
+    let mut by_source = cli.group_by.as_deref().map(group::SourceTally::new);
     let mut visit = |line: read::Line| {
         grouped.push(&line);
+        if let Some(tally) = by_source.as_mut() {
+            tally.push(&line);
+        }
         if let (Some(folder), Some(set)) = (folded.as_mut(), rules) {
             folder.push(&line, set);
         }
@@ -542,7 +573,13 @@ fn fold_file(
     let stats = grouped.finish(top);
     let effect = folded.map(|folder| folder.finish(&stats));
     let events = tally.map(|tally| tally.finish(&stats));
-    Ok((stats, effect, events))
+    let sources = by_source.map(group::SourceTally::finish);
+    Ok(Folded {
+        stats,
+        effect,
+        events,
+        sources,
+    })
 }
 
 fn index_rules_message(error: &rules::RulesError) -> String {
@@ -610,6 +647,9 @@ fn check_before_read(cli: &Cli, has_window: bool, has_budget: bool) -> Option<&'
 fn ignored_option(cli: &Cli, days_explicit: bool) -> Option<&'static str> {
     if cli.message_field.is_some() && !matches!(cli.format, InputFormat::Jsonl) {
         return Some("--message-field only works with --format jsonl");
+    }
+    if cli.group_by.is_some() && !matches!(cli.format, InputFormat::Jsonl) {
+        return Some("--group-by only works with --format jsonl");
     }
     if days_explicit && cli.window.is_none() {
         return Some("--days-per-month only works together with --window");

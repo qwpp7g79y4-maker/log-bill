@@ -12,6 +12,7 @@ Draai `log-bill --help` of `log-bill scan --help` voor de ingebouwde hulp. Combi
 | --- | --- | --- |
 | `--format` | scan en diff | Invoerformaat, `text` of `jsonl`. Standaard `text`. |
 | `--message-field` | scan en diff, alleen met `--format jsonl` | Neem het patroon uit dit JSON-veld. |
+| `--group-by` | scan, alleen met `--format jsonl` | Voeg een blok toe met regels, bytes, aandeel en (met `--window` en `--prices`) kosten per waarde van dit JSON-veld. Een ontbrekende of niet-tekstwaarde telt als `<NO-SOURCE>`. Bytes zijn vóór `--rules`. `--top` geldt hier niet. Met `--json`: `sources` en `inputs.group_by`, beide alleen als de optie is gezet. |
 | `--window` | scan; bij diff alleen met `--prices` of `--json` | Tijdvenster van de steekproef, bijvoorbeeld `15m`. Rekent om naar een dag en een maand. |
 | `--days-per-month` | scan en diff, alleen met `--window` | Dagen in een maand. Standaard 30. |
 | `--prices` | scan en diff, alleen met `--window` | Je eigen prijsbestand (JSON). |
@@ -107,6 +108,8 @@ Elke rij hieronder is op de binary gedraaid, en een test houdt dat zo. Een rij m
 | `--format` | scan en diff | Ongeldige waarde. | `scan --format nope file.log` | 3 | `error: invalid value 'nope' for '--format <FORMAT>'\n  [possible values: text, jsonl]\n\nFor more information, try '--help'.\n` |
 | `--message-field` | scan | Zonder jsonl. | `scan --message-field message file.log` | 3 | `--message-field only works with --format jsonl` |
 | `--message-field` | diff | Zonder jsonl. | `diff --message-field message OLD NEW` | 3 | `--message-field only works with --format jsonl` |
+| `--group-by` | scan | Zonder jsonl. | `scan --group-by service file.log` | 3 | `--group-by only works with --format jsonl` |
+| `--group-by` | diff | Geen scan-optie. | `diff --group-by service OLD NEW` | 3 | `--group-by only works with scan` |
 | `--message-field` | scan | `--json` is geen invoerformaat jsonl. | `scan --json --message-field message file.log` | 3 | `--message-field only works with --format jsonl` |
 | `--window` | diff | Zonder `--prices` en zonder `--json`. | `diff --window 1m OLD NEW` | 3 | `--window with diff only works together with --prices or --json` |
 | `--window` | diff | `--explain` wordt eerder getoetst. | `diff --explain --window 1m OLD NEW` | 3 | `--explain only works with scan` |

@@ -16,6 +16,7 @@ fn help_shows_every_option() {
         "text",
         "jsonl",
         "--message-field",
+        "--group-by",
         "--window",
         "--days-per-month",
         "--prices",

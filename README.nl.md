@@ -197,6 +197,38 @@ per day: 5348160 bytes, 0.005 GB
 per month: 160444800 bytes, 0.160 GB
 ```
 
+Kosten per bron: `--group-by <VELD>` (alleen JSON lines) voegt een blok toe dat de regels groepeert op de tekstwaarde van dat veld, met regels, bytes, aandeel en, met `--window` en `--prices`, de kosten per bron. Een regel zonder tekstwaarde in dat veld telt onder `<NO-SOURCE>`. De bytes zijn die vóór `--rules`. `examples/services.jsonl` is synthetisch.
+
+```console
+$ log-bill scan --format jsonl --group-by service --window 1s --prices tests/fixtures/quickstart-prices.json examples/services.jsonl
+total: 7 lines, 579 bytes
+Pae8f99266a45b42b  2 lines  184 bytes  31.8%  order <NUM> created by user <NUM>
+P127071afdc55405c  2 lines  156 bytes  26.9%  query took <NUM> ms
+Pc11abfa76673107b  1 line  102 bytes  17.6%  payment provider timeout after <NUM> ms
+P5cf9422b3c9e3607  1 line  78 bytes  13.5%  health check ok
+Pa93b91e33f7edafa  1 line  59 bytes  10.2%  started worker <NUM>
+factor: 86400
+per day: 50025600 bytes, 0.050 GB
+per month: 1500768000 bytes, 1.501 GB
+by service:
+checkout  3 lines  286 bytes  49.4%
+  ingest: 0.05 USD per day, 1.48 USD per month
+search  2 lines  156 bytes  26.9%
+  ingest: 0.03 USD per day, 0.81 USD per month
+gateway  1 line  78 bytes  13.5%
+  ingest: 0.01 USD per day, 0.40 USD per month
+<NO-SOURCE>  1 line  59 bytes  10.2%
+  ingest: 0.01 USD per day, 0.31 USD per month
+prices: USD, source manual, date 2026-10-24
+total ingest: 0.10 USD per day, 3.00 USD per month
+Pae8f99266a45b42b ingest: 0.03 USD per day, 0.95 USD per month
+P127071afdc55405c ingest: 0.03 USD per day, 0.81 USD per month
+Pc11abfa76673107b ingest: 0.02 USD per day, 0.53 USD per month
+P5cf9422b3c9e3607 ingest: 0.01 USD per day, 0.40 USD per month
+Pa93b91e33f7edafa ingest: 0.01 USD per day, 0.31 USD per month
+estimate: extrapolation of one sample with your own prices; not an official rate
+```
+
 ## Opties
 
 Deze opties werken bij `scan` en `diff`; `-h` en `-V` werken ook los. Dezelfde lijst staat in `log-bill --help`.
@@ -205,6 +237,7 @@ Deze opties werken bij `scan` en `diff`; `-h` en `-V` werken ook los. Dezelfde l
 |---|---|
 | `--format <FORMAT>` | Invoerformaat: `text` (standaard) of `jsonl`. |
 | `--message-field <NAME>` | JSON-veld met het bericht. |
+| `--group-by <VELD>` | Kosten per bron: de waarde van dit JSON-veld (`scan` met `--format jsonl`). |
 | `--window <WINDOW>` | Tijdvenster van het monster, bijvoorbeeld `15m`. |
 | `--days-per-month <DAYS>` | Dagen per maand voor de extrapolatie (standaard 30). |
 | `--prices <FILE>` | Prijsbestand (JSON). |

@@ -4,6 +4,7 @@ use std::fmt::Write;
 use serde_json::Value;
 
 use crate::diff::{Report, Row, Status};
+use crate::group::Source;
 use crate::indexed::{self, Events as IndexEvents, Quote};
 use crate::mask::MaskCounts;
 use crate::money::{self, Prices, Volume, Window};
@@ -42,6 +43,51 @@ pub fn scan_text(stats: &Stats) -> String {
         .expect("text");
     }
     out
+}
+
+/// Block of `--group-by`: per source the lines, bytes and share, and with a
+/// window and prices the ingest (and index) cost per day and per month.
+/// The bytes are those before `--rules`.
+pub fn sources_text(
+    field: &str,
+    sources: &[Source],
+    costs: Option<(Window, u32, &Prices)>,
+) -> Result<String, money::CalcError> {
+    let mut out = String::new();
+    writeln!(out, "by {}:", pattern::show_controls(field)).expect("text");
+    for source in sources {
+        let shown = pattern::show_controls(&source.name);
+        writeln!(
+            out,
+            "{}  {} {}  {} {}  {}%",
+            shown,
+            source.lines,
+            line_word(source.lines),
+            source.bytes,
+            bytes_word(u128::from(source.bytes)),
+            pattern::format_share(source.share_tenths)
+        )
+        .expect("text");
+        if let Some((window, days, prices)) = costs {
+            let currency = pattern::show_controls(&prices.currency);
+            let mut write_stream =
+                |name: &str, price: money::Price| -> Result<(), money::CalcError> {
+                    let cost = money::cost(source.bytes, window, days, price, prices.gb_bytes)?;
+                    writeln!(
+                        out,
+                        "  {name}: {} {currency} per day, {} {currency} per month",
+                        cost.per_day, cost.per_month
+                    )
+                    .expect("text");
+                    Ok(())
+                };
+            write_stream("ingest", prices.ingest_per_gb)?;
+            if let Some(index) = prices.index_per_gb {
+                write_stream("index", index)?;
+            }
+        }
+    }
+    Ok(out)
 }
 
 /// Masks applied per pattern. With `effect`, also the rule line that matched.
@@ -398,6 +444,7 @@ pub struct JsonMeta<'a> {
     pub paths: &'a [&'a str],
     pub window: Option<Window>,
     pub explain: bool,
+    pub group_by: Option<&'a str>,
 }
 
 /// JSON of `scan`. `rules` is set exactly when `--rules` is set.
@@ -409,6 +456,7 @@ pub fn scan_json(
     rules: Option<(&Effect, usize)>,
     prices: Option<&Prices>,
     indexed: Option<(&Quote, &IndexEvents)>,
+    sources: Option<&[Source]>,
 ) -> Result<String, money::CalcError> {
     let gb_bytes = prices.map(|item| item.gb_bytes).unwrap_or(money::GB_BYTES);
     let volume = match meta.window {
@@ -439,6 +487,12 @@ pub fn scan_json(
             ),
         ),
     ];
+    if let Some(sources) = sources {
+        fields.push((
+            "sources",
+            sources_json(sources, meta.window, meta.days_per_month, prices)?,
+        ));
+    }
     if let Some((effect, applied)) = rules {
         fields.push(("rules", rules_json(effect, applied)));
     }
@@ -462,6 +516,30 @@ pub fn scan_json(
         ));
     }
     Ok(finish(obj(fields)))
+}
+
+/// `sources` of `--group-by`: lines, bytes and share per value, and with a
+/// window and prices the ingest (and index) cost of that source's bytes.
+fn sources_json(
+    sources: &[Source],
+    window: Option<Window>,
+    days: u32,
+    prices: Option<&Prices>,
+) -> Result<Value, money::CalcError> {
+    let mut rows = Vec::new();
+    for source in sources {
+        let mut fields = vec![
+            ("name", lit(&source.name)),
+            ("lines", num_u64(source.lines)),
+            ("bytes", num_u64(source.bytes)),
+            ("share", lit(&pattern::format_share(source.share_tenths))),
+        ];
+        if let (Some(window), Some(prices)) = (window, prices) {
+            push_streams(&mut fields, source.bytes, window, days, prices, false)?;
+        }
+        rows.push(obj(fields));
+    }
+    Ok(Value::Array(rows))
 }
 
 fn indexed_json(
@@ -564,7 +642,7 @@ fn estimate_value(with_costs: bool) -> Value {
 }
 
 fn inputs_json(meta: &JsonMeta<'_>) -> Value {
-    obj([
+    let mut fields = vec![
         ("command", lit(meta.command)),
         ("format", lit(meta.format)),
         ("message_field", opt_lit(meta.message_field)),
@@ -574,7 +652,11 @@ fn inputs_json(meta: &JsonMeta<'_>) -> Value {
             meta.top.map_or(Value::Null, |n| num_u64(u64::from(n))),
         ),
         ("paths", strings(meta.paths)),
-    ])
+    ];
+    if let Some(field) = meta.group_by {
+        fields.push(("group_by", lit(field)));
+    }
+    obj(fields)
 }
 
 fn window_json(window: Option<Window>) -> Value {
@@ -1171,7 +1253,7 @@ mod tests {
         );
         let mut call = meta(None);
         call.explain = false;
-        let without = super::scan_json(&call, &stats, None, None, None).unwrap();
+        let without = super::scan_json(&call, &stats, None, None, None, None).unwrap();
         let without: serde_json::Value = serde_json::from_str(&without).unwrap();
         assert!(without["patterns"][0].get("masks").is_none());
         assert_eq!(without["patterns"][0]["note"], "possible secret");
@@ -1180,7 +1262,7 @@ mod tests {
             "This is a secret <SECRET> report"
         );
         call.explain = true;
-        let with = super::scan_json(&call, &stats, None, None, None).unwrap();
+        let with = super::scan_json(&call, &stats, None, None, None, None).unwrap();
         let with: serde_json::Value = serde_json::from_str(&with).unwrap();
         assert_eq!(with["patterns"][0]["masks"]["secret"], 1);
         assert_eq!(with["patterns"][0]["note"], "possible secret");
@@ -1202,6 +1284,7 @@ mod tests {
             paths: &["x"],
             window,
             explain: false,
+            group_by: None,
         }
     }
 
@@ -1248,6 +1331,7 @@ mod tests {
             Some((&effect, 1)),
             Some(&prices),
             None,
+            None,
         )
         .unwrap();
         let value: serde_json::Value = serde_json::from_str(&body).unwrap();
@@ -1287,6 +1371,7 @@ mod tests {
         let body = super::scan_json(
             &meta(Some(parse_window("1s").unwrap())),
             &stats,
+            None,
             None,
             None,
             None,

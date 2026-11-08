@@ -1,0 +1,7 @@
+{"ts":"2026-03-01T10:00:01Z","service":"checkout","message":"order 1001 created by user 7"}
+{"ts":"2026-03-01T10:00:02Z","service":"checkout","message":"order 1002 created by user 9"}
+{"ts":"2026-03-01T10:00:03Z","service":"checkout","message":"payment provider timeout after 3000 ms"}
+{"ts":"2026-03-01T10:00:04Z","service":"search","message":"query took 41 ms"}
+{"ts":"2026-03-01T10:00:05Z","service":"search","message":"query took 38 ms"}
+{"ts":"2026-03-01T10:00:06Z","service":"gateway","message":"health check ok"}
+{"ts":"2026-03-01T10:00:07Z","message":"started worker 3"}

@@ -1,4 +1,5 @@
 pub mod diff;
+pub mod group;
 pub mod indexed;
 pub mod mask;
 pub mod money;

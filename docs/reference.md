@@ -12,6 +12,7 @@ Run `log-bill --help` or `log-bill scan --help` for the built-in help. Combinati
 | --- | --- | --- |
 | `--format` | scan and diff | Input format, `text` or `jsonl`. Default `text`. |
 | `--message-field` | scan and diff, only with `--format jsonl` | Take the pattern from this JSON field. |
+| `--group-by` | scan, only with `--format jsonl` | Add a block with lines, bytes, share and (with `--window` and `--prices`) cost per value of this JSON field. A missing or non-text value counts as `<NO-SOURCE>`. Bytes are before `--rules`. `--top` does not apply. With `--json`: `sources` and `inputs.group_by`, both only when the option is set. |
 | `--window` | scan; for diff only with `--prices` or `--json` | Time window of the sample, for example `15m`. Extrapolates to a day and a month. |
 | `--days-per-month` | scan and diff, only with `--window` | Days in a month. Default 30. |
 | `--prices` | scan and diff, only with `--window` | Your own price file (JSON). |
@@ -107,6 +108,8 @@ Every row below was run against the binary, and a test keeps it that way. A row 
 | `--format` | scan and diff | Invalid value. | `scan --format nope file.log` | 3 | `error: invalid value 'nope' for '--format <FORMAT>'\n  [possible values: text, jsonl]\n\nFor more information, try '--help'.\n` |
 | `--message-field` | scan | Without jsonl. | `scan --message-field message file.log` | 3 | `--message-field only works with --format jsonl` |
 | `--message-field` | diff | Without jsonl. | `diff --message-field message OLD NEW` | 3 | `--message-field only works with --format jsonl` |
+| `--group-by` | scan | Without jsonl. | `scan --group-by service file.log` | 3 | `--group-by only works with --format jsonl` |
+| `--group-by` | diff | Not a scan option. | `diff --group-by service OLD NEW` | 3 | `--group-by only works with scan` |
 | `--message-field` | scan | `--json` is not the input format jsonl. | `scan --json --message-field message file.log` | 3 | `--message-field only works with --format jsonl` |
 | `--window` | diff | Without `--prices` and without `--json`. | `diff --window 1m OLD NEW` | 3 | `--window with diff only works together with --prices or --json` |
 | `--window` | diff | `--explain` is checked first. | `diff --explain --window 1m OLD NEW` | 3 | `--explain only works with scan` |

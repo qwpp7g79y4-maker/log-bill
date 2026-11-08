@@ -195,6 +195,38 @@ per day: 5348160 bytes, 0.005 GB
 per month: 160444800 bytes, 0.160 GB
 ```
 
+Costs per source: `--group-by <FIELD>` (JSON lines only) adds a block that groups the lines by the text value of that field, with lines, bytes, share and, with `--window` and `--prices`, the cost of each source. A line without a text value in that field counts under `<NO-SOURCE>`. The bytes are those before `--rules`. `examples/services.jsonl` is synthetic.
+
+```console
+$ log-bill scan --format jsonl --group-by service --window 1s --prices tests/fixtures/quickstart-prices.json examples/services.jsonl
+total: 7 lines, 579 bytes
+Pae8f99266a45b42b  2 lines  184 bytes  31.8%  order <NUM> created by user <NUM>
+P127071afdc55405c  2 lines  156 bytes  26.9%  query took <NUM> ms
+Pc11abfa76673107b  1 line  102 bytes  17.6%  payment provider timeout after <NUM> ms
+P5cf9422b3c9e3607  1 line  78 bytes  13.5%  health check ok
+Pa93b91e33f7edafa  1 line  59 bytes  10.2%  started worker <NUM>
+factor: 86400
+per day: 50025600 bytes, 0.050 GB
+per month: 1500768000 bytes, 1.501 GB
+by service:
+checkout  3 lines  286 bytes  49.4%
+  ingest: 0.05 USD per day, 1.48 USD per month
+search  2 lines  156 bytes  26.9%
+  ingest: 0.03 USD per day, 0.81 USD per month
+gateway  1 line  78 bytes  13.5%
+  ingest: 0.01 USD per day, 0.40 USD per month
+<NO-SOURCE>  1 line  59 bytes  10.2%
+  ingest: 0.01 USD per day, 0.31 USD per month
+prices: USD, source manual, date 2026-10-24
+total ingest: 0.10 USD per day, 3.00 USD per month
+Pae8f99266a45b42b ingest: 0.03 USD per day, 0.95 USD per month
+P127071afdc55405c ingest: 0.03 USD per day, 0.81 USD per month
+Pc11abfa76673107b ingest: 0.02 USD per day, 0.53 USD per month
+P5cf9422b3c9e3607 ingest: 0.01 USD per day, 0.40 USD per month
+Pa93b91e33f7edafa ingest: 0.01 USD per day, 0.31 USD per month
+estimate: extrapolation of one sample with your own prices; not an official rate
+```
+
 ## Options
 
 These options work on `scan` and `diff`; `-h` and `-V` also work on their own. The same list is in `log-bill --help`.
@@ -203,6 +235,7 @@ These options work on `scan` and `diff`; `-h` and `-V` also work on their own. T
 |---|---|
 | `--format <FORMAT>` | Input format: `text` (default) or `jsonl`. |
 | `--message-field <NAME>` | JSON field that holds the message. |
+| `--group-by <FIELD>` | Group costs per source: the value of this JSON field (`scan` with `--format jsonl`). |
 | `--window <WINDOW>` | Time window of the sample, for example `15m`. |
 | `--days-per-month <DAYS>` | Days in a month for the extrapolation (default 30). |
 | `--prices <FILE>` | Price file (JSON). |
