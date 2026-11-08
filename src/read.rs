@@ -1,3 +1,9 @@
+//! Read a log sample one line at a time.
+//!
+//! Text and JSON lines are accepted. More than [`MAX_INPUT_BYTES`] is refused
+//! before the file is read. UTF-16 and UTF-32 are refused. The reader does
+//! not keep the lines.
+
 use std::fmt;
 use std::fs::File;
 use std::io::{self, BufRead, Cursor, Read};
@@ -8,8 +14,11 @@ use std::path::Path;
 /// line text without a newline, for the regex; for JSON the whole line.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Line {
+    /// Message. For JSON, the chosen field; otherwise the line.
     pub text: String,
+    /// Line text without a newline. For JSON, the whole line, for the regex.
     pub raw: String,
+    /// Raw byte count, not the length of `text`.
     pub bytes: u64,
 }
 
@@ -18,13 +27,18 @@ pub struct Line {
 /// so that they are no longer recognised.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WideEncoding {
+    /// UTF-16, little endian.
     Utf16Le,
+    /// UTF-16, big endian.
     Utf16Be,
+    /// UTF-32, little endian.
     Utf32Le,
+    /// UTF-32, big endian.
     Utf32Be,
 }
 
 impl WideEncoding {
+    /// `UTF-16LE`, `UTF-16BE`, `UTF-32LE`, or `UTF-32BE`.
     pub fn name(self) -> &'static str {
         match self {
             WideEncoding::Utf16Le => "UTF-16LE",
@@ -35,22 +49,27 @@ impl WideEncoding {
     }
 }
 
+/// Why a log sample was refused. The text has no path and no line contents.
 #[derive(Debug)]
 pub enum ReadError {
+    /// The path could not be read.
     Unreadable,
     /// UTF-16 or UTF-32 input, with or without a byte order mark. Nothing of
     /// the file is read into patterns, so nothing of it can reach the output.
     NotUtf8 {
+        /// Which wide encoding was detected.
         encoding: WideEncoding,
     },
     /// Not a regular file (FIFO, directory, socket). The path is not included.
     NotRegular,
     /// Line number in the file. The line itself is not included.
     InvalidJson {
+        /// 1-based line number. The line itself is not included.
         line: u64,
     },
     /// A JSON line longer than [`MAX_LINE_BYTES`]. The line is not included.
     LineTooLong {
+        /// 1-based line number. The line itself is not included.
         line: u64,
     },
     /// The log input is larger than [`MAX_INPUT_BYTES`]. Nothing of it is
@@ -144,9 +163,12 @@ pub fn visit_jsonl_stdin(
     visit_reader(io::stdin().lock(), true, message_field, visit)
 }
 
+/// Why a path could not be opened as a regular file.
 #[derive(Debug, PartialEq, Eq)]
 pub enum OpenError {
+    /// The path could not be read.
     Unreadable,
+    /// Not a regular file. The path is not included.
     NotRegular,
 }
 
@@ -406,7 +428,7 @@ fn refuse_wide(data: &[u8]) -> Result<(), ReadError> {
 /// the NUL bytes that ASCII text gets in those encodings: per byte position
 /// modulo 4, in the first 4096 bytes. UTF-32 is checked before UTF-16.
 /// A run of NUL bytes on every position (a truncated, zero-filled log) is not
-/// taken for a wide encoding; [`without_nul`] removes such NUL bytes before masking.
+/// taken for a wide encoding. Those NUL bytes are removed before masking.
 pub fn detect_wide(data: &[u8]) -> Option<WideEncoding> {
     if data.starts_with(b"\xFF\xFE\x00\x00") {
         return Some(WideEncoding::Utf32Le);

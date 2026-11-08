@@ -1,3 +1,8 @@
+//! Drop and sample rules.
+//!
+//! A sample stays an exact fraction until each pattern is floored.
+//! The rule text is not copied into an error.
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use regex::Regex;
@@ -26,6 +31,7 @@ pub struct Fraction {
     scale: usize,
 }
 
+/// Compiled drop and sample rules, in file order. Blank lines are omitted.
 pub struct RuleSet {
     rules: Vec<Compiled>,
 }
@@ -40,12 +46,15 @@ impl std::fmt::Debug for RuleSet {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+/// Why a rules file was refused. The text has no path and no rule text.
 pub enum RulesError {
+    /// The path could not be read.
     Unreadable,
     /// Not a regular file. The path is not included.
     NotRegular,
     /// Line number in the rules file. The line itself is not included.
     Invalid {
+        /// 1-based line number. The line itself is not included.
         line: u64,
     },
 }
@@ -435,20 +444,32 @@ impl RuleSet {
 /// on the same `lines` and the same top-N.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Effect {
+    /// Lines before the rules.
     pub old_lines: u64,
+    /// Raw bytes before the rules.
     pub old_bytes: u64,
+    /// Lines after drop and sample, after flooring each pattern.
     pub new_lines: u64,
+    /// Bytes after drop and sample, after flooring each pattern.
     pub new_bytes: u64,
+    /// One row per pattern in the grouped stats.
     pub patterns: Vec<PatternEffect>,
 }
 
+/// One pattern before and after the rules.
 #[derive(Debug, PartialEq, Eq)]
 pub struct PatternEffect {
+    /// Pattern id.
     pub id: String,
+    /// Masked pattern text.
     pub text: String,
+    /// Lines before the rules.
     pub old_lines: u64,
+    /// Raw bytes before the rules.
     pub old_bytes: u64,
+    /// Lines after the rules, floored.
     pub new_lines: u64,
+    /// Bytes after the rules, floored.
     pub new_bytes: u64,
     /// Rules-file line numbers that matched this pattern, in ascending order.
     pub rule_lines: Vec<u64>,
@@ -522,6 +543,7 @@ pub struct Folder {
 }
 
 impl Folder {
+    /// Count one line against `rules`. The line text is not kept.
     pub fn push(&mut self, line: &Line, rules: &RuleSet) {
         let acc = self.groups.entry(mask::mask(&line.text)).or_default();
         acc.old_lines += 1;
@@ -542,6 +564,8 @@ impl Folder {
         }
     }
 
+    /// Effect in the same pattern order as `stats`.
+    /// Each pattern is floored before the `other` bucket is summed.
     pub fn finish(self, stats: &Stats) -> Effect {
         finish_groups(self.groups, stats)
     }

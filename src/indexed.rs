@@ -25,13 +25,18 @@ pub fn parse_retention(text: &str) -> Option<u16> {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
+/// How the indexed-log list price is billed.
 pub enum Billing {
+    /// Annual commitment.
     Annual,
+    /// Monthly commitment.
     Monthly,
+    /// On-demand.
     Ondemand,
 }
 
 impl Billing {
+    /// `annual`, `monthly`, or `ondemand`.
     pub fn name(self) -> &'static str {
         match self {
             Billing::Annual => "annual",
@@ -41,6 +46,7 @@ impl Billing {
     }
 }
 
+/// `annual`, `monthly`, or `ondemand`. Anything else is `None`.
 pub fn parse_billing(text: &str) -> Option<Billing> {
     match text {
         "annual" => Some(Billing::Annual),
@@ -76,12 +82,18 @@ fn list_cents(retention: u16, billing: Billing) -> u128 {
 /// What to charge. Defaults are 15 days and ondemand, and only when a caller
 /// has already decided that indexing is on. A custom price replaces the cell.
 pub struct Quote {
+    /// Days the events are kept: 3, 7, 15, or 30. Default 15.
     pub retention_days: u16,
+    /// Annual, monthly, or on-demand. Default on-demand.
     pub billing: Billing,
+    /// USD per 1M events, as a reduced fraction.
     pub price: Price,
+    /// Set when `price` came from the caller instead of the list.
     pub custom: bool,
 }
 
+/// Build a quote. Missing retention is 15 days, missing billing is on-demand.
+/// `custom` replaces the list-price cell.
 pub fn quote(retention: Option<u16>, billing: Option<Billing>, custom: Option<Price>) -> Quote {
     let retention_days = retention.unwrap_or(15);
     let billing = billing.unwrap_or(Billing::Ondemand);
@@ -106,15 +118,21 @@ pub fn quote(retention: Option<u16>, billing: Option<Billing>, custom: Option<Pr
 
 /// Expected events of one pattern, before and after index rules.
 pub struct PatternEvents {
+    /// Pattern id, the same id as in the byte tally.
     pub id: String,
+    /// Events before index rules. Exact fraction of the sample, not yet a month.
     pub before: Fraction,
+    /// Events after index rules. Exact fraction of the sample, not yet a month.
     pub after: Fraction,
 }
 
 /// Sample events. The month factor is applied later, at display.
 pub struct Events {
+    /// Events in the sample before index rules.
     pub total_before: Fraction,
+    /// Events in the sample after index rules.
     pub total_after: Fraction,
+    /// One entry per pattern in the byte tally, including the `other` bucket.
     pub patterns: Vec<PatternEvents>,
 }
 
@@ -151,6 +169,8 @@ impl Tally {
         pair.after.add_frac(&after);
     }
 
+    /// Events in the same pattern order as `stats`.
+    /// Patterns folded into `other` are summed into that bucket.
     pub fn finish(self, stats: &Stats) -> Events {
         let shown: BTreeSet<&str> = stats
             .patterns
@@ -202,28 +222,48 @@ impl Tally {
 
 /// One indexed section, text and JSON share these strings.
 pub struct View {
+    /// `list price, estimate` or `custom price, estimate`.
     pub label: &'static str,
+    /// Retention in days.
     pub retention_days: u16,
+    /// `annual`, `monthly`, or `ondemand`.
     pub billing: &'static str,
+    /// USD per 1M events, as display text.
     pub usd_per_million: String,
+    /// Events per month before index rules, in millions.
     pub events_before: String,
+    /// Events per month after index rules, in millions.
     pub events_after: String,
+    /// Cost per month before index rules.
     pub cost_before: String,
+    /// Cost per month after index rules.
     pub cost_after: String,
+    /// Cost of the events the index rules removed.
     pub savings: String,
+    /// Calculation steps when `explain` is set. Otherwise empty.
     pub steps: Option<String>,
+    /// The same figures per pattern.
     pub patterns: Vec<PatternView>,
 }
 
+/// Indexed events and cost of one pattern, as display text.
 pub struct PatternView {
+    /// Pattern id.
     pub id: String,
+    /// Events per month before index rules.
     pub events_before: String,
+    /// Events per month after index rules.
     pub events_after: String,
+    /// Cost per month before index rules.
     pub cost_before: String,
+    /// Cost per month after index rules.
     pub cost_after: String,
+    /// Cost of the events the index rules removed.
     pub savings: String,
 }
 
+/// Display text for one indexed section. `explain` fills `steps`.
+/// A product that does not fit is [`CalcError`].
 pub fn view(
     quote: &Quote,
     events: &Events,

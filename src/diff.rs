@@ -1,3 +1,6 @@
+//! Compare two grouped samples: patterns that are new, gone, or in both.
+//! Bytes and share on a side that lacks the pattern are 0.
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::pattern::{Pattern, Stats};
@@ -5,32 +8,49 @@ use crate::pattern::{Pattern, Stats};
 /// New, gone, or in both samples.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Status {
+    /// Present only in the new sample.
     New,
+    /// Present only in the old sample.
     Gone,
+    /// Present in both samples.
     Both,
 }
 
 /// One pattern in the comparison. Bytes and share are 0 on the side that lacks it.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Row {
+    /// `P` plus 16 hex digits of the pattern text on the side that has it.
     pub id: String,
+    /// Masked pattern text. Two texts stay two rows even when the id collides.
     pub text: String,
+    /// Whether the pattern is new, gone, or in both samples.
     pub status: Status,
+    /// Lines in the old sample. 0 when the pattern is new.
     pub old_lines: u64,
+    /// Lines in the new sample. 0 when the pattern is gone.
     pub new_lines: u64,
+    /// Bytes in the old sample. 0 when the pattern is new.
     pub old_bytes: u64,
+    /// Bytes in the new sample. 0 when the pattern is gone.
     pub new_bytes: u64,
     /// Tenths of a percent, as in `pattern::share_tenths`.
     pub old_share: u64,
+    /// Tenths of a percent of the new sample. 0 when the pattern is gone.
     pub new_share: u64,
 }
 
+/// Totals of both samples, and one row per pattern text.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Report {
+    /// Lines in the old sample.
     pub old_lines: u64,
+    /// Bytes in the old sample.
     pub old_bytes: u64,
+    /// Lines in the new sample.
     pub new_lines: u64,
+    /// Bytes in the new sample.
     pub new_bytes: u64,
+    /// One row per pattern text: new, then gone, then both.
     pub rows: Vec<Row>,
     /// Bytes of patterns that appear only in the new sample.
     pub added_bytes: u64,

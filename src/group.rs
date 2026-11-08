@@ -15,9 +15,13 @@ pub const NO_SOURCE: &str = "<NO-SOURCE>";
 /// One source: its lines and bytes, and its share of the bytes in tenths of a percent.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Source {
+    /// Field value, or [`NO_SOURCE`] when the line has no text in that field.
     pub name: String,
+    /// Lines with this field value.
     pub lines: u64,
+    /// Raw bytes of those lines.
     pub bytes: u64,
+    /// Tenths of a percent of all bytes in the tally.
     pub share_tenths: u64,
 }
 
@@ -28,6 +32,7 @@ pub struct SourceTally {
 }
 
 impl SourceTally {
+    /// Empty tally for values of `field`.
     pub fn new(field: &str) -> Self {
         SourceTally {
             field: field.to_owned(),
@@ -35,6 +40,7 @@ impl SourceTally {
         }
     }
 
+    /// JSON field these lines are grouped by.
     pub fn field(&self) -> &str {
         &self.field
     }

@@ -1,3 +1,7 @@
+//! Text and JSON for scan and diff.
+//!
+//! Amounts and shares use the same spelling in both. Raw lines are not written.
+
 use std::cmp::Ordering;
 use std::fmt::Write;
 
@@ -436,14 +440,23 @@ fn line_word(n: u64) -> &'static str {
 
 /// What `--json` stores about the call. Paths are the arguments, not the contents.
 pub struct JsonMeta<'a> {
+    /// `scan` or `diff`.
     pub command: &'a str,
+    /// `text` or `jsonl`, the input format.
     pub format: &'a str,
+    /// `--message-field`, when set.
     pub message_field: Option<&'a str>,
+    /// Days in a month. Used when a window is set.
     pub days_per_month: u32,
+    /// `--top`. Absent means every pattern is listed.
     pub top: Option<u32>,
+    /// Input paths as given. `-` is standard input. Contents are not stored.
     pub paths: &'a [&'a str],
+    /// `--window`, when set.
     pub window: Option<Window>,
+    /// Set when the calculation steps are included.
     pub explain: bool,
+    /// `--group-by`, when set. Diff leaves this empty.
     pub group_by: Option<&'a str>,
 }
 

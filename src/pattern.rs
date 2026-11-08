@@ -1,3 +1,8 @@
+//! Group masked lines into patterns.
+//!
+//! Bytes stay the raw line bytes. The id is `P` plus FNV-1a of the masked
+//! text. A top limit folds the remainder into `other`.
+
 use std::collections::BTreeMap;
 
 use crate::mask;
@@ -67,21 +72,30 @@ pub fn format_share(tenths: u64) -> String {
 /// One pattern, or the rest bucket `other` when `rest` is set.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Pattern {
+    /// `P` plus 16 hex digits of the masked text, or `other` for the rest bucket.
     pub id: String,
+    /// Masked pattern text, or `other` for the rest bucket.
     pub text: String,
+    /// Lines in this pattern.
     pub lines: u64,
+    /// Raw bytes of those lines.
     pub bytes: u64,
     /// Tenths of a percent: 667 is 66.7%.
     pub share_tenths: u64,
+    /// Set on the `other` bucket that holds patterns past the top limit.
     pub rest: bool,
     /// Sum of the masks applied to the lines of this pattern.
     pub masks: mask::MaskCounts,
 }
 
+/// Totals and the patterns, largest byte count first.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Stats {
+    /// Lines that were grouped, including those folded into `other`.
     pub total_lines: u64,
+    /// Raw bytes of those lines.
     pub total_bytes: u64,
+    /// Patterns, bytes descending. `other` is last when a top limit folded the rest.
     pub patterns: Vec<Pattern>,
 }
 
@@ -99,6 +113,7 @@ pub struct Grouper {
 }
 
 impl Grouper {
+    /// Count one line under its masked message. The line text is not kept.
     pub fn push(&mut self, line: &Line) {
         let (masked, counts) = mask::mask_detail(&line.text);
         let acc = self.groups.entry(masked).or_default();

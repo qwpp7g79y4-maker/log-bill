@@ -1,3 +1,9 @@
+//! Mask variable parts of one message so equal lines share a pattern.
+//!
+//! Secret keys are found before the other masks. Then timestamp, UUID, IP,
+//! email, hex, bare number, and variable word. A literal tag already in the
+//! input does not count.
+
 use regex::Regex;
 use std::sync::OnceLock;
 use unicode_normalization::UnicodeNormalization;
@@ -6,13 +12,21 @@ use unicode_normalization::UnicodeNormalization;
 /// A literal tag in the input does not count.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct MaskCounts {
+    /// Times `<TS>` replaced a timestamp.
     pub ts: u64,
+    /// Times `<UUID>` replaced a UUID.
     pub uuid: u64,
+    /// Times `<IP>` replaced an address.
     pub ip: u64,
+    /// Times `<EMAIL>` replaced an address.
     pub email: u64,
+    /// Times a secret value was replaced with `<SECRET>`.
     pub secret: u64,
+    /// Times `<HEX>` replaced a hex run.
     pub hex: u64,
+    /// Times `<NUM>` replaced a bare number.
     pub num: u64,
+    /// Times `<VAR>` replaced a variable word.
     pub var: u64,
 }
 

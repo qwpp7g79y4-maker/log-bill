@@ -1,3 +1,8 @@
+//! Window, volume, and cost as exact fractions.
+//!
+//! A day is 86400 seconds. A month is `days_per_month` of those days.
+//! Overflow is an error, not zero.
+
 use std::cmp::Ordering;
 use std::fmt;
 
@@ -12,11 +17,13 @@ pub struct Window {
 }
 
 impl Window {
+    /// Length of the window in seconds. Always at least 1.
     pub fn seconds(self) -> u64 {
         self.seconds
     }
 }
 
+/// `--window` was empty, zero, or not a positive integer plus `s`, `m`, `h`, or `d`.
 #[derive(Debug, PartialEq, Eq)]
 pub struct WindowError;
 
@@ -59,9 +66,13 @@ pub fn parse_window(text: &str) -> Result<Window, WindowError> {
 /// Bytes and GB per day and per month. GB is in thousandths: 1440 is 1.440 GB.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Volume {
+    /// Sample bytes × 86400 / window seconds.
     pub bytes_per_day: u128,
+    /// Sample bytes × 86400 × days per month / window seconds.
     pub bytes_per_month: u128,
+    /// Thousandths of a GB per day. 1440 is 1.440 GB.
     pub gb_per_day_milli: u128,
+    /// Thousandths of a GB per month.
     pub gb_per_month_milli: u128,
 }
 
@@ -151,7 +162,9 @@ const PRICE_FIELDS: &[&str] = &[
 /// Calculated with this fraction, without floating point.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Price {
+    /// Numerator of the reduced fraction.
     pub numer: u128,
+    /// Denominator of the reduced fraction.
     pub denom: u128,
 }
 
@@ -159,26 +172,44 @@ pub struct Price {
 /// omits that field.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Prices {
+    /// Currency code from the price file.
     pub currency: String,
+    /// Where the prices came from, as written in the file.
     pub source: String,
+    /// Date from the price file, as written.
     pub date: String,
+    /// Ingest price per GB.
     pub ingest_per_gb: Price,
+    /// Index price per GB. Absent when the file omits `index_per_gb`.
     pub index_per_gb: Option<Price>,
+    /// Bytes in one GB. 1_000_000_000 when the file omits `gb_bytes`.
     pub gb_bytes: u128,
 }
 
+/// Why a price file was refused. The text has no path and no bytes from the file.
 #[derive(Debug, PartialEq, Eq)]
 pub enum PriceError {
+    /// The path could not be read.
     Unreadable,
+    /// The bytes are not a JSON object.
     NotJson,
+    /// A required field is absent.
     MissingField,
+    /// A required string field is empty.
     EmptyField,
+    /// A price is negative.
     Negative,
+    /// A price is not a number, or the fraction does not fit.
     NotNumeric,
+    /// A key is not one of the price fields.
     UnknownField,
+    /// The same key appears twice.
     DuplicateKey,
+    /// `gb_bytes` is not a whole number greater than 0.
     GbBytes,
+    /// The path is not a regular file.
     NotRegular,
+    /// Arrays or objects are nested 128 or more deep.
     TooDeep,
 }
 
@@ -784,7 +815,9 @@ fn gcd(mut a: u128, mut b: u128) -> u128 {
 /// Cost of one stream (ingest or index). Day and month are rounded separately.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Cost {
+    /// Rounded cost per day.
     pub per_day: Amount,
+    /// Rounded cost per month, from the exact fraction, not from `per_day`.
     pub per_month: Amount,
 }
 
