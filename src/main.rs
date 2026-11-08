@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 
 use clap::parser::ValueSource;
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum};
+use clap_complete::Shell;
 
 /// Estimate log costs per pattern from a sample, offline.
 #[derive(Parser)]
@@ -96,6 +97,22 @@ enum Cmd {
         #[arg(value_name = "NEW")]
         new: PathBuf,
     },
+    /// Write a shell completion script to stdout
+    #[command(hide = true)]
+    Completions {
+        /// Shell to generate for
+        #[arg(value_name = "SHELL", value_enum)]
+        shell: CompletionShell,
+    },
+    /// Write the manual page (roff) to stdout
+    #[command(hide = true)]
+    Man,
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum CompletionShell {
+    Bash,
+    Zsh,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -111,13 +128,47 @@ fn main() {
             let days_explicit =
                 matches.value_source("days_per_month") == Some(ValueSource::CommandLine);
             match Cli::from_arg_matches(&matches) {
-                Ok(cli) => execute(&cli, days_explicit),
+                Ok(cli) => match &cli.command {
+                    Cmd::Completions { shell } => emit_generated(Generated::Completions(*shell)),
+                    Cmd::Man => emit_generated(Generated::Man),
+                    _ => execute(&cli, days_explicit),
+                },
                 Err(error) => report(error),
             }
         }
         Err(error) => report(error),
     };
     std::process::exit(code);
+}
+
+enum Generated {
+    Completions(CompletionShell),
+    Man,
+}
+
+/// Writes a completion script or the manual page. A failed write is exit 3.
+fn emit_generated(what: Generated) -> i32 {
+    let mut command = Cli::command();
+    let mut buffer = Vec::new();
+    match what {
+        Generated::Completions(shell) => {
+            let shell = match shell {
+                CompletionShell::Bash => Shell::Bash,
+                CompletionShell::Zsh => Shell::Zsh,
+            };
+            clap_complete::generate(shell, &mut command, "log-bill", &mut buffer);
+        }
+        Generated::Man => {
+            command.build();
+            if clap_mangen::Man::new(command).render(&mut buffer).is_err() {
+                return fail("could not render the manual page", 3);
+            }
+        }
+    }
+    match String::from_utf8(buffer) {
+        Ok(text) => emit(&text),
+        Err(_) => fail("generated text is not UTF-8", 3),
+    }
 }
 
 fn report(error: clap::Error) -> i32 {
@@ -253,6 +304,7 @@ fn execute(cli: &Cli, days_explicit: bool) -> i32 {
         || indexed_price.is_some()
         || cli.index_rules.is_some();
     match &cli.command {
+        Cmd::Completions { .. } | Cmd::Man => 0,
         Cmd::Scan { file } => {
             // A bad retention, billing plan or price was already rejected.
             // The window check is next, before the index-rules file is opened.

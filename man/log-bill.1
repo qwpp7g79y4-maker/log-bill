@@ -1,0 +1,86 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH log-bill 1  "log-bill 1.0.0" 
+.SH NAME
+log\-bill \- Offline estimate of log costs per pattern
+.SH SYNOPSIS
+\fBlog\-bill\fR [\fB\-\-format\fR] [\fB\-\-message\-field\fR] [\fB\-\-group\-by\fR] [\fB\-\-window\fR] [\fB\-\-days\-per\-month\fR] [\fB\-\-prices\fR] [\fB\-\-rules\fR] [\fB\-\-top\fR] [\fB\-\-explain\fR] [\fB\-\-json\fR] [\fB\-\-budget\-month\fR] [\fB\-\-max\-new\-share\fR] [\fB\-\-retention\fR] [\fB\-\-billing\fR] [\fB\-\-indexed\-price\fR] [\fB\-\-index\-rules\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] <\fIsubcommands\fR>
+.SH DESCRIPTION
+Offline estimate of log costs per pattern
+.SH OPTIONS
+.TP
+\fB\-\-format\fR \fI<FORMAT>\fR [default: text]
+Input format: text or jsonl
+.br
+
+.br
+\fIPossible values:\fR
+.RS 14
+.IP \(bu 2
+text
+.IP \(bu 2
+jsonl
+.RE
+.TP
+\fB\-\-message\-field\fR \fI<NAME>\fR
+JSON field that holds the message
+.TP
+\fB\-\-group\-by\fR \fI<FIELD>\fR
+Group costs per source: the value of this JSON field (scan, jsonl)
+.TP
+\fB\-\-window\fR \fI<WINDOW>\fR
+Time window of the sample, for example 15m
+.TP
+\fB\-\-days\-per\-month\fR \fI<DAYS>\fR [default: 30]
+Days in a month for the extrapolation
+.TP
+\fB\-\-prices\fR \fI<FILE>\fR
+Price file (JSON)
+.TP
+\fB\-\-rules\fR \fI<FILE>\fR
+File with drop and sample rules
+.TP
+\fB\-\-top\fR \fI<N>\fR
+Show the N largest patterns; the rest as other
+.TP
+\fB\-\-explain\fR
+Show the masks and the calculation per pattern
+.TP
+\fB\-\-json\fR
+Write JSON instead of text
+.TP
+\fB\-\-budget\-month\fR \fI<AMOUNT>\fR
+Monthly budget; exit with code 1 if the estimate is above it
+.TP
+\fB\-\-max\-new\-share\fR \fI<PCT>\fR
+Maximum share of new patterns, in percent
+.TP
+\fB\-\-retention\fR \fI<DAYS>\fR
+Indexed\-log retention in days: 3, 7, 15 or 30
+.TP
+\fB\-\-billing\fR \fI<PLAN>\fR
+Indexed\-log billing plan: annual, monthly or ondemand
+.TP
+\fB\-\-indexed\-price\fR \fI<USD>\fR
+Indexed\-log price in USD per 1M events. Overrides the list price
+.TP
+\fB\-\-index\-rules\fR \fI<FILE>\fR
+Index exclusion rules (drop and sample), applied after \-\-rules
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+Print version
+.SH SUBCOMMANDS
+.TP
+log\-bill\-scan(1)
+Group a log file into patterns
+.TP
+log\-bill\-diff(1)
+Compare two samples
+.TP
+log\-bill\-help(1)
+Print this message or the help of the given subcommand(s)
+.SH VERSION
+v1.0.0
