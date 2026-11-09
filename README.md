@@ -159,7 +159,7 @@ Pccb846bfc4fff644 ingest: 0.02 USD per day, 0.53 USD per month
 estimate: extrapolation of one sample with your own prices; not an official rate
 ```
 
-20 lines in 10 seconds is a factor of 8640 to a day; at 2 USD per GB that is 0.02 USD per day and 0.53 USD per month. Use your own price per GB (ask whoever pays the bill, or see your provider's pricing page) and `--window` set to how long the sample actually covers.
+1020 bytes over 10 seconds is × 8640 = 8812800 bytes per day; at 2 USD per GB that is 0.02 USD per day and 0.53 USD per month. Use your own price per GB (ask whoever pays the bill, or see your provider's pricing page) and `--window` set to how long the sample actually covers.
 
 `scan` and `diff` also read standard input when the file argument is `-`, for example `kubectl logs deploy/app | log-bill scan -`; output and exit code are the same as for a real file with the same bytes.
 

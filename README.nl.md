@@ -161,7 +161,7 @@ Pccb846bfc4fff644 ingest: 0.02 USD per day, 0.53 USD per month
 estimate: extrapolation of one sample with your own prices; not an official rate
 ```
 
-20 regels in 10 seconden is een factor 8640 naar een dag; tegen 2 USD per GB is dat 0.02 USD per dag en 0.53 USD per maand. Gebruik je eigen prijs per GB (vraag wie de rekening betaalt, of kijk op de prijspagina van je provider) en zet `--window` op hoe lang de steekproef werkelijk beslaat.
+1020 bytes in 10 seconden is × 8640 = 8812800 bytes per dag; tegen 2 USD per GB is dat 0.02 USD per dag en 0.53 USD per maand. Gebruik je eigen prijs per GB (vraag wie de rekening betaalt, of kijk op de prijspagina van je provider) en zet `--window` op hoe lang de steekproef werkelijk beslaat.
 
 `scan` en `diff` lezen ook standaardinvoer als het bestandsargument `-` is, bijvoorbeeld `kubectl logs deploy/app | log-bill scan -`; uitvoer en exitcode zijn hetzelfde als voor een echt bestand met dezelfde bytes.
 

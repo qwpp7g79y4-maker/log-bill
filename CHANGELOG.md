@@ -4,25 +4,7 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
-### Added
-
-- A log whose name ends in `.gz` (gzip) or `.zst` (zstd) is read directly. The totals match the unpacked file. The 256 MiB limit applies to the unpacked bytes. Several gzip members in one file are all read; a `.zst` file is one zstd frame. A price file, a rules file and standard input are not unpacked. Tests in `tests/compressed.rs`.
-- `--version` and `-V` print the crate version (`1.0.0`) and exit 0. A debug build also prints the git commit when `git` itself prints one. A release build prints the crate version only. The manual page stays the crate version. Tests in `tests/cli.rs` (`version_flags_print_crate_version`).
-- SIGINT (Ctrl-C) stops before the report is published and exits 130. Stdout and stderr stay empty. With `--output`, a new file is not created and an existing file is left unchanged. The final write is not cut off. Exit codes 0, 1, 2 and 3 are unchanged. Tests in `tests/interrupt.rs`.
-- `--output PATH` writes the report to a file instead of stdout. An existing file is replaced. A missing parent directory is exit 3 and is not created. Exit codes stay 0, 1, 2 and 3. Tests in `tests/output_path.rs`.
-- `--quiet` and `--verbose`. A pipe prints no hint and no context line. `--verbose` adds that context on stderr. The report and the exit codes are unchanged. `--quiet` together with `--verbose` is exit 3. Tests in `tests/verbosity.rs`.
-- `man/log-bill.1` is a manual page generated from the command line (`log-bill man > man/log-bill.1`). `log-bill completions bash|zsh` writes a shell completion script. Both subcommands are hidden from `--help`. They use `clap_mangen` and `clap_complete` (rust-version 1.85, same as this package). Tests in `tests/man_completions.rs`.
-- `scan --format jsonl --group-by FIELD` adds a block (and a `sources` array in `--json`) with lines, bytes and share per value of that JSON field. With `--window` and `--prices` it also shows the cost per value. `examples/services.jsonl` is a synthetic input.
-
-### Fixed
-
-- A log input larger than 256 MiB (268435456 bytes) is refused with exit 2 (`file is larger than 256 MiB; split it or pass a smaller sample`), for a file and for standard input. An input of exactly that size is still read. A file is refused from its size, so it is not read into memory. Tests in `tests/long_lines.rs`.
-
-### Build
-
-- The README states the current test count: 382 tests, all passing. The quality report still records the count measured at `ffe4398`.
-
-## [1.0.0] - 2026-11-08
+## [1.0.0] - 2026-11-09
 
 The previous version is 0.2.0.
 
@@ -37,7 +19,22 @@ The previous version is 0.2.0.
 
 - The FIFO test in `tests/stdin.rs` runs on Unix only, so the test suite passes on Windows.
 - CI skips draft pull requests, cancels superseded runs, caches dependencies and sets job timeouts.
-- The README now states the measured test count: 339 tests, all passing.
+- The README now states the measured test count: 382 tests, all passing.
+- The README states the current test count: 382 tests, all passing. The quality report still records the count measured at `ffe4398`.
+
+### Added
+
+- A log whose name ends in `.gz` (gzip) or `.zst` (zstd) is read directly. The totals match the unpacked file. The 256 MiB limit applies to the unpacked bytes. Several gzip members in one file are all read; a `.zst` file is one zstd frame. A price file, a rules file and standard input are not unpacked. Tests in `tests/compressed.rs`.
+- `--version` and `-V` print the crate version (`1.0.0`) and exit 0. A debug build also prints the git commit when `git` itself prints one. A release build prints the crate version only. The manual page stays the crate version. Tests in `tests/cli.rs` (`version_flags_print_crate_version`).
+- SIGINT (Ctrl-C) stops before the report is published and exits 130. Stdout and stderr stay empty. With `--output`, a new file is not created and an existing file is left unchanged. The final write is not cut off. Exit codes 0, 1, 2 and 3 are unchanged. Tests in `tests/interrupt.rs`.
+- `--output PATH` writes the report to a file instead of stdout. An existing file is replaced. A missing parent directory is exit 3 and is not created. Exit codes stay 0, 1, 2 and 3. Tests in `tests/output_path.rs`.
+- `--quiet` and `--verbose`. A pipe prints no hint and no context line. `--verbose` adds that context on stderr. The report and the exit codes are unchanged. `--quiet` together with `--verbose` is exit 3. Tests in `tests/verbosity.rs`.
+- `man/log-bill.1` is a manual page generated from the command line (`log-bill man > man/log-bill.1`). `log-bill completions bash|zsh` writes a shell completion script. Both subcommands are hidden from `--help`. They use `clap_mangen` and `clap_complete` (rust-version 1.85, same as this package). Tests in `tests/man_completions.rs`.
+- `scan --format jsonl --group-by FIELD` adds a block (and a `sources` array in `--json`) with lines, bytes and share per value of that JSON field. With `--window` and `--prices` it also shows the cost per value. `examples/services.jsonl` is a synthetic input.
+
+### Fixed
+
+- A log input larger than 256 MiB (268435456 bytes) is refused with exit 2 (`file is larger than 256 MiB; split it or pass a smaller sample`), for a file and for standard input. An input of exactly that size is still read. A file is refused from its size, so it is not read into memory. Tests in `tests/long_lines.rs`.
 
 ## [0.2.0] - 2026-10-24
 
