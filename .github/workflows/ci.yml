@@ -46,7 +46,7 @@ jobs:
       - run: cargo test --release --locked
 
   msrv:
-    name: Test (ubuntu-latest, Rust 1.85)
+    name: Test (ubuntu-latest, Rust 1.87)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
@@ -55,7 +55,7 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.x"
-      - uses: dtolnay/rust-toolchain@1.85
+      - uses: dtolnay/rust-toolchain@1.87
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2

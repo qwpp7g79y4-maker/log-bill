@@ -4,7 +4,7 @@
 
 Schat offline wat je logs per patroon kosten, voordat je ze verstuurt.
 
-[![crates.io](https://img.shields.io/crates/v/log-bill.svg)](https://crates.io/crates/log-bill) [![downloads](https://img.shields.io/crates/d/log-bill.svg)](https://crates.io/crates/log-bill) [![CI](https://github.com/qwpp7g79y4-maker/log-bill/actions/workflows/ci.yml/badge.svg)](https://github.com/qwpp7g79y4-maker/log-bill/actions/workflows/ci.yml) [![PEPAI gecontroleerd](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fqwpp7g79y4-maker%2Flog-bill%2Fmain%2F.github%2Fbadge.json)](QUALITY.nl.md) [![MSRV 1.85](https://img.shields.io/badge/MSRV-1.85-blue.svg)](https://github.com/qwpp7g79y4-maker/log-bill/blob/main/Cargo.toml) [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#licentie)
+[![crates.io](https://img.shields.io/crates/v/log-bill.svg)](https://crates.io/crates/log-bill) [![downloads](https://img.shields.io/crates/d/log-bill.svg)](https://crates.io/crates/log-bill) [![CI](https://github.com/qwpp7g79y4-maker/log-bill/actions/workflows/ci.yml/badge.svg)](https://github.com/qwpp7g79y4-maker/log-bill/actions/workflows/ci.yml) [![PEPAI gecontroleerd](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fqwpp7g79y4-maker%2Flog-bill%2Fmain%2F.github%2Fbadge.json)](QUALITY.nl.md) [![MSRV 1.87](https://img.shields.io/badge/MSRV-1.87-blue.svg)](https://github.com/qwpp7g79y4-maker/log-bill/blob/main/Cargo.toml) [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#licentie)
 
 [Installatie](#installatie) • [Snel aan de slag](#snel-aan-de-slag) • [Hoe het rekent](#hoe-het-rekent) • [Alternatieven](#vergelijking-met-alternatieven) • [Beperkingen](#beperkingen) • [Referentie](docs/reference.nl.md)
 
@@ -20,7 +20,7 @@ Teams betalen per GB voor logs en zien vaak pas op de factuur welk patroon het v
 
 Versie 1.0.0 is release-klaar en nog niet gepubliceerd. `cargo install log-bill` vanaf [crates.io](https://crates.io/crates/log-bill) geeft nog 0.2.1. Versie 1.0.0 komt uit de bron: `cargo install --path .`.
 
-Met Rust 1.85 of nieuwer is de crate op [crates.io](https://crates.io/crates/log-bill) nog 0.2.1:
+Met Rust 1.87 of nieuwer is de crate op [crates.io](https://crates.io/crates/log-bill) nog 0.2.1:
 
 ```sh
 cargo install --locked log-bill
@@ -36,7 +36,7 @@ Ondersteunde systemen voor de kant-en-klare binaries:
 - **Windows x86_64 (`x86_64-pc-windows-msvc`).**
 - **macOS Intel (`x86_64-apple-darwin`) en Apple Silicon (`aarch64-apple-darwin`).**
 
-De suite heeft 382 automatische tests (382 geslaagd, 0 mislukt). Ze draaien in CI op Linux, Windows, macOS op Apple Silicon en macOS op Intel, en op Rust 1.85. Andere systemen kunnen werken met `cargo install`, maar zijn niet getest.
+De suite heeft 382 automatische tests (382 geslaagd, 0 mislukt). Ze draaien in CI op Linux, Windows, macOS op Apple Silicon en macOS op Intel, en op Rust 1.87. Andere systemen kunnen werken met `cargo install`, maar zijn niet getest.
 
 Voor de nieuwste `main`: `cargo install --locked --git https://github.com/qwpp7g79y4-maker/log-bill`.
 

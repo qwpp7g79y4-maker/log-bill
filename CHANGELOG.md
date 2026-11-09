@@ -17,6 +17,7 @@ The previous version is 0.2.0.
 
 ### Build
 
+- The MSRV is now 1.87, because ruzstd >= 0.9.1 fixes RUSTSEC-2026-0344.
 - The FIFO test in `tests/stdin.rs` runs on Unix only, so the test suite passes on Windows.
 - CI skips draft pull requests, cancels superseded runs, caches dependencies and sets job timeouts.
 - The README now states the measured test count: 382 tests, all passing.

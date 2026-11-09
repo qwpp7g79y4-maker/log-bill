@@ -247,13 +247,13 @@ fn readme_has_the_sections_and_names() {
         .expect("git install line");
     assert!(crates_io < from_git, "crates.io is the first install line");
     assert!(readme.contains("(https://crates.io/crates/log-bill)"));
-    assert!(install.contains("Rust 1.85 or newer"));
+    assert!(install.contains("Rust 1.87 or newer"));
     assert!(install.contains("(https://github.com/qwpp7g79y4-maker/log-bill/releases)"));
     let manifest = read("Cargo.toml");
-    assert!(manifest.contains("rust-version = \"1.85\""));
+    assert!(manifest.contains("rust-version = \"1.87\""));
     let readme_nl = read(README_NL);
     let install_nl = section(&readme_nl, "## Installatie");
-    assert!(install_nl.contains("Rust 1.85 of nieuwer"));
+    assert!(install_nl.contains("Rust 1.87 of nieuwer"));
     assert!(install_nl.contains("cargo install --locked log-bill"));
     assert!(section(&readme, "## License").contains("PEPAI"));
     let contact = section(&readme, "## Contact");
