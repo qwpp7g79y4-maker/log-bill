@@ -16,7 +16,9 @@ Teams pay per GB for logs and often only see on the invoice which pattern produc
 
 ## Installation
 
-With Rust 1.85 or newer, install from [crates.io](https://crates.io/crates/log-bill):
+Version 1.0.0 is release-ready and is not published yet. `cargo install log-bill` from [crates.io](https://crates.io/crates/log-bill) still installs 0.2.1. Version 1.0.0 comes from the source: `cargo install --path .`.
+
+With Rust 1.85 or newer, the crate on [crates.io](https://crates.io/crates/log-bill) is still 0.2.1:
 
 ```sh
 cargo install --locked log-bill
@@ -36,7 +38,7 @@ The suite has 382 automated tests (382 passed, 0 failed). They run in CI on Linu
 
 For the latest `main`: `cargo install --locked --git https://github.com/qwpp7g79y4-maker/log-bill`.
 
-From a local clone: `cargo install --locked --path .`, or `cargo build --release`; the binary is `target/release/log-bill`.
+From a local clone of this 1.0.0 source: `cargo install --path .` (or `cargo install --locked --path .`), or `cargo build --release`; the binary is `target/release/log-bill`.
 
 ## Quick start
 
