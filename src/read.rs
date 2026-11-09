@@ -1,12 +1,13 @@
 //! Read a log sample one line at a time.
 //!
-//! Text and JSON lines are accepted. More than [`MAX_INPUT_BYTES`] is refused
-//! before the file is read. UTF-16 and UTF-32 are refused. The reader does
-//! not keep the lines. SIGINT stops the read with [`ReadError::Interrupted`].
+//! Text and JSON lines are accepted. A name ending in `.gz` or `.zst` is
+//! unpacked first. More than [`MAX_INPUT_BYTES`] of those unpacked bytes is
+//! refused. UTF-16 and UTF-32 are refused. The reader does not keep the
+//! lines. SIGINT stops the read with [`ReadError::Interrupted`].
 
 use std::fmt;
 use std::fs::File;
-use std::io::{self, BufRead, Cursor, Read};
+use std::io::{self, BufRead, Cursor, Read, Seek, SeekFrom};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -180,7 +181,9 @@ impl std::error::Error for ReadError {}
 /// One UTF-8 byte order mark at the start is skipped for the line text and
 /// still counts in the bytes of the first line. UTF-16 and UTF-32 are
 /// refused, see [`detect_wide`]. The whole file is not held in memory.
-/// More than [`MAX_INPUT_BYTES`] is refused before the file is read.
+/// More than [`MAX_INPUT_BYTES`] is refused. A plain file is refused from its
+/// size, before it is read. A `.gz` or `.zst` file is refused from the
+/// unpacked size.
 pub fn visit_text(path: &Path, visit: impl FnMut(Line)) -> Result<(), ReadError> {
     visit_file(path, false, None, visit)
 }
@@ -201,7 +204,8 @@ const NO_MESSAGE: &str = "<NO-MESSAGE>";
 /// JSON stops with the line number, without the line. One UTF-8 byte order
 /// mark at the start is skipped for parsing but still counts in the bytes of
 /// the first line. UTF-16 and UTF-32 are refused. More than [`MAX_INPUT_BYTES`]
-/// is refused before the file is read.
+/// is refused. A plain file is refused from its size, before it is read. A
+/// `.gz` or `.zst` file is refused from the unpacked size.
 pub fn visit_jsonl(
     path: &Path,
     message_field: Option<&str>,
@@ -288,6 +292,40 @@ fn open_read(path: &Path) -> Result<File, OpenError> {
     File::open(path).map_err(|_| OpenError::Unreadable)
 }
 
+/// A log name ending in `.gz` or `.zst`. Other names, including `.log`, are
+/// the bytes on disk. Price files and rules files do not use this.
+#[derive(Clone, Copy)]
+enum LogCompression {
+    Gzip,
+    Zstd,
+}
+
+fn log_compression(path: &Path) -> Option<LogCompression> {
+    match path.extension().and_then(|ext| ext.to_str()) {
+        Some("gz") => Some(LogCompression::Gzip),
+        Some("zst") => Some(LogCompression::Zstd),
+        _ => None,
+    }
+}
+
+/// The reader passed to the line loop. Compressed variants are boxed so the
+/// enum stays small: the decoders hold their own windows on the heap.
+enum LogSource {
+    Plain(File),
+    Gzip(Box<flate2::read::MultiGzDecoder<File>>),
+    Zstd(Box<ruzstd::decoding::StreamingDecoder<File, ruzstd::decoding::FrameDecoder>>),
+}
+
+impl Read for LogSource {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        match self {
+            Self::Plain(file) => file.read(buf),
+            Self::Gzip(decoder) => decoder.read(buf),
+            Self::Zstd(decoder) => decoder.read(buf),
+        }
+    }
+}
+
 fn visit_file(
     path: &Path,
     jsonl: bool,
@@ -299,8 +337,174 @@ fn visit_file(
         Err(OpenError::Unreadable) => return Err(ReadError::Unreadable),
         Err(OpenError::NotRegular) => return Err(ReadError::NotRegular),
     };
-    refuse_oversized(&file)?;
-    visit_reader(file, jsonl, message_field, visit)
+    let source = open_log(path, file)?;
+    visit_reader(source, jsonl, message_field, visit)
+}
+
+/// Plain files are refused from the size on disk. `.gz` and `.zst` are
+/// unpacked, and the limit applies to those bytes, so the totals match the
+/// unpacked file. A broken frame is [`ReadError::Unreadable`]. The message
+/// stays the fixed text: no path and no bytes from the file.
+fn open_log(path: &Path, mut file: File) -> Result<LogSource, ReadError> {
+    match log_compression(path) {
+        None => {
+            refuse_oversized(&file)?;
+            Ok(LogSource::Plain(file))
+        }
+        Some(LogCompression::Gzip) => {
+            // Every gzip member, so a file made by concatenating members
+            // matches `gzip -dc`.
+            Ok(LogSource::Gzip(Box::new(
+                flate2::read::MultiGzDecoder::new(file),
+            )))
+        }
+        Some(LogCompression::Zstd) => {
+            // One frame. The window is checked before the decoder allocates it.
+            let limits = zstd_header_limits(&mut file)?;
+            if limits.content.is_some_and(|size| size > MAX_INPUT_BYTES) {
+                return Err(ReadError::InputTooLarge);
+            }
+            // A window above the input limit is not allocated. The unpacked
+            // log would not need it; refusing keeps a bad frame from reserving
+            // a huge buffer.
+            if limits.window > MAX_INPUT_BYTES {
+                return Err(ReadError::Unreadable);
+            }
+            let decoder =
+                ruzstd::decoding::StreamingDecoder::new(file).map_err(|_| ReadError::Unreadable)?;
+            Ok(LogSource::Zstd(Box::new(decoder)))
+        }
+    }
+}
+
+/// Unpacked size, when the frame header states it, and the window the
+/// decoder would allocate. `content` is absent when the header omits it
+/// (`0` from the decoder is that same unknown, not an empty frame).
+#[derive(Debug)]
+struct ZstdLimits {
+    content: Option<u64>,
+    window: u64,
+}
+
+/// Reads the zstd frame header, then puts the file back at the start so the
+/// decoder sees the same bytes. A header that is not a zstd frame is `None`:
+/// the decoder then refuses it. A zstd magic with a header we cannot size is
+/// an error, so a huge window is never allocated.
+fn zstd_header_limits(file: &mut File) -> Result<ZstdLimits, ReadError> {
+    let mut buf = [0u8; 18];
+    let filled = read_head(file, &mut buf)?;
+    match zstd_frame_limits(&buf[..filled]) {
+        ZstdHeader::NotZstd => Ok(ZstdLimits {
+            content: None,
+            window: 0,
+        }),
+        ZstdHeader::Limits(limits) => Ok(limits),
+        ZstdHeader::Refuse => Err(ReadError::Unreadable),
+    }
+}
+
+fn read_head(file: &mut File, buf: &mut [u8]) -> Result<usize, ReadError> {
+    let mut filled = 0;
+    while filled < buf.len() {
+        if stop_requested() {
+            return Err(ReadError::Interrupted);
+        }
+        match file.read(&mut buf[filled..]) {
+            Ok(0) => break,
+            Ok(n) => filled += n,
+            Err(err) => match interrupted_read(&err) {
+                Some(Ok(())) => continue,
+                Some(Err(error)) => return Err(error),
+                None => return Err(ReadError::Unreadable),
+            },
+        }
+    }
+    file.seek(SeekFrom::Start(0))
+        .map_err(|_| ReadError::Unreadable)?;
+    Ok(filled)
+}
+
+#[derive(Debug)]
+enum ZstdHeader {
+    NotZstd,
+    Limits(ZstdLimits),
+    Refuse,
+}
+
+/// Zstd frame magic, little-endian `0xFD2FB528`.
+const ZSTD_MAGIC: [u8; 4] = [0x28, 0xB5, 0x2F, 0xFD];
+
+fn zstd_frame_limits(header: &[u8]) -> ZstdHeader {
+    if header.len() < 4 || header[..4] != ZSTD_MAGIC {
+        return ZstdHeader::NotZstd;
+    }
+    if header.len() < 5 {
+        return ZstdHeader::Refuse;
+    }
+    let desc = header[4];
+    // Bit 3 is reserved. A set bit is not a frame we size.
+    if desc & 0b0000_1000 != 0 {
+        return ZstdHeader::Refuse;
+    }
+    let fcs_flag = desc >> 6;
+    let single = desc & 0b0010_0000 != 0;
+    let did_len: usize = match desc & 0b0000_0011 {
+        0 => 0,
+        1 => 1,
+        2 => 2,
+        _ => 4,
+    };
+    let fcs_len: usize = match (fcs_flag, single) {
+        (0, false) => 0,
+        (0, true) => 1,
+        (1, _) => 2,
+        (2, _) => 4,
+        _ => 8,
+    };
+    let mut index = 5;
+    let window_byte = if single {
+        None
+    } else {
+        if header.len() < index + 1 {
+            return ZstdHeader::Refuse;
+        }
+        let byte = header[index];
+        index += 1;
+        Some(byte)
+    };
+    if header.len() < index + did_len + fcs_len {
+        return ZstdHeader::Refuse;
+    }
+    index += did_len;
+    let content = if fcs_len == 0 {
+        None
+    } else {
+        let mut size = 0u64;
+        for step in 0..fcs_len {
+            size |= u64::from(header[index + step]) << (8 * step);
+        }
+        if fcs_len == 2 {
+            size += 256;
+        }
+        Some(size)
+    };
+    let window = if single {
+        content.unwrap_or(0)
+    } else {
+        zstd_window(window_byte.unwrap_or(0))
+    };
+    ZstdHeader::Limits(ZstdLimits { content, window })
+}
+
+/// Window size from a window descriptor. The spec's exponent is 5 bits, so
+/// the shift stays inside `u64`.
+fn zstd_window(byte: u8) -> u64 {
+    let exponent = u32::from(byte >> 3);
+    let mantissa = u64::from(byte & 7);
+    let window_log = 10 + exponent;
+    let base = 1u64 << window_log;
+    let add = (base / 8) * mantissa;
+    base + add
 }
 
 /// A regular file larger than [`MAX_INPUT_BYTES`] is refused from its size,
@@ -1147,6 +1351,46 @@ mod tests {
             "file is larger than 256 MiB; split it or pass a smaller sample"
         );
         assert_eq!(on_limit, MAX_INPUT_BYTES);
+    }
+
+    #[test]
+    fn gz_and_zst_lines_match_the_unpacked_file() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+        let mut plain = Vec::new();
+        super::visit_text(&root.join("packed.log"), |line| {
+            plain.push((line.text, line.raw, line.bytes));
+        })
+        .expect("plain");
+        assert!(plain.len() > 1, "fixture has lines");
+        for name in ["packed.log.gz", "packed.log.zst"] {
+            let mut got = Vec::new();
+            super::visit_text(&root.join(name), |line| {
+                got.push((line.text, line.raw, line.bytes));
+            })
+            .unwrap_or_else(|err| panic!("{name}: {err}"));
+            assert_eq!(got, plain, "{name}");
+        }
+    }
+
+    #[test]
+    fn zstd_window_over_the_input_limit_is_not_read() {
+        // Exponent 23 → windowLog 33 → 8 GiB. The frame is only a header.
+        let header = [0x28, 0xB5, 0x2F, 0xFD, 0x00, 23 << 3];
+        match super::zstd_frame_limits(&header) {
+            super::ZstdHeader::Limits(limits) => {
+                assert!(limits.content.is_none());
+                assert!(limits.window > MAX_INPUT_BYTES);
+            }
+            other => panic!("header was not sized: {other:?}"),
+        }
+        let mut file = tempfile::Builder::new()
+            .suffix(".zst")
+            .tempfile()
+            .expect("temp");
+        std::io::Write::write_all(&mut file, &header).expect("write");
+        let err = super::visit_text(file.path(), |_| panic!("a huge window was read")).unwrap_err();
+        assert!(matches!(err, ReadError::Unreadable), "{err}");
+        assert!(!err.to_string().contains("zst"), "{err}");
     }
 
     #[test]

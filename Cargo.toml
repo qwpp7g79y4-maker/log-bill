@@ -16,8 +16,11 @@ exclude = [".github/", ".gitattributes", "fuzz/"]
 clap = { version = "4.5", features = ["derive"] }
 clap_complete = "4.6"
 clap_mangen = "0.3"
+flate2 = { version = "1.1.11", default-features = false, features = ["rust_backend"] }
 libc = "=0.2.190"
 regex = "1"
+# 0.8.1 still builds on this package's rust-version (1.85). Later releases need Rust 1.87.
+ruzstd = "=0.8.1"
 serde_json = "1"
 unicode-normalization = "0.1.25"
 unicode-security = "0.1.2"

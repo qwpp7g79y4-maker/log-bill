@@ -34,6 +34,8 @@ Draai `log-bill --help` of `log-bill scan --help` voor de ingebouwde hulp. Combi
 
 Het logbestand-argument van `scan` en beide van `diff` (`OLD` en `NEW`) accepteren `-` als pad; dat leest dan standaardinvoer in plaats van een bestand. Uitvoer en exitcode zijn hetzelfde als voor een gewoon bestand met dezelfde bytes. `-` wordt alleen herkend voor dat positie-argument, niet voor `--prices`, `--rules` of `--index-rules`. `-` meer dan één keer in hetzelfde commando opgeven (bijvoorbeeld `diff - -`) leest de hele standaardinvoer voor de eerste en niets voor de tweede.
 
+Een logbestand waarvan de naam op `.gz` of `.zst` eindigt, wordt uitgepakt als gzip of zstd en daarna gelezen in het gekozen formaat. De totalen zijn die van het uitgepakte bestand. De grens van 256 MiB geldt voor de uitgepakte bytes, niet voor de grootte van het gecomprimeerde bestand. Meerdere gzip-members in één bestand worden allemaal gelezen. Een `.zst`-bestand is één zstd-frame. Een prijsbestand, een regelsbestand en standaardinvoer worden niet uitgepakt.
+
 ## Prijsbestand
 
 Prijzen komen alleen uit een JSON-bestand dat je meegeeft met `--prices` (samen met `--window`). Dit is de synthetische fixture `tests/fixtures/prices.json`:

@@ -34,7 +34,7 @@ Ondersteunde systemen voor de kant-en-klare binaries:
 - **Windows x86_64 (`x86_64-pc-windows-msvc`).**
 - **macOS Intel (`x86_64-apple-darwin`) en Apple Silicon (`aarch64-apple-darwin`).**
 
-De suite heeft 377 automatische tests (377 geslaagd, 0 mislukt). Ze draaien in CI op Linux, Windows, macOS op Apple Silicon en macOS op Intel, en op Rust 1.85. Andere systemen kunnen werken met `cargo install`, maar zijn niet getest.
+De suite heeft 382 automatische tests (382 geslaagd, 0 mislukt). Ze draaien in CI op Linux, Windows, macOS op Apple Silicon en macOS op Intel, en op Rust 1.85. Andere systemen kunnen werken met `cargo install`, maar zijn niet getest.
 
 Voor de nieuwste `main`: `cargo install --locked --git https://github.com/qwpp7g79y4-maker/log-bill`.
 
@@ -354,7 +354,7 @@ Een eerlijke vergelijking met vijf producten. De pagina's zijn nagelezen op 8 ok
 - Een prijs per miljoen events is optioneel en staat los van de prijs per GB. Op https://docs.datadoghq.com/account_management/billing/pricing staat "Datadog charges for ingested logs based on the total number of gigabytes submitted to the Datadog Logs service." en "Datadog charges per million log events submitted for indexing at the rate designated for the retention policy you selected." De ingest-prijs per GB blijft in het prijsbestand. `--retention`, `--billing`, `--indexed-price` of `--index-rules` voegt de schatting van geïndexeerde events toe uit https://www.datadoghq.com/pricing/list/ (gelezen op 2026-10-14). Zonder die opties verandert de uitvoer niet. De tool rekent een aantal events niet om naar GB. `--budget-month` telt de schatting van geïndexeerde events niet mee. Flex Logs worden niet geprijsd.
 - Een steekproef is één venster. Dag- en maandbedragen zijn een extrapolatie.
 - Het weet niet of een regel nodig is voor security of compliance. Een drop-simulatie is geen advies om te droppen.
-- Geen gzip-invoer in deze versie.
+- Een log waarvan de naam op `.gz` (gzip) of `.zst` (zstd) eindigt, wordt direct gelezen. De totalen zijn die van het uitgepakte bestand. De grens van 256 MiB geldt voor die uitgepakte bytes. Meerdere gzip-members in één bestand worden allemaal gelezen; een `.zst`-bestand is één zstd-frame. Een prijsbestand, een regelsbestand en standaardinvoer worden niet uitgepakt.
 - Een regel langer dan 1 MiB wordt voor patronen en maskeren bij 1 MiB afgekapt; alle bytes tellen wel mee. Een JSON-regel langer dan 1 MiB wordt geweigerd met exit 2 en het regelnummer. Zo blijft het geheugengebruik klein bij een bestand met één enorme regel.
 - Een logbestand of standaardinvoer groter dan 256 MiB (268435456 bytes) wordt geweigerd met exit 2 en `file is larger than 256 MiB; split it or pass a smaller sample`. Een invoer van precies 268435456 bytes wordt nog gelezen. Een bestand wordt geweigerd op zijn grootte, zodat het niet in het geheugen wordt gelezen.
 - Na een sleutelwoord (`secret`, `token`, `password`, `bearer` enzovoort) gevolgd door een spatie wordt het volgende woord altijd gemaskeerd, ook in gewone zinnen: `This is a secret mission report` → `This is a secret <SECRET> report`. Dat is bewust: liever maskeren dan lekken.

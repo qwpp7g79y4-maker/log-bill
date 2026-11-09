@@ -97,3 +97,15 @@ Synthetic text file: two lines with a user, a timestamp and a test address, an e
 ## indexed
 
 Synthetic directory. `app.log` is 6000 synthetic lines used to check an indexed-event estimate. No real secret.
+
+## packed.log
+
+Synthetic text file. One `disk full` line and forty `user N failed` lines with a made-up timestamp and a documentation address. The `.gz` and `.zst` files next to it are this same file, compressed.
+
+## packed.log.gz
+
+Synthetic gzip of `packed.log`. Not a log taken from a real system.
+
+## packed.log.zst
+
+Synthetic zstd frame of `packed.log`. Not a log taken from a real system.

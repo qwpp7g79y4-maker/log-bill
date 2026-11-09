@@ -34,6 +34,8 @@ Run `log-bill --help` or `log-bill scan --help` for the built-in help. Combinati
 
 The log file argument of `scan` and both of `diff` (`OLD` and `NEW`) accept `-` as the path, which reads standard input instead; the output and exit code are the same as for a regular file with the same bytes. `-` is only recognised for that positional argument, not for `--prices`, `--rules` or `--index-rules`. Giving `-` more than once in the same command (for example `diff - -`) reads the whole of standard input for the first one and nothing for the second.
 
+A log file whose name ends in `.gz` or `.zst` is unpacked as gzip or zstd and then read in the chosen format. The totals match the unpacked file. The 256 MiB limit applies to the unpacked bytes, not to the size of the compressed file. Several gzip members in one file are all read. A `.zst` file is one zstd frame. A price file, a rules file and standard input are not unpacked.
+
 ## Price file
 
 Prices come only from a JSON file you pass with `--prices` (together with `--window`). This is the synthetic fixture `tests/fixtures/prices.json`:

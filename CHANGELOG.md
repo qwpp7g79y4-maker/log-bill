@@ -6,6 +6,7 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- A log whose name ends in `.gz` (gzip) or `.zst` (zstd) is read directly. The totals match the unpacked file. The 256 MiB limit applies to the unpacked bytes. Several gzip members in one file are all read; a `.zst` file is one zstd frame. A price file, a rules file and standard input are not unpacked. Tests in `tests/compressed.rs`.
 - `--version` and `-V` print the crate version (`1.0.0`) and exit 0. A debug build also prints the git commit when `git` itself prints one. A release build prints the crate version only. The manual page stays the crate version. Tests in `tests/cli.rs` (`version_flags_print_crate_version`).
 - SIGINT (Ctrl-C) stops before the report is published and exits 130. Stdout and stderr stay empty. With `--output`, a new file is not created and an existing file is left unchanged. The final write is not cut off. Exit codes 0, 1, 2 and 3 are unchanged. Tests in `tests/interrupt.rs`.
 - `--output PATH` writes the report to a file instead of stdout. An existing file is replaced. A missing parent directory is exit 3 and is not created. Exit codes stay 0, 1, 2 and 3. Tests in `tests/output_path.rs`.
@@ -19,7 +20,7 @@ All notable changes to this project are documented in this file.
 
 ### Build
 
-- The README states the current test count: 377 tests, all passing. The quality report still records the count measured at `ffe4398`.
+- The README states the current test count: 382 tests, all passing. The quality report still records the count measured at `ffe4398`.
 
 ## [1.0.0] - 2026-11-08
 

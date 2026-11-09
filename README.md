@@ -32,7 +32,7 @@ Supported systems for the ready-made binaries:
 - **Windows x86_64 (`x86_64-pc-windows-msvc`).**
 - **macOS Intel (`x86_64-apple-darwin`) and Apple Silicon (`aarch64-apple-darwin`).**
 
-The suite has 377 automated tests (377 passed, 0 failed). They run in CI on Linux, Windows, macOS on Apple Silicon and macOS on Intel, and on Rust 1.85. Other systems may work with `cargo install`, but are not tested.
+The suite has 382 automated tests (382 passed, 0 failed). They run in CI on Linux, Windows, macOS on Apple Silicon and macOS on Intel, and on Rust 1.85. Other systems may work with `cargo install`, but are not tested.
 
 For the latest `main`: `cargo install --locked --git https://github.com/qwpp7g79y4-maker/log-bill`.
 
@@ -352,7 +352,7 @@ An honest comparison with five products. The pages were checked on 8 October 202
 - A price per million events is optional and separate from the per-GB price. https://docs.datadoghq.com/account_management/billing/pricing says "Datadog charges for ingested logs based on the total number of gigabytes submitted to the Datadog Logs service." and "Datadog charges per million log events submitted for indexing at the rate designated for the retention policy you selected." The ingest price per GB stays in the price file. `--retention`, `--billing`, `--indexed-price` or `--index-rules` adds the indexed-event estimate from https://www.datadoghq.com/pricing/list/ (read 2026-10-14). Without those options the output does not change. The tool does not convert a number of events to GB. `--budget-month` does not include the indexed-event estimate. Flex Logs are not priced.
 - A sample is one window. Daily and monthly figures are an extrapolation.
 - It does not know whether a line is needed for security or compliance. A drop simulation is not advice to drop.
-- No gzip input in this version.
+- A log whose name ends in `.gz` (gzip) or `.zst` (zstd) is read directly. The totals match the unpacked file. The 256 MiB limit applies to those unpacked bytes. Several gzip members in one file are all read; a `.zst` file is one zstd frame. A price file, a rules file and standard input are not unpacked.
 - A line longer than 1 MiB is cut at 1 MiB for patterns and masking; all of its bytes still count. A JSON line longer than 1 MiB is refused with exit 2 and the line number. This keeps memory small for a file with one huge line.
 - A log file or standard input larger than 256 MiB (268435456 bytes) is refused with exit 2 and `file is larger than 256 MiB; split it or pass a smaller sample`. An input of exactly 268435456 bytes is still read. A file is refused from its size, so it is not read into memory.
 - After a keyword (`secret`, `token`, `password`, `bearer` and so on) followed by a space, the next word is always masked, even in ordinary sentences: `This is a secret mission report` → `This is a secret <SECRET> report`. This is deliberate: better to mask than to leak.

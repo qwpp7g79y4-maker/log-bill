@@ -131,16 +131,16 @@ fn show_extra_on(quiet: bool, verbose: bool, terminal: bool) -> bool {
 enum Cmd {
     /// Group a log file into patterns.
     Scan {
-        /// Log file. `-` reads standard input.
+        /// Log file. `-` reads standard input. `.gz` and `.zst` are the unpacked log.
         #[arg(value_name = "FILE")]
         file: PathBuf,
     },
     /// Compare two samples.
     Diff {
-        /// Old sample. `-` reads standard input.
+        /// Old sample. `-` reads standard input. `.gz` and `.zst` are the unpacked log.
         #[arg(value_name = "OLD")]
         old: PathBuf,
-        /// New sample. `-` reads standard input.
+        /// New sample. `-` reads standard input. `.gz` and `.zst` are the unpacked log.
         #[arg(value_name = "NEW")]
         new: PathBuf,
     },
