@@ -177,6 +177,7 @@ fn stopped(output: &std::path::Path) -> (i32, Vec<u8>, Vec<u8>) {
     Running::spawn(output).interrupt()
 }
 
+#[cfg(not(coverage))]
 #[test]
 fn sigint_writes_no_report_and_exits_130() {
     let root = tempfile::tempdir().expect("scratch dir");
@@ -196,6 +197,7 @@ fn sigint_writes_no_report_and_exits_130() {
     assert!(names.is_empty(), "no partial file: {names:?}");
 }
 
+#[cfg(not(coverage))]
 #[test]
 fn sigint_leaves_an_existing_output_file_unchanged() {
     let root = tempfile::tempdir().expect("scratch dir");
