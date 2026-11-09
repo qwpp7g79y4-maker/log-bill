@@ -453,7 +453,7 @@ fn price_object(field: &str, number: &str, ws: &str, number_first: bool) -> Stri
 }
 
 /// Metadata before opening. A FIFO with no writer must not make the tool wait.
-#[cfg(unix)]
+#[cfg(all(unix, not(coverage)))]
 #[test]
 fn fifo_exit_2_within_two_seconds() {
     use std::io::Read;

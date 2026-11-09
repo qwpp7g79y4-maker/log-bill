@@ -30,3 +30,7 @@ unicode-security = "0.1.2"
 # package's MSRV (1.85); newer proptest releases require Rust 1.88.
 proptest = "=1.7.0"
 tempfile = "3"
+
+[lints.rust]
+# cargo llvm-cov sets --cfg coverage; FIFO and timing tests are off there.
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(coverage)"] }

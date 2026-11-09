@@ -1743,6 +1743,7 @@ mod tests {
         );
     }
 
+    #[cfg(not(coverage))]
     #[test]
     fn skipping_an_unused_string_is_linear() {
         fn once(n: usize) -> std::time::Duration {
