@@ -30,7 +30,7 @@ Run `log-bill --help` or `log-bill scan --help` for the built-in help. Combinati
 | `--verbose` | scan and diff | Print the hint line even when stderr is a pipe, and on success one `context:` line on stderr. Stdout is unchanged. Together with `--quiet` this is exit 3. |
 | `--output` | scan and diff | Write the report to this file instead of stdout. An existing file is replaced. A missing parent directory is exit 3 and is not created. Stdout stays empty. Exit codes stay 0, 1, 2 and 3. |
 | `--help` | everywhere | Show help and exit 0. |
-| `--version` | top level | Show the version (`log-bill 1.0.0`) and exit 0. |
+| `--version` | top level | Show the version (`log-bill 1.0.0`) and exit 0. `-V` prints the same line. A debug build also prints the git commit when git itself prints one. A release build prints the crate version. |
 
 The log file argument of `scan` and both of `diff` (`OLD` and `NEW`) accept `-` as the path, which reads standard input instead; the output and exit code are the same as for a regular file with the same bytes. `-` is only recognised for that positional argument, not for `--prices`, `--rules` or `--index-rules`. Giving `-` more than once in the same command (for example `diff - -`) reads the whole of standard input for the first one and nothing for the second.
 

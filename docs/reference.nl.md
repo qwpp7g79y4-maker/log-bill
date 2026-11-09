@@ -30,7 +30,7 @@ Draai `log-bill --help` of `log-bill scan --help` voor de ingebouwde hulp. Combi
 | `--verbose` | scan en diff | Druk de hintregel ook als stderr een pipe is, en bij succes één regel `context:` op stderr. Stdout blijft gelijk. Samen met `--quiet` is dit exit 3. |
 | `--output` | scan en diff | Schrijf het rapport naar dit bestand in plaats van stdout. Een bestaand bestand wordt vervangen. Een ontbrekende map is exit 3 en wordt niet aangemaakt. Stdout blijft leeg. Exitcodes blijven 0, 1, 2 en 3. |
 | `--help` | overal | Toont de hulp en stopt met exit 0. |
-| `--version` | hoogste niveau | Toont het versienummer (`log-bill 1.0.0`) en stopt met exit 0. |
+| `--version` | hoogste niveau | Toont het versienummer (`log-bill 1.0.0`) en stopt met exit 0. `-V` toont dezelfde regel. Een debug-build toont ook de git-commit als git die zelf geeft. Een release-build toont de crate-versie. |
 
 Het logbestand-argument van `scan` en beide van `diff` (`OLD` en `NEW`) accepteren `-` als pad; dat leest dan standaardinvoer in plaats van een bestand. Uitvoer en exitcode zijn hetzelfde als voor een gewoon bestand met dezelfde bytes. `-` wordt alleen herkend voor dat positie-argument, niet voor `--prices`, `--rules` of `--index-rules`. `-` meer dan één keer in hetzelfde commando opgeven (bijvoorbeeld `diff - -`) leest de hele standaardinvoer voor de eerste en niets voor de tweede.
 

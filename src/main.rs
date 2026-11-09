@@ -11,7 +11,12 @@ use clap_complete::Shell;
 /// Estimate log costs per pattern from a sample, offline.
 #[derive(Parser)]
 // `bin_name` keeps usage lines at `log-bill`, also as `log-bill.exe` on Windows.
-#[command(name = "log-bill", bin_name = "log-bill", version, about)]
+#[command(
+    name = "log-bill",
+    bin_name = "log-bill",
+    version = env!("LOG_BILL_VERSION"),
+    about
+)]
 struct Cli {
     #[command(subcommand)]
     command: Cmd,
@@ -205,6 +210,11 @@ fn emit_generated(what: Generated) -> i32 {
             clap_complete::generate(shell, &mut command, "log-bill", &mut buffer);
         }
         Generated::Man => {
+            // `--version` on a debug build may append a git commit. The manual
+            // page records the crate version only, matching `man/log-bill.1`.
+            command = command
+                .version(env!("CARGO_PKG_VERSION"))
+                .long_version(None::<&str>);
             command.build();
             if clap_mangen::Man::new(command).render(&mut buffer).is_err() {
                 return fail("could not render the manual page", 3);

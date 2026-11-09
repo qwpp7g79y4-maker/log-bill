@@ -258,6 +258,53 @@ fn price_file_without_window_leaves_scan_unchanged() {
     }
 }
 
+/// `--version` and `-V` print the crate version and exit 0.
+/// A debug build also prints the commit when `git` itself prints one.
+/// A release build prints the crate version alone.
+#[test]
+fn version_flags_print_crate_version() {
+    let package = env!("CARGO_PKG_VERSION");
+    assert_eq!(package, "1.0.0");
+    let expected = if cfg!(debug_assertions) {
+        match git_head() {
+            Some(sha) => format!("{package} ({sha})"),
+            None => package.to_string(),
+        }
+    } else {
+        package.to_string()
+    };
+    for flag in ["--version", "-V"] {
+        let output = bin().arg(flag).output().expect("start binary");
+        assert_eq!(output.status.code(), Some(0), "{flag}");
+        assert!(output.stderr.is_empty(), "{flag}");
+        let stdout = String::from_utf8(output.stdout).expect("utf-8");
+        assert_eq!(stdout, format!("log-bill {expected}\n"), "{flag}");
+    }
+}
+
+/// Object id from `git rev-parse --verify HEAD`, or nothing if git does not print one.
+fn git_head() -> Option<String> {
+    let output = Command::new("git")
+        .args(["rev-parse", "--verify", "HEAD"])
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8(output.stdout).ok()?;
+    let sha = text.trim();
+    if is_git_object(sha) {
+        Some(sha.to_string())
+    } else {
+        None
+    }
+}
+
+fn is_git_object(sha: &str) -> bool {
+    (sha.len() == 40 || sha.len() == 64) && sha.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
 #[test]
 fn gb_bytes_fraction_exit_2() {
     let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR"));
