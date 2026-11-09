@@ -2,6 +2,15 @@
 
 This page shows how each release of log-bill was checked, what we found, and what we fixed. It describes checks we did. It is not a guarantee that the software is free of bugs or secure.
 
+## Measured test count
+
+| | |
+|---|---|
+| Commit checked | `2663e34` (branch prep/w24-fout) |
+| Tests | `cargo test --no-fail-fast` in debug mode: 382 passed, 0 failed, 0 ignored |
+
+Only this test run was done for this entry. The pre-release check below still records commit `ffe4398`.
+
 ## Pre-release check
 
 | | |

@@ -2,6 +2,15 @@
 
 Deze pagina laat zien hoe elke release van log-bill is gecontroleerd, wat we vonden en wat we hebben opgelost. Het beschrijft onze controles. Het is geen garantie dat de software foutloos of veilig is.
 
+## Gemeten aantal tests
+
+| | |
+|---|---|
+| Gecontroleerde commit | `2663e34` (tak prep/w24-fout) |
+| Tests | `cargo test --no-fail-fast` in debugmodus: 382 geslaagd, 0 mislukt, 0 genegeerd |
+
+Alleen deze testrun is voor dit onderdeel gedraaid. De controle voor de release hieronder blijft de meting op commit `ffe4398`.
+
 ## Controle voor de release
 
 | | |
