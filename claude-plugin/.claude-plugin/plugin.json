@@ -1,0 +1,22 @@
+{
+  "name": "log-bill",
+  "displayName": "Log Bill",
+  "version": "0.2.1",
+  "description": "Estimate log cost per pattern from a local log file, offline, before you send the logs anywhere.",
+  "author": {
+    "name": "PEPAI",
+    "url": "https://github.com/qwpp7g79y4-maker"
+  },
+  "homepage": "https://github.com/qwpp7g79y4-maker/log-bill",
+  "repository": "https://github.com/qwpp7g79y4-maker/log-bill",
+  "license": "MIT OR Apache-2.0",
+  "keywords": [
+    "logs",
+    "logging",
+    "cost",
+    "observability",
+    "cli"
+  ],
+  "documentationUrl": "https://github.com/qwpp7g79y4-maker/log-bill",
+  "supportUrl": "https://github.com/qwpp7g79y4-maker/log-bill/issues"
+}
