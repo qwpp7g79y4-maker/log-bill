@@ -16,9 +16,7 @@ Teams pay per GB for logs and often only see on the invoice which pattern produc
 
 ## Installation
 
-Version 1.0.0 is release-ready and is not published yet. `cargo install log-bill` from [crates.io](https://crates.io/crates/log-bill) still installs 0.2.1. Version 1.0.0 comes from the source: `cargo install --path .`.
-
-With Rust 1.87 or newer, the crate on [crates.io](https://crates.io/crates/log-bill) is still 0.2.1:
+Install 1.0.0 from [crates.io](https://crates.io/crates/log-bill). With Rust 1.87 or newer:
 
 ```sh
 cargo install --locked log-bill
