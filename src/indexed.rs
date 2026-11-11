@@ -538,11 +538,11 @@ fn price_decimal(price: Price) -> Result<(u128, u32), CalcError> {
     let mut denom = price.denom;
     let mut twos = 0u32;
     let mut fives = 0u32;
-    while denom % 2 == 0 {
+    while denom.is_multiple_of(2) {
         denom /= 2;
         twos += 1;
     }
-    while denom % 5 == 0 {
+    while denom.is_multiple_of(5) {
         denom /= 5;
         fives += 1;
     }
