@@ -215,6 +215,26 @@ An honest comparison with five products. The pages were checked on 8 October 202
 - If the result cannot be written, the exit code is 3 and the message is `could not write output`. `--help` and `--version` use that same code when their text cannot be written.
 - In `--json`, `inputs.paths` shows each path as text. A file name that is not valid UTF-8 (possible on Linux) is still read, but shown with U+FFFD for the invalid bytes.
 
+## Aan de slag in 5 minuten
+
+See [Quick start](#quick-start) for the steps.
+
+## Options
+
+See [Quick start](#quick-start) for the options in use and [How it counts](#how-it-counts) for what they change.
+
+## Example
+
+See [Quick start](#quick-start) for worked examples, including [Try it on your own data](#try-it-on-your-own-data).
+
+## Exit codes
+
+See [Limitations](#limitations) for the exit codes that are described there.
+
+## Maintenance
+
+See [Limitations](#limitations) for what this version does not cover.
+
 ## Privacy
 
 log-bill is fully offline: no network, no API key, no telemetry. Patterns keep the static words of a line and replace timestamps, UUIDs, IP addresses, e-mail addresses (an ordinary address, a quoted local part such as `"john.doe"@example.com`, and letters outside ASCII such as `jöhn@exämple.de`), secrets, hex, numbers (digits, also with a leading `+` or `-` or a decimal fraction, such as `-12.5`, `3.14` and `+31612345678`, and digits outside ASCII such as `١٢٣٤٥`) and other variable words. A line with nothing to replace, such as `disk full`, is shown in full, with its pattern id, line count, byte count and share. With `--prices`, the currency, source and date from the price file are shown too. An error about a log file, a price file or a rules file does not include the path, the raw log line, the rules line or the price-file contents. An error about an index-rules file does not include the path or the rule line. Lookalike characters in a key name are recognised too, so a key that only looks like `password` or `secret` still hides the value. Leak tests plant a fake secret in every input type and check that no output contains it. All fixtures are synthetic.

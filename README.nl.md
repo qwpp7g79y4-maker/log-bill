@@ -217,6 +217,26 @@ Een eerlijke vergelijking met vijf producten. De pagina's zijn nagelezen op 8 ok
 - Als het resultaat niet geschreven kan worden, is de exitcode 3 en de melding `could not write output`. `--help` en `--version` gebruiken diezelfde code als hun tekst niet weg kan.
 - In `--json` toont `inputs.paths` elk pad als tekst. Een bestandsnaam die geen geldige UTF-8 is (kan op Linux) wordt wel gelezen, maar getoond met U+FFFD voor de ongeldige bytes.
 
+## Aan de slag in 5 minuten
+
+Zie [Snel aan de slag](#snel-aan-de-slag) voor de stappen.
+
+## Opties
+
+Zie [Snel aan de slag](#snel-aan-de-slag) voor de opties in gebruik en [Hoe het rekent](#hoe-het-rekent) voor wat ze veranderen.
+
+## Voorbeeld
+
+Zie [Snel aan de slag](#snel-aan-de-slag) voor uitgewerkte voorbeelden, ook [Uitproberen met je eigen data](#uitproberen-met-je-eigen-data).
+
+## Afsluitcodes
+
+Zie [Beperkingen](#beperkingen) voor de afsluitcodes die daar beschreven staan.
+
+## Onderhoud
+
+Zie [Beperkingen](#beperkingen) voor wat deze versie niet dekt.
+
 ## Privacy
 
 log-bill werkt volledig offline: geen netwerk, geen API-key, geen telemetrie. Patronen houden de vaste woorden van een regel en vervangen tijdstempels, UUID's, IP-adressen, e-mailadressen (een gewoon adres, een gequote lokaal deel zoals `"john.doe"@example.com`, en letters buiten ASCII zoals `jöhn@exämple.de`), geheimen, hex, getallen (cijfers, ook met een `+` of `-` ervoor of een decimale breuk, zoals `-12.5`, `3.14` en `+31612345678`, en cijfers buiten ASCII zoals `١٢٣٤٥`) en andere variabele woorden. Een regel waar niets te vervangen is, zoals `disk full`, wordt helemaal getoond, met het patroon-id, het aantal regels, het aantal bytes en het aandeel. Met `--prices` worden ook de valuta, de bron en de datum uit het prijsbestand getoond. Een fout over een logbestand, een prijsbestand of een regelsbestand bevat het pad niet, noch de ruwe logregel, de regel uit het regelsbestand of de inhoud van het prijsbestand. Een fout over een index-regelsbestand bevat het pad niet en ook de regel zelf niet. Lookalike-tekens in een sleutelnaam worden ook herkend, zodat een sleutel die alleen op `password` of `secret` lijkt de waarde nog steeds verbergt. Lektests stoppen een nepgeheim in elk soort invoer en controleren dat geen enkele uitvoer het bevat. Alle fixtures zijn synthetisch.
