@@ -6,9 +6,9 @@ Deze pagina laat zien hoe elke release van log-bill is gecontroleerd, wat we von
 
 | | |
 |---|---|
-| Gecontroleerde commit | [`8ea5157`](https://github.com/qwpp7g79y4-maker/log-bill/commit/8ea5157) |
-| Datum | 2026-10-17 |
-| Tests | 337 automatische tests, gedraaid in debugmodus, releasemodus en op Rust 1.85 (alle drie: 337 geslaagd, 0 mislukt) |
+| Gecontroleerde commit | [`cd0d268`](https://github.com/qwpp7g79y4-maker/log-bill/commit/cd0d268) |
+| Datum | 2026-11-25 |
+| Tests | 367 automatische tests, gedraaid in debugmodus en releasemodus (beide: 367 geslaagd, 0 mislukt) |
 
 ### Wat is toegevoegd
 
@@ -25,37 +25,36 @@ Deze pagina laat zien hoe elke release van log-bill is gecontroleerd, wat we von
 
 - Property tests (proptest), die meedraaien in de normale testsuite: maskeren is idempotent en volgorde-onafhankelijk, een geheim na een herkende sleutel lekt nooit, bij welke variant van witruimte of `\uXXXX` dan ook, de kostenberekening komt overeen met een eenvoudige referentieberekening, en de parsers voor regels, venster, budget, prijsbestand en regelslezen geven nooit een panic op willekeurige invoer.
 - Nieuwe regressietests ([`tests/edge_cases.rs`](https://github.com/qwpp7g79y4-maker/log-bill/blob/main/tests/edge_cases.rs)) voor een leeg bestand, een bestand met alleen regeleinden, een losse `\r` zonder `\n`, een byte order mark zonder iets anders, een rauwe NUL-byte in een JSON-string, een JSON Unicode-escape voor NUL die een sleutel splitst, een dubbele sleutel genest in een prijsbestand-object, een negatieve nul als prijs, en een budget voorbij de grens van een 64-bits float.
-- Een `Fuzz build`-taak in CI die alle zes doelen bouwt op nightly Rust; hij bouwt ze, maar draait ze niet (zie "Niet gedekt" hieronder).
+- Een `Fuzz build`-taak in CI die alle zes doelen bouwt op nightly Rust; hij bouwt ze, maar draait ze niet (zie "Niet gedraaid" hieronder).
+
+### Wat is er veranderd sinds de vorige vermelding
+
+- De CI-test die `.github/` bij het compileren leest, slaat nu over als het bestand ontbreekt, zodat het uitgepakte crate-pakket zijn tests bouwt ([`5f7ae06`](https://github.com/qwpp7g79y4-maker/log-bill/commit/5f7ae06)).
+- Een argument met een regeleinde kan in een clap-fout geen eigen regel meer afdrukken; de fout wordt gebouwd uit argumenten waarvan de stuurtekens zijn ge-escaped ([`5f7ae06`](https://github.com/qwpp7g79y4-maker/log-bill/commit/5f7ae06)).
+- De readme-tests die `.github/` nodig hebben, slaan over als die map niet in het crate-pakket zit ([`cd0d268`](https://github.com/qwpp7g79y4-maker/log-bill/commit/cd0d268)).
 
 ### Hoe we controleerden
 
-- `cargo test` en `cargo test --release`: 337 geslaagd, 0 mislukt, beide exit 0.
-- `cargo +1.85 test` (oudste ondersteunde Rust-versie): 337 geslaagd, 0 mislukt, exit 0.
-- `cargo clippy --all-targets -- -D warnings`: exit 0, geen waarschuwingen, in de hoofdcrate en in `fuzz/`.
-- `cargo fmt --check`: exit 0, in de hoofdcrate en in `fuzz/`.
-- `cargo +nightly fuzz build --target x86_64-unknown-linux-gnu`: exit 0, alle zes doelen bouwen.
-- Elk van de zes doelen is 660 seconden gefuzzed, na elkaar, op één vastgezette CPU-kern:
-
-  | Doel | Looptijd | Uitvoeringen | Crashes |
-  |---|---|---|---|
-  | `fuzz_diff` | 662 s | 2.042.449 | geen |
-  | `fuzz_mask` | 661 s | 534.625 | geen |
-  | `fuzz_money` | 662 s | 1.399.109 | geen |
-  | `fuzz_read` | 662 s | 5.482.286 | geen |
-  | `fuzz_render` | 661 s | 662.055 | geen |
-  | `fuzz_rules` | 661 s | 650.763 | geen |
-
-- Geautomatiseerde tests in CI voor deze commit: [run 38972694602](https://github.com/qwpp7g79y4-maker/log-bill/actions/runs/38972694602), succesvol, inclusief de nieuwe fuzz-build-taak.
+- `cargo fmt --check`: exit 0.
+- `cargo clippy --all-targets --locked -- -D warnings`: exit 0, geen waarschuwingen.
+- `cargo test --locked`: 367 geslaagd, 0 mislukt, exit 0.
+- `cargo test --release --locked`: 367 geslaagd, 0 mislukt, exit 0.
+- Dit alles draaide lokaal op Linux (x86_64). Alleen de hoofdcrate is gecontroleerd.
 
 ### Echte bugs gevonden
 
-Geen. Bij het schrijven van de fuzz-doelen en property tests vonden en corrigeerden we één fout in de tests zelf: de fuzz- en property tests voor maskeren noemden fullwidth `＝`/`：` eerst als scheidingstekens die `mask::mask` zelf zou herkennen, maar die omzetting gebeurt al eerder, bij het lezen van een regel, niet in de masker. De testlijsten zijn hierop aangepast; dit is een correctie van het testharnas, geen productbug.
+Geen in deze run. De releasetests slaagden zonder enige wijziging aan de code.
 
-### Niet gedekt
+### Niet gedraaid
 
-- Dit zijn korte lokale fuzzruns (11 minuten per doel, één CPU-kern), geen continue fuzzing.
-- CI bouwt de zes fuzz-doelen bij elke wijziging, maar draait ze niet; de runs van 11 minuten per doel hierboven zijn apart, lokaal gedaan.
-- Deze commit heeft nog geen onafhankelijke eindreview gehad; die volgt na deze commit, en de badge "PEPAI gecontroleerd" in de README blijft tot dan ongewijzigd.
+- `cargo deny`: niet gedraaid.
+- `cargo audit`: niet gedraaid.
+- Fuzzing (`cargo fuzz`, alle zes doelen, en de fuzz-build): niet gedraaid. De fuzzresultaten van eerdere commits gelden niet voor deze commit.
+- Rust 1.85 (oudste ondersteunde versie): niet gedraaid.
+- macOS en Windows: niet gedraaid.
+- `cargo fmt --check` en clippy in `fuzz/`: niet gedraaid.
+- Geautomatiseerde tests in CI voor deze commit: niet gedraaid, er is niets gepusht.
+- Deze commit heeft nog geen onafhankelijke eindreview gehad; de badge "PEPAI gecontroleerd" in de README blijft ongewijzigd.
 
 ## v0.1.2
 

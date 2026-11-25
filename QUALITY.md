@@ -6,9 +6,9 @@ This page shows how each release of log-bill was checked, what we found, and wha
 
 | | |
 |---|---|
-| Commit checked | [`8ea5157`](https://github.com/qwpp7g79y4-maker/log-bill/commit/8ea5157) |
-| Date | 2026-10-17 |
-| Tests | 337 automated tests, run in debug mode, release mode, and on Rust 1.85 (all three: 337 passed, 0 failed) |
+| Commit checked | [`cd0d268`](https://github.com/qwpp7g79y4-maker/log-bill/commit/cd0d268) |
+| Date | 2026-11-25 |
+| Tests | 367 automated tests, run in debug mode and in release mode (both: 367 passed, 0 failed) |
 
 ### What was added
 
@@ -25,37 +25,36 @@ This page shows how each release of log-bill was checked, what we found, and wha
 
 - Property tests (proptest), run as part of the normal test suite: masking is idempotent and order-independent, a secret after a recognised key never leaks under any whitespace or `\uXXXX` variant, the cost calculation matches a plain reference computation, and the rules, window, budget, price-file and line-reading parsers never panic on arbitrary input.
 - New regression tests ([`tests/edge_cases.rs`](https://github.com/qwpp7g79y4-maker/log-bill/blob/main/tests/edge_cases.rs)) for an empty file, a file of only newlines, a lone `\r` with no `\n`, a byte-order mark with nothing else, a raw NUL byte inside a JSON string, a JSON Unicode escape for NUL splitting a key, a duplicate key nested inside a price-file object, a negative-zero price, and a budget past the limit of a 64-bit float.
-- A `Fuzz build` job in CI that builds all six targets on nightly Rust; it builds them but does not run them (see "Not covered" below).
+- A `Fuzz build` job in CI that builds all six targets on nightly Rust; it builds them but does not run them (see "Not run" below).
+
+### What changed since the last record
+
+- The CI test that reads `.github/` at compile time now skips when the file is absent, so the unpacked packaged crate builds its tests ([`5f7ae06`](https://github.com/qwpp7g79y4-maker/log-bill/commit/5f7ae06)).
+- An argument holding a newline can no longer print a line of its own in a clap error; the error is built from arguments with control characters escaped ([`5f7ae06`](https://github.com/qwpp7g79y4-maker/log-bill/commit/5f7ae06)).
+- The readme tests that need `.github/` skip when it is not in the packaged crate ([`cd0d268`](https://github.com/qwpp7g79y4-maker/log-bill/commit/cd0d268)).
 
 ### How we checked
 
-- `cargo test` and `cargo test --release`: 337 passed, 0 failed, both exit 0.
-- `cargo +1.85 test` (oldest supported Rust version): 337 passed, 0 failed, exit 0.
-- `cargo clippy --all-targets -- -D warnings`: exit 0, no warnings, in the main crate and in `fuzz/`.
-- `cargo fmt --check`: exit 0, in the main crate and in `fuzz/`.
-- `cargo +nightly fuzz build --target x86_64-unknown-linux-gnu`: exit 0, all six targets build.
-- Each of the six targets fuzzed for 660 seconds, sequentially, one pinned CPU core:
-
-  | Target | Wall time | Executions | Crashes |
-  |---|---|---|---|
-  | `fuzz_diff` | 662 s | 2,042,449 | none |
-  | `fuzz_mask` | 661 s | 534,625 | none |
-  | `fuzz_money` | 662 s | 1,399,109 | none |
-  | `fuzz_read` | 662 s | 5,482,286 | none |
-  | `fuzz_render` | 661 s | 662,055 | none |
-  | `fuzz_rules` | 661 s | 650,763 | none |
-
-- Automated tests in CI for this commit: [run 38972694602](https://github.com/qwpp7g79y4-maker/log-bill/actions/runs/38972694602), success, including the new fuzz-build job.
+- `cargo fmt --check`: exit 0.
+- `cargo clippy --all-targets --locked -- -D warnings`: exit 0, no warnings.
+- `cargo test --locked`: 367 passed, 0 failed, exit 0.
+- `cargo test --release --locked`: 367 passed, 0 failed, exit 0.
+- All of this ran locally on Linux (x86_64). Only the main crate was checked.
 
 ### Real bugs found
 
-None. While writing the fuzz targets and property tests we found and corrected one mistake in the tests themselves: the fuzz and property tests for masking originally listed fullwidth `＝`/`：` as separators for `mask::mask` to recognise directly, but that folding happens earlier, while a line is read, not inside the masker. The test lists were corrected to match; this is a test-harness correction, not a product bug.
+None in this run. The release tests passed without any change to the code.
 
-### Not covered
+### Not run
 
-- These are short local fuzzing runs (11 minutes per target, one CPU core), not continuous fuzzing.
-- CI builds the six fuzz targets on every change, but does not run them; the 11-minutes-per-target runs above were done locally, separately from CI.
-- This commit has not yet had an independent final review; that happens after this commit, and the "PEPAI checked" badge in the README stays as it is now until that review is recorded.
+- `cargo deny`: not run.
+- `cargo audit`: not run.
+- Fuzzing (`cargo fuzz`, all six targets, and the fuzz build): not run. The fuzz results recorded for earlier commits do not apply to this commit.
+- Rust 1.85 (oldest supported version): not run.
+- macOS and Windows: not run.
+- `cargo fmt --check` and clippy in `fuzz/`: not run.
+- Automated tests in CI for this commit: not run, nothing was pushed.
+- This commit has not had an independent final review; the "PEPAI checked" badge in the README stays as it is.
 
 ## v0.1.2
 
