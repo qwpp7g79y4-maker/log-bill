@@ -26,6 +26,12 @@ fn read(rel: &str) -> String {
     fs::read_to_string(&path).unwrap_or_else(|err| panic!("read {rel}: {err}"))
 }
 
+/// Reads a file that only exists in the repository: the packaged crate leaves
+/// `.github/` out, and a test that needs it then has nothing to check.
+fn read_repo_only(rel: &str) -> Option<String> {
+    fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(rel)).ok()
+}
+
 /// The text under a level-2 heading, up to the next level-2 heading.
 fn section<'a>(text: &'a str, heading: &str) -> &'a str {
     let marker = format!("{heading}\n");
@@ -237,7 +243,9 @@ fn readme_has_the_sections_and_names() {
     }
     assert!(section(&readme, "## Support").contains("(https://ko-fi.com/pepai)"));
     assert!(section(&read(README_NL), "## Steunen").contains("(https://ko-fi.com/pepai)"));
-    assert_eq!(read(".github/FUNDING.yml"), "ko_fi: pepai\n");
+    if let Some(funding) = read_repo_only(".github/FUNDING.yml") {
+        assert_eq!(funding, "ko_fi: pepai\n");
+    }
     let install = section(&readme, "## Installation");
     let crates_io = install
         .find("cargo install --locked log-bill")
@@ -975,7 +983,10 @@ fn release_archive_lists_every_relative_doc_link() {
         vec!["QUALITY.md".to_string(), "docs/reference.md".to_string()]
     );
 
-    let packed = archive_list(&read(".github/workflows/release.yml"));
+    let Some(release) = read_repo_only(".github/workflows/release.yml") else {
+        return;
+    };
+    let packed = archive_list(&release);
     let mut missing = Vec::new();
     for rel in linked_docs() {
         for link in markdown_link_targets(&read(&rel)) {
@@ -996,7 +1007,12 @@ fn release_archive_lists_every_relative_doc_link() {
 /// promise that same version.
 #[test]
 fn glibc_limit_matches_the_readme_promise() {
-    let ci = read(".github/workflows/ci.yml");
+    let (Some(ci), Some(release)) = (
+        read_repo_only(".github/workflows/ci.yml"),
+        read_repo_only(".github/workflows/release.yml"),
+    ) else {
+        return;
+    };
     assert_eq!(
         ci.matches("glibc_max=").count(),
         1,
@@ -1028,7 +1044,7 @@ fn glibc_limit_matches_the_readme_promise() {
         "README.nl.md does not promise glibc {limit}"
     );
     assert!(
-        read(".github/workflows/release.yml").contains(&format!("needs glibc {limit} or newer")),
+        release.contains(&format!("needs glibc {limit} or newer")),
         "release.yml does not promise glibc {limit}"
     );
 }
