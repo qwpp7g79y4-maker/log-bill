@@ -117,9 +117,36 @@ fn main() {
                 Err(error) => report(error),
             }
         }
-        Err(error) => report(error),
+        Err(_) => {
+            // Parse again with control characters in the arguments made visible, so
+            // an argument holding a newline cannot print a line of its own.
+            let args: Vec<std::ffi::OsString> = std::env::args_os()
+                .map(|arg| escape_control(&arg))
+                .collect();
+            match Cli::command().try_get_matches_from(args) {
+                Err(error) => report(error),
+                Ok(_) => fail("could not read the arguments", 3),
+            }
+        }
     };
     std::process::exit(code);
+}
+
+fn escape_control(arg: &std::ffi::OsStr) -> std::ffi::OsString {
+    let text = arg.to_string_lossy();
+    if !text.chars().any(char::is_control) {
+        return arg.to_os_string();
+    }
+    text.chars()
+        .flat_map(|c| {
+            if c.is_control() {
+                c.escape_default().collect::<Vec<_>>()
+            } else {
+                vec![c]
+            }
+        })
+        .collect::<String>()
+        .into()
 }
 
 fn parse_days_per_month(raw: &str) -> Result<u32, String> {

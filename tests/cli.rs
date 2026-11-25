@@ -701,7 +701,11 @@ fn extreme_json_fields_count_both_lines() {
 
 #[test]
 fn ci_runs_release_tests() {
-    let yml = include_str!("../.github/workflows/ci.yml");
+    // The packaged crate leaves `.github/` out, so there is nothing to check there.
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(".github/workflows/ci.yml");
+    let Ok(yml) = std::fs::read_to_string(&path) else {
+        return;
+    };
     assert!(
         yml.contains("cargo test --release"),
         "ci.yml does not run release tests"
@@ -716,4 +720,24 @@ fn usage_names_the_binary_log_bill() {
     let err = String::from_utf8_lossy(&output.stderr);
     assert!(err.contains("Usage: log-bill scan "), "{err}");
     assert!(!err.contains("log-bill.exe"), "{err}");
+}
+
+#[test]
+fn clap_error_does_not_print_a_line_made_by_an_argument() {
+    // A newline inside an argument must not start a line of its own in the error.
+    let output = bin()
+        .arg("--bo\nerror: invented\u{1b}[2K")
+        .output()
+        .expect("start binary");
+    assert_eq!(output.status.code(), Some(3));
+    let err = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(
+        err.lines()
+            .filter(|line| line.starts_with("error:"))
+            .count(),
+        1,
+        "{err}"
+    );
+    assert!(!err.contains('\u{1b}'), "{err:?}");
+    assert!(err.contains("--bo\\nerror: invented"), "{err}");
 }
