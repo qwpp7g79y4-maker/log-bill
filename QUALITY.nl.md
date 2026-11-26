@@ -1,6 +1,6 @@
 # Kwaliteitsrapport
 
-pep: 8.6
+pep: 10
 
 Deze pagina laat zien hoe elke release van log-bill is gecontroleerd, wat we vonden en wat we hebben opgelost. Het beschrijft onze controles. Het is geen garantie dat de software foutloos of veilig is.
 
