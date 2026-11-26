@@ -215,7 +215,7 @@ An honest comparison with five products. The pages were checked on 8 October 202
 - If the result cannot be written, the exit code is 3 and the message is `could not write output`. `--help` and `--version` use that same code when their text cannot be written.
 - In `--json`, `inputs.paths` shows each path as text. A file name that is not valid UTF-8 (possible on Linux) is still read, but shown with U+FFFD for the invalid bytes.
 
-## Aan de slag in 5 minuten
+## Quickstart in 5 minutes
 
 See [Quick start](#quick-start) for the steps.
 
@@ -234,6 +234,8 @@ See [Limitations](#limitations) for the exit codes that are described there.
 ## Maintenance
 
 See [Limitations](#limitations) for what this version does not cover.
+
+After a release the tool is dormant: a new version appears only for a reported bug, a request, or a security problem. Security always comes first.
 
 ## Privacy
 

@@ -237,6 +237,8 @@ Zie [Beperkingen](#beperkingen) voor de afsluitcodes die daar beschreven staan.
 
 Zie [Beperkingen](#beperkingen) voor wat deze versie niet dekt.
 
+Na een release staat de tool in sluimermodus (dormant): een nieuwe versie komt er alleen bij een gemelde bug, een verzoek of een beveiligingsprobleem. Beveiliging gaat altijd voor.
+
 ## Privacy
 
 log-bill werkt volledig offline: geen netwerk, geen API-key, geen telemetrie. Patronen houden de vaste woorden van een regel en vervangen tijdstempels, UUID's, IP-adressen, e-mailadressen (een gewoon adres, een gequote lokaal deel zoals `"john.doe"@example.com`, en letters buiten ASCII zoals `jöhn@exämple.de`), geheimen, hex, getallen (cijfers, ook met een `+` of `-` ervoor of een decimale breuk, zoals `-12.5`, `3.14` en `+31612345678`, en cijfers buiten ASCII zoals `١٢٣٤٥`) en andere variabele woorden. Een regel waar niets te vervangen is, zoals `disk full`, wordt helemaal getoond, met het patroon-id, het aantal regels, het aantal bytes en het aandeel. Met `--prices` worden ook de valuta, de bron en de datum uit het prijsbestand getoond. Een fout over een logbestand, een prijsbestand of een regelsbestand bevat het pad niet, noch de ruwe logregel, de regel uit het regelsbestand of de inhoud van het prijsbestand. Een fout over een index-regelsbestand bevat het pad niet en ook de regel zelf niet. Lookalike-tekens in een sleutelnaam worden ook herkend, zodat een sleutel die alleen op `password` of `secret` lijkt de waarde nog steeds verbergt. Lektests stoppen een nepgeheim in elk soort invoer en controleren dat geen enkele uitvoer het bevat. Alle fixtures zijn synthetisch.

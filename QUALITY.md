@@ -1,5 +1,7 @@
 # Quality report
 
+pep: 10
+
 This page shows how each release of log-bill was checked, what we found, and what we fixed. It describes checks we did. It is not a guarantee that the software is free of bugs or secure.
 
 ## Unreleased
